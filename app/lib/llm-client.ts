@@ -73,10 +73,16 @@ async function* streamAnthropic(messages: ChatMessage[], model: string): AsyncGe
   const systemMsg = messages.find((m) => m.role === "system");
   const nonSystem = messages.filter((m) => m.role !== "system");
 
+  // OAuth tokens use Bearer auth; API keys use x-api-key
+  const isOAuth = apiKey.startsWith("eyJ") || !!process.env.ANTHROPIC_OAUTH_TOKEN;
+  const authHeaders: Record<string, string> = isOAuth
+    ? { Authorization: `Bearer ${apiKey}` }
+    : { "x-api-key": apiKey };
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": apiKey,
+      ...authHeaders,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },

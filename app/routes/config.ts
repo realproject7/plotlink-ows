@@ -164,13 +164,20 @@ config.post("/llm/test", async (c) => {
 
     // Test with a minimal request based on provider
     if (body.provider === "anthropic") {
+      // OAuth tokens use Bearer auth; API keys use x-api-key header
+      const isOAuthToken = apiKey.startsWith("eyJ") || !!process.env.ANTHROPIC_OAUTH_TOKEN;
+      const headers: Record<string, string> = {
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      };
+      if (isOAuthToken) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      } else {
+        headers["x-api-key"] = apiKey;
+      }
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           model: body.model,
           max_tokens: 1,
@@ -178,8 +185,9 @@ config.post("/llm/test", async (c) => {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as Record<string, unknown>).error?.toString() || `HTTP ${res.status}`);
+        const err = await res.json().catch(() => ({})) as Record<string, any>;
+        const msg = err.error?.message || err.error?.type || JSON.stringify(err.error) || `HTTP ${res.status}`;
+        throw new Error(msg);
       }
     } else if (body.provider === "openai") {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
