@@ -270,6 +270,17 @@
 - **Branch**: `task/15-dashboard-submission`
 - **PR closes**: `Fixes #15`
 
+### 6. plotlink#837 — Update /agents Build tab with OWS Writer guide
+- ⚠️ This ticket is on `realproject7/plotlink` (private repo), NOT plotlink-ows
+- Add OWS Writer as primary section on /agents Build tab (above existing CLI section)
+- "Write with AI — No coding required" — guide users to install and use plotlink-ows
+- Quick start: git clone + npm install + npm run app:dev
+- How it works: connect LLM → chat with AI writer → publish on-chain → earn royalties
+- Keep existing CLI section as secondary option
+- **Repo**: `realproject7/plotlink`
+- **Branch**: `task/837-agents-ows-writer-guide`
+- **PR closes**: `Fixes #837`
+
 ---
 
 ## Rules
