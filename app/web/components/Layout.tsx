@@ -71,15 +71,35 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
   const [llmConfigured, setLlmConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/config/llm`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        setLlmConfigured(data.configured?.length > 0);
-        if (!data.configured?.length) setPage("llm-setup");
-      })
-      .catch(() => setLlmConfigured(false));
+    async function checkSetup() {
+      try {
+        // Check LLM config
+        const llmRes = await fetch(`${API_BASE}/api/config/llm`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const llmData = await llmRes.json();
+        const hasLlm = llmData.configured?.length > 0;
+        setLlmConfigured(hasLlm);
+
+        if (!hasLlm) {
+          setPage("llm-setup");
+          return;
+        }
+
+        // Check wallet existence
+        const walletRes = await fetch(`${API_BASE}/api/wallet`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const walletData = await walletRes.json();
+        if (!walletData.exists) {
+          setPage("wallet-setup");
+          return;
+        }
+      } catch {
+        setLlmConfigured(false);
+      }
+    }
+    checkSetup();
   }, []);
 
   return (
