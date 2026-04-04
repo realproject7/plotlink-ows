@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { createHmac, randomBytes } from "crypto";
 import { db } from "../db";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.join(__dirname, "..", "..", ".env");
 
 const auth = new Hono();
 
@@ -10,11 +16,24 @@ function hashPassphrase(passphrase: string): string {
   return createHmac("sha256", "plotlink-ows").update(passphrase).digest("hex");
 }
 
+function readEnvPassphrase(): string | null {
+  // Check process.env first
+  if (process.env.OWS_PASSPHRASE) return process.env.OWS_PASSPHRASE;
+  // Then read from .env file directly
+  try {
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      const match = content.match(/^OWS_PASSPHRASE=(.+)$/m);
+      if (match) return match[1].trim();
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 async function getStoredHash(): Promise<string | null> {
-  // Check env first, then DB setting
-  if (process.env.OWS_PASSPHRASE) {
-    return hashPassphrase(process.env.OWS_PASSPHRASE);
-  }
+  const passphrase = readEnvPassphrase();
+  if (passphrase) return hashPassphrase(passphrase);
+  // Fallback to DB setting
   const setting = await db.setting.findUnique({ where: { key: "passphrase_hash" } });
   return setting?.value ?? null;
 }
@@ -37,12 +56,20 @@ auth.post("/setup", async (c) => {
     return c.json({ error: "Passphrase must be at least 4 characters" }, 400);
   }
 
-  const hash = hashPassphrase(body.passphrase);
-  await db.setting.upsert({
-    where: { key: "passphrase_hash" },
-    update: { value: hash },
-    create: { key: "passphrase_hash", value: hash },
-  });
+  // Persist passphrase to .env file
+  const envLine = `OWS_PASSPHRASE=${body.passphrase}`;
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf-8");
+    if (content.includes("OWS_PASSPHRASE=")) {
+      fs.writeFileSync(envPath, content.replace(/^OWS_PASSPHRASE=.*$/m, envLine));
+    } else {
+      fs.appendFileSync(envPath, `\n${envLine}\n`);
+    }
+  } else {
+    fs.writeFileSync(envPath, `${envLine}\n`);
+  }
+  // Also set in process.env for immediate use
+  process.env.OWS_PASSPHRASE = body.passphrase;
 
   // Auto-login after setup
   const token = randomBytes(32).toString("hex");
