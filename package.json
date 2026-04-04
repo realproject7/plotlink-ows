@@ -1,7 +1,9 @@
 {
-  "name": "plotlink",
+  "name": "plotlink-ows",
   "version": "0.1.13",
-  "private": true,
+  "bin": {
+    "plotlink-ows": "./bin/plotlink-ows.js"
+  },
   "workspaces": [
     "packages/*"
   ],
