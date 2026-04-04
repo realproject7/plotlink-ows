@@ -106,9 +106,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         )}
       </div>
 
-      {/* Publish bar */}
+      {/* Action bar */}
       <div className="px-3 py-2 border-t border-border flex items-center justify-between">
-        {fileData?.status === "published" ? (
+        {fileName === "structure.md" ? (
+          <p className="text-muted text-xs italic">This is your story outline — not publishable. Ask AI to write the genesis next.</p>
+        ) : fileData?.status === "published" ? (
           <div className="flex items-center gap-2 text-xs">
             <span className="text-green-700">Published</span>
             {fileData.storylineId && (
