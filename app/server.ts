@@ -81,7 +81,8 @@ async function start() {
   // Terminal WebSocket: raw WS on /ws/terminal (bypasses Hono for raw PTY relay)
   const { WebSocketServer } = await import("ws");
   const wss = new WebSocketServer({ noServer: true });
-  (server as import("http").Server).on("upgrade", (req, socket, head) => {
+  // server from serve() IS an http.Server
+  (server as any).on("upgrade", (req: any, socket: any, head: any) => {
     const url = new URL(req.url || "", `http://localhost:${port}`);
     if (url.pathname === "/ws/terminal") {
       // Auth check: verify token from query params

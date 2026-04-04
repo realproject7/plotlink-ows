@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import pty from "node-pty";
+import * as pty from "node-pty";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -24,7 +24,8 @@ terminal.post("/spawn", (c) => {
   }
 
   try {
-    const term = pty.spawn("claude", [], {
+    const shell = process.env.SHELL || "/bin/zsh";
+    const term = pty.spawn(shell, ["-l", "-c", "claude"], {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
@@ -83,7 +84,8 @@ export function attachTerminalWs(ws: WebSocket) {
   // Lazy spawn if no PTY exists
   if (!session || session.state !== "running") {
     try {
-      const term = pty.spawn("claude", [], {
+      const shell = process.env.SHELL || "/bin/zsh";
+    const term = pty.spawn(shell, ["-l", "-c", "claude"], {
         name: "xterm-256color",
         cols: 120,
         rows: 30,
@@ -104,7 +106,8 @@ export function attachTerminalWs(ws: WebSocket) {
           s.ws = null;
         }
       });
-    } catch {
+    } catch (err) {
+      console.error("PTY spawn failed:", err);
       ws.close(1011, "pty-spawn-failed");
       return;
     }
