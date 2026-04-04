@@ -10,6 +10,7 @@ type Page = "home" | "llm-setup" | "settings";
 export function Layout({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [page, setPage] = useState<Page>("home");
   const [llmConfigured, setLlmConfigured] = useState<boolean | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/config/llm`, {
@@ -75,6 +76,11 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
                   <p className="text-foreground text-sm font-medium">ready</p>
                   <p className="text-muted mt-1 text-xs">chat UI &amp; story publishing coming in next phases</p>
                 </div>
+                {walletError && (
+                  <div className="rounded border border-yellow-600/30 p-3 text-xs text-yellow-600">
+                    wallet: {walletError}
+                  </div>
+                )}
                 <WalletCard token={token} />
               </>
             )}
@@ -86,6 +92,7 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             token={token}
             onComplete={async () => {
               // Auto-create wallet on first setup
+              setWalletError(null);
               try {
                 const res = await fetch(`${API_BASE}/api/wallet/create`, {
                   method: "POST",
@@ -93,10 +100,11 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
                 });
                 if (!res.ok) {
                   const data = await res.json();
-                  console.warn("Wallet creation failed:", data.error);
+                  setWalletError(data.error || "Wallet creation failed");
+                  // Still proceed — wallet can be created later from settings
                 }
-              } catch (err) {
-                console.warn("Wallet creation failed:", err);
+              } catch {
+                setWalletError("Could not connect to OWS. Wallet can be created from settings.");
               }
               setLlmConfigured(true);
               setPage("home");
@@ -105,7 +113,7 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
         )}
 
         {page === "settings" && (
-          <Settings token={token} onLogout={onLogout} />
+          <Settings token={token} onLogout={onLogout} onChangeLLM={() => setPage("llm-setup")} />
         )}
       </main>
 

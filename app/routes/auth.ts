@@ -125,6 +125,38 @@ auth.get("/verify", async (c) => {
   return c.json({ valid: true });
 });
 
+/** POST /api/auth/reset-passphrase — update passphrase (requires auth) */
+auth.post("/reset-passphrase", async (c) => {
+  // Verify session first
+  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return c.json({ error: "Unauthorized" }, 401);
+  const session = await db.session.findUnique({ where: { token } });
+  if (!session || session.expiresAt < new Date()) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json<{ passphrase: string }>();
+  if (!body.passphrase || body.passphrase.length < 4) {
+    return c.json({ error: "Passphrase must be at least 4 characters" }, 400);
+  }
+
+  // Update .env file
+  const envLine = `OWS_PASSPHRASE=${body.passphrase}`;
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf-8");
+    if (content.includes("OWS_PASSPHRASE=")) {
+      fs.writeFileSync(envPath, content.replace(/^OWS_PASSPHRASE=.*$/m, envLine));
+    } else {
+      fs.appendFileSync(envPath, `\n${envLine}\n`);
+    }
+  } else {
+    fs.writeFileSync(envPath, `${envLine}\n`);
+  }
+  process.env.OWS_PASSPHRASE = body.passphrase;
+
+  return c.json({ success: true });
+});
+
 /** Auth middleware for protected routes */
 export async function requireAuth(c: any, next: () => Promise<void>) {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
