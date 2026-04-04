@@ -55,31 +55,34 @@ function ask(rl, question) {
 
 function askSecret(question) {
   return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     process.stdout.write(question);
     const stdin = process.stdin;
     const wasRaw = stdin.isRaw;
     if (stdin.setRawMode) stdin.setRawMode(true);
+    stdin.resume();
     let input = "";
     const onData = (ch) => {
       const c = ch.toString();
       if (c === "\n" || c === "\r") {
         if (stdin.setRawMode) stdin.setRawMode(wasRaw);
         stdin.removeListener("data", onData);
+        stdin.pause();
         process.stdout.write("\n");
-        rl.close();
         resolve(input);
       } else if (c === "\u0003") {
+        if (stdin.setRawMode) stdin.setRawMode(wasRaw);
         process.exit(0);
       } else if (c === "\u007F" || c === "\b") {
-        input = input.slice(0, -1);
+        if (input.length > 0) {
+          input = input.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
       } else {
         input += c;
         process.stdout.write("*");
       }
     };
     stdin.on("data", onData);
-    stdin.resume();
   });
 }
 
@@ -113,8 +116,6 @@ async function cmdInit() {
   header("PlotLink OWS — Setup Wizard");
   log("Let's get your local writer app configured.\n");
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
   // Step 1: Prerequisites
   header("Step 1: Prerequisites");
   const nodeVersion = process.version;
@@ -142,12 +143,10 @@ async function cmdInit() {
 
   if (passphrase !== confirm) {
     error("Passphrases don't match.");
-    rl.close();
     process.exit(1);
   }
   if (passphrase.length < 8) {
     error("Passphrase must be at least 8 characters.");
-    rl.close();
     process.exit(1);
   }
 
@@ -179,8 +178,6 @@ async function cmdInit() {
     warn(`Wallet creation skipped: ${err.message}`);
     warn("You can create it later from the app.");
   }
-
-  rl.close();
 
   // Save config
   const config = {
