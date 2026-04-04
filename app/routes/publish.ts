@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { db } from "../db";
-import { publishStoryline, getEthBalance, getCreationFee } from "../lib/publish";
+import { publishStoryline, getEthBalance, estimatePublishCost } from "../lib/publish";
+import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
 const publish = new Hono();
@@ -21,12 +22,22 @@ publish.get("/preflight", async (c) => {
       return c.json({ ready: false, error: "No EVM address on wallet" });
     }
 
-    // Check ETH balance for gas + creation fee
+    // Check ETH balance against real estimated cost
     const balance = await getEthBalance(address);
+    let totalCost = BigInt(0);
     let creationFee = BigInt(0);
-    try { creationFee = await getCreationFee(); } catch { /* estimation may fail */ }
-    const estimatedGas = BigInt(300000) * BigInt(100000000); // ~300k gas * ~0.1 gwei (Base is cheap)
-    const requiredBalance = creationFee + estimatedGas;
+    try {
+      // Use a dummy CID + hash for estimation (gas cost is the same regardless of content)
+      const dummyCid = "QmDummy";
+      const dummyHash = keccak256(toBytes("estimation"));
+      const estimate = await estimatePublishCost(address, "Test", dummyCid, dummyHash);
+      totalCost = estimate.totalCost;
+      creationFee = estimate.creationFee;
+    } catch {
+      // If estimation fails (e.g. contract not deployed), use creation fee only
+      totalCost = creationFee;
+    }
+    const requiredBalance = totalCost;
     const hasEnoughEth = balance >= requiredBalance;
 
     // Check Filebase config
