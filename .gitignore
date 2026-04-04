@@ -66,7 +66,10 @@ next-env.d.ts
 
 # claude code
 .claude/worktrees/
-AGENTS.md
+
+# stories — keep _example, ignore user stories
+stories/*/
+!stories/_example/
 
 # test results
 test-results/
