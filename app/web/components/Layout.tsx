@@ -87,11 +87,12 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
       {/* Header */}
       <header className="border-border flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => setPage("home")} className="text-accent text-sm font-bold tracking-tight hover:opacity-80">
+          <button onClick={() => { if (page !== "wallet-setup") setPage("home"); }} className="text-accent text-sm font-bold tracking-tight hover:opacity-80">
             PlotLink OWS
           </button>
           <span className="text-muted text-[10px] uppercase tracking-wider">local writer</span>
         </div>
+        {page !== "wallet-setup" && (
         <nav className="flex items-center gap-4">
           <button
             onClick={() => setPage("llm-setup")}
@@ -109,6 +110,7 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             logout
           </button>
         </nav>
+        )}
       </header>
 
       {/* Main content */}
