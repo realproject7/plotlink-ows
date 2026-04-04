@@ -74,11 +74,40 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
       <h2 className="text-accent mb-1 text-lg font-bold">LLM Setup</h2>
       <p className="text-muted mb-6 text-xs">connect your AI provider to power the writer agent</p>
 
-      {/* Step indicator */}
-      <div className="text-muted mb-6 flex gap-2 text-[10px] uppercase tracking-wider">
-        {(["provider", "auth", "model", "test", "done"] as Step[]).map((s) => (
-          <span key={s} className={step === s ? "text-accent" : ""}>{s}</span>
-        ))}
+      {/* Step navigator */}
+      <div className="mb-8 flex items-center justify-between">
+        {([
+          { key: "provider", label: "Provider" },
+          { key: "auth", label: "Connect" },
+          { key: "model", label: "Model" },
+          { key: "test", label: "Test" },
+          { key: "done", label: "Done" },
+        ] as { key: Step; label: string }[]).map((s, i, arr) => {
+          const steps: Step[] = ["provider", "auth", "model", "test", "done"];
+          const currentIdx = steps.indexOf(step);
+          const stepIdx = steps.indexOf(s.key);
+          const isActive = step === s.key;
+          const isComplete = stepIdx < currentIdx;
+          return (
+            <React.Fragment key={s.key}>
+              <div className="flex flex-col items-center gap-1">
+                <div className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold transition-colors ${
+                  isActive ? "border-accent bg-accent text-white" :
+                  isComplete ? "border-accent bg-accent/10 text-accent" :
+                  "border-border text-muted"
+                }`}>
+                  {isComplete ? "\u2713" : i + 1}
+                </div>
+                <span className={`text-[9px] uppercase tracking-wider ${isActive ? "text-accent font-medium" : isComplete ? "text-accent" : "text-muted"}`}>
+                  {s.label}
+                </span>
+              </div>
+              {i < arr.length - 1 && (
+                <div className={`mb-4 h-[2px] flex-1 mx-1 ${stepIdx < currentIdx ? "bg-accent/30" : "bg-border"}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* Provider selection */}
