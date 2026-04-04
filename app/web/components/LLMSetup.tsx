@@ -162,7 +162,41 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
             </div>
           ) : (
             <div className="space-y-4">
-              {/* API key input */}
+              {/* OAuth login (recommended) */}
+              {(selected === "anthropic" || selected === "openai" || selected === "gemini") && (
+                <div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await authFetch(`${API_BASE}/api/oauth/${selected}/start`);
+                        const data = await res.json();
+                        if (data.url) {
+                          window.open(data.url, "oauth", "width=600,height=700");
+                          const poll = setInterval(async () => {
+                            const status = await authFetch(`${API_BASE}/api/oauth/${selected}/status`).then((r) => r.json());
+                            if (status.done) {
+                              clearInterval(poll);
+                              setStep("model");
+                            }
+                          }, 1500);
+                          setTimeout(() => clearInterval(poll), 120000);
+                        }
+                      } catch { /* ignore */ }
+                    }}
+                    className="border-accent text-accent hover:bg-accent/10 w-full rounded border px-4 py-2.5 text-sm font-medium transition-colors"
+                  >
+                    Sign in with {selectedProvider.name}
+                  </button>
+                  <p className="text-muted mt-1.5 text-center text-[10px]">uses your existing account — no API key needed</p>
+                  <div className="text-muted my-4 flex items-center gap-2 text-[10px]">
+                    <div className="border-border flex-1 border-t" />
+                    <span>or use API key</span>
+                    <div className="border-border flex-1 border-t" />
+                  </div>
+                </div>
+              )}
+
+              {/* API key fallback */}
               <div>
                 <label className="text-muted mb-1.5 block text-xs uppercase tracking-wider">API Key</label>
                 <input

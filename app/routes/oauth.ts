@@ -1,150 +1,129 @@
 import { Hono } from "hono";
-import { randomBytes, createHash } from "crypto";
 import fs from "fs";
 import { ENV_FILE } from "../lib/paths";
 
-const envPath = ENV_FILE;
-
 const oauth = new Hono();
 
-// OAuth state store (in-memory, keyed by state param)
-const pendingFlows = new Map<string, { provider: string; codeVerifier: string; status: "pending" | "complete"; token?: string }>();
-
-const OAUTH_CONFIGS: Record<string, { authUrl: string; tokenUrl: string; clientId: string; envKey: string }> = {
-  anthropic: {
-    authUrl: "https://console.anthropic.com/oauth/authorize",
-    tokenUrl: "https://console.anthropic.com/oauth/token",
-    clientId: "plotlink-ows-local",
-    envKey: "ANTHROPIC_OAUTH_TOKEN",
-  },
-  openai: {
-    authUrl: "https://platform.openai.com/oauth/authorize",
-    tokenUrl: "https://platform.openai.com/oauth/token",
-    clientId: "plotlink-ows-local",
-    envKey: "OPENAI_OAUTH_TOKEN",
-  },
+const OAUTH_TOKEN_KEY_MAP: Record<string, string> = {
+  anthropic: "ANTHROPIC_OAUTH_TOKEN",
+  openai: "OPENAI_OAUTH_TOKEN",
+  gemini: "GEMINI_OAUTH_TOKEN",
 };
 
+// Track active OAuth flows
+const activeOAuthFlows = new Map<string, { resolve: (creds: unknown) => void; reject: (err: Error) => void }>();
+
 function writeEnvVar(key: string, value: string) {
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, "utf-8");
+  const dir = require("path").dirname(ENV_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (fs.existsSync(ENV_FILE)) {
+    const content = fs.readFileSync(ENV_FILE, "utf-8");
     const regex = new RegExp(`^${key}=.*$`, "m");
     if (regex.test(content)) {
-      fs.writeFileSync(envPath, content.replace(regex, `${key}=${value}`));
+      fs.writeFileSync(ENV_FILE, content.replace(regex, `${key}=${value}`));
     } else {
-      fs.appendFileSync(envPath, `\n${key}=${value}\n`);
+      fs.appendFileSync(ENV_FILE, `\n${key}=${value}\n`);
     }
   } else {
-    fs.writeFileSync(envPath, `${key}=${value}\n`);
+    fs.writeFileSync(ENV_FILE, `${key}=${value}\n`);
   }
   process.env[key] = value;
 }
 
-/** GET /api/oauth/:provider/start — initiate OAuth PKCE flow */
-oauth.get("/:provider/start", (c) => {
+async function waitForAuthUrl(getUrl: () => string, timeoutMs = 15000): Promise<void> {
+  const start = Date.now();
+  while (!getUrl() && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** GET /api/oauth/:provider/start — initiate OAuth via pi-ai */
+oauth.get("/:provider/start", async (c) => {
   const provider = c.req.param("provider");
-  const config = OAUTH_CONFIGS[provider];
-  if (!config) return c.json({ error: "Unsupported OAuth provider" }, 400);
+  const envKey = OAUTH_TOKEN_KEY_MAP[provider];
+  if (!envKey) return c.json({ error: `OAuth not supported for ${provider}` }, 400);
 
-  const state = randomBytes(16).toString("hex");
-  const codeVerifier = randomBytes(32).toString("base64url");
-
-  pendingFlows.set(state, { provider, codeVerifier, status: "pending" });
-
-  // Compute S256 code_challenge from verifier
-  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
-
-  // Build authorization URL with PKCE
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    response_type: "code",
-    redirect_uri: "http://localhost:7777/api/oauth/callback",
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-    scope: "api",
-  });
-
-  const authUrl = `${config.authUrl}?${params}`;
-
-  return c.json({ authUrl, state });
-});
-
-/** GET /api/oauth/callback — OAuth redirect handler */
-oauth.get("/callback", async (c) => {
-  const code = c.req.query("code");
-  const state = c.req.query("state");
-  const error = c.req.query("error");
-
-  if (error) {
-    return c.html(`<html><body><h2>OAuth Error</h2><p>${error}</p><script>window.close()</script></body></html>`);
+  // Cancel any existing flow for this provider
+  if (activeOAuthFlows.has(provider)) {
+    activeOAuthFlows.get(provider)!.reject(new Error("New flow started"));
+    activeOAuthFlows.delete(provider);
   }
 
-  if (!code || !state) {
-    return c.html(`<html><body><h2>Missing parameters</h2><script>window.close()</script></body></html>`);
-  }
+  let authUrl = "";
 
-  const flow = pendingFlows.get(state);
-  if (!flow) {
-    return c.html(`<html><body><h2>Invalid state</h2><script>window.close()</script></body></html>`);
-  }
+  const onAuth = (info: { url: string }) => {
+    authUrl = info.url;
+  };
 
-  const config = OAUTH_CONFIGS[flow.provider];
-  if (!config) {
-    return c.html(`<html><body><h2>Unknown provider</h2><script>window.close()</script></body></html>`);
-  }
+  // Start the pi-ai OAuth flow in background
+  const credentialsPromise = (async () => {
+    const piOAuth = await import("@mariozechner/pi-ai/oauth");
 
-  try {
-    // Exchange code for token
-    const res = await fetch(config.tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: "http://localhost:7777/api/oauth/callback",
-        client_id: config.clientId,
-        code_verifier: flow.codeVerifier,
-      }),
+    switch (provider) {
+      case "anthropic":
+        return piOAuth.loginAnthropic({
+          onAuth,
+          onPrompt: async () => "",
+          onProgress: () => {},
+        });
+      case "openai":
+        return piOAuth.loginOpenAICodex({
+          onAuth,
+          onPrompt: async () => "",
+          onProgress: () => {},
+        });
+      case "gemini":
+        return piOAuth.loginGeminiCli(
+          onAuth,
+          () => {},
+        );
+      default:
+        throw new Error(`Unsupported provider: ${provider}`);
+    }
+  })();
+
+  // Persist token when flow completes (background, doesn't block response)
+  credentialsPromise
+    .then(async (creds: any) => {
+      const piOAuth = await import("@mariozechner/pi-ai/oauth");
+      let apiKey: string;
+
+      // Extract API key from credentials using provider interface
+      if (provider === "anthropic") {
+        apiKey = piOAuth.anthropicOAuthProvider.getApiKey(creds) ?? creds.access;
+      } else if (provider === "openai") {
+        apiKey = piOAuth.openaiCodexOAuthProvider.getApiKey(creds) ?? creds.access;
+      } else if (provider === "gemini") {
+        apiKey = piOAuth.geminiCliOAuthProvider.getApiKey(creds) ?? creds.access;
+      } else {
+        apiKey = creds.access;
+      }
+
+      writeEnvVar(envKey, apiKey);
+      console.log(`OAuth: ${provider} credentials saved`);
+    })
+    .catch((err: Error) => {
+      console.error(`OAuth flow failed for ${provider}:`, err.message);
     });
 
-    const data = await res.json() as Record<string, unknown>;
+  // Wait for pi-ai to generate the auth URL
+  await waitForAuthUrl(() => authUrl);
 
-    if (!res.ok) {
-      throw new Error((data.error_description || data.error || "Token exchange failed") as string);
-    }
-
-    const accessToken = data.access_token as string;
-    writeEnvVar(config.envKey, accessToken);
-    flow.status = "complete";
-    flow.token = accessToken;
-
-    return c.html(`<html><body><h2>Connected!</h2><p>You can close this window.</p><script>window.close()</script></body></html>`);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Token exchange failed";
-    return c.html(`<html><body><h2>Error</h2><p>${message}</p><script>window.close()</script></body></html>`);
+  if (!authUrl) {
+    return c.json({ error: "Failed to get authorization URL" }, 500);
   }
+
+  return c.json({ url: authUrl, method: "popup_redirect" });
 });
 
 /** GET /api/oauth/:provider/status — poll for OAuth completion */
 oauth.get("/:provider/status", (c) => {
   const provider = c.req.param("provider");
-  const config = OAUTH_CONFIGS[provider];
-  if (!config) return c.json({ error: "Unsupported provider" }, 400);
+  const envKey = OAUTH_TOKEN_KEY_MAP[provider];
+  if (!envKey) return c.json({ done: false });
 
-  // Check if token is already in env
-  if (process.env[config.envKey]) {
-    return c.json({ complete: true });
-  }
-
-  // Check pending flows
-  for (const [, flow] of pendingFlows) {
-    if (flow.provider === provider && flow.status === "complete") {
-      return c.json({ complete: true });
-    }
-  }
-
-  return c.json({ complete: false });
+  const token = process.env[envKey];
+  return c.json({ done: !!token });
 });
 
 export { oauth as oauthRoutes };
