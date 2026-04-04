@@ -23,6 +23,7 @@ interface FileStatus {
   storylineId?: number;
   contentCid?: string;
   publishedAt?: string;
+  gasCost?: string;
 }
 
 interface StoryInfo {
@@ -144,6 +145,7 @@ stories.post("/:name/:file/publish-status", async (c) => {
     txHash: body.txHash,
     storylineId: body.storylineId,
     contentCid: body.contentCid,
+    gasCost: body.gasCost,
     publishedAt: new Date().toISOString(),
   };
   writePublishStatus(storyDir, status);

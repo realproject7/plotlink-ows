@@ -90,8 +90,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.step) setPublishProgress(data.step);
-              if (data.txHash) {
-                // Update publish status
+              if (data.step === "done" && data.txHash) {
+                // Update publish status with gasCost
                 await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -99,6 +99,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     txHash: data.txHash,
                     storylineId: data.storylineId,
                     contentCid: data.contentCid,
+                    gasCost: data.gasCost,
                   }),
                 });
               }
