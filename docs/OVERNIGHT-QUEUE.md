@@ -211,13 +211,6 @@
 > OWS SDK: `@open-wallet-standard/core` (already installed from Phase 1)
 > PlotLink CLI SDK: `packages/cli/src/sdk/` (existing — reuse for on-chain publishing)
 
-### OPERATOR GATE (T1 — before assigning)
-- ✅ Code mirrored to plotlink-ows (done)
-- ✅ Phase 1 merged (PR #9 — OWS SDK + wrappers)
-- ⚠️ Verify: T3 can clone and `npm install` on plotlink-ows
-- ⚠️ Verify: plotlink-ows branch protection enabled (require PR reviews)
-- After verification, assign ticket #1 below to @t3
-
 ### 1. plotlink-ows#10 — Local App Scaffold (Hono + React + Vite)
 - Create `app/` directory (separate from existing Next.js webapp)
 - Hono backend on localhost:3333 + WebSocket support
