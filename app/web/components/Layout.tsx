@@ -3,10 +3,11 @@ import { LLMSetup } from "./LLMSetup";
 import { WalletCard } from "./WalletCard";
 import { Settings } from "./Settings";
 import { Chat } from "./Chat";
+import { Publish } from "./Publish";
 
 const API_BASE = "http://localhost:7777";
 
-type Page = "home" | "chat" | "llm-setup" | "wallet-setup" | "settings";
+type Page = "home" | "chat" | "publish" | "llm-setup" | "wallet-setup" | "settings";
 
 function WalletSetupPage({ token, onComplete }: { token: string; onComplete: () => void }) {
   const [creating, setCreating] = useState(false);
@@ -122,6 +123,12 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             write
           </button>
           <button
+            onClick={() => setPage("publish")}
+            className={`text-xs transition-colors ${page === "publish" ? "text-accent" : "text-muted hover:text-foreground"}`}
+          >
+            publish
+          </button>
+          <button
             onClick={() => setPage("llm-setup")}
             className={`text-xs transition-colors ${page === "llm-setup" ? "text-accent" : "text-muted hover:text-foreground"}`}
           >
@@ -177,6 +184,10 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
 
         {page === "chat" && (
           <Chat token={token} />
+        )}
+
+        {page === "publish" && (
+          <Publish token={token} />
         )}
 
         {page === "llm-setup" && (
