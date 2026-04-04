@@ -183,7 +183,7 @@ export function Chat({ token }: { token: string }) {
                 </button>
               )}
               {activeSession.drafts?.length > 0 && (
-                <span className="rounded border border-green-700/30 px-2 py-0.5 text-[10px] text-green-700">
+                <span className="rounded border border-green-700/30 px-2 py-0.5 text-[10px] text-accent">
                   draft ready
                 </span>
               )}
@@ -198,7 +198,7 @@ export function Chat({ token }: { token: string }) {
                       ? "bg-accent/10 text-foreground"
                       : "bg-surface text-foreground border border-border"
                   }`}>
-                    <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed"><Markdown>{msg.content}</Markdown></div>
+                    <div className="prose prose-xs max-w-none text-xs leading-relaxed"><Markdown>{msg.content}</Markdown></div>
                   </div>
                 </div>
               ))}
@@ -207,7 +207,7 @@ export function Chat({ token }: { token: string }) {
               {streaming && streamContent && (
                 <div className="flex justify-start">
                   <div className="bg-surface border-border max-w-[80%] rounded border px-3 py-2">
-                    <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed"><Markdown>{streamContent}</Markdown></div>
+                    <div className="prose prose-xs max-w-none text-xs leading-relaxed"><Markdown>{streamContent}</Markdown></div>
                     <span className="text-accent animate-pulse">▌</span>
                   </div>
                 </div>
@@ -232,7 +232,7 @@ export function Chat({ token }: { token: string }) {
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                   placeholder="describe your story idea..."
                   disabled={streaming || activeSession.status !== "active"}
-                  className="bg-surface border-border text-foreground placeholder:text-muted/50 flex-1 rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent disabled:opacity-40"
+                  className="bg-surface border-border text-foreground placeholder:text-muted/50 flex-1 rounded border px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-40"
                 />
                 <button
                   onClick={sendMessage}
@@ -255,11 +255,11 @@ export function Chat({ token }: { token: string }) {
             <div key={draft.id} className="border-border space-y-2 rounded border p-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-foreground text-sm font-medium">{draft.title}</h4>
-                <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">{draft.status}</span>
+                <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-accent">{draft.status}</span>
               </div>
               {draft.genre && <span className="text-accent text-[10px]">{draft.genre}</span>}
               <div className="bg-surface max-h-[60vh] overflow-y-auto rounded p-3">
-                <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed">
+                <div className="prose prose-xs max-w-none text-xs leading-relaxed">
                   <Markdown>{draft.content}</Markdown>
                 </div>
               </div>

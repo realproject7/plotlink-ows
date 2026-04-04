@@ -48,7 +48,7 @@ export function Setup({ onSetup }: { onSetup: (passphrase: string) => Promise<st
                 onChange={(e) => setPassphrase(e.target.value)}
                 placeholder="choose a passphrase"
                 autoFocus
-                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
               />
             </div>
 
@@ -61,7 +61,7 @@ export function Setup({ onSetup }: { onSetup: (passphrase: string) => Promise<st
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="repeat passphrase"
-                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
               />
             </div>
 

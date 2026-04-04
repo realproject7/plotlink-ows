@@ -124,7 +124,7 @@ export function Dashboard({ token }: { token: string }) {
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Royalties earned</span>
-            <span className="text-green-700">+{data.pnl.totalRoyaltiesPlot} PLOT</span>
+            <span className="text-accent">+{data.pnl.totalRoyaltiesPlot} PLOT</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Unclaimed royalties</span>
@@ -132,7 +132,7 @@ export function Dashboard({ token }: { token: string }) {
           </div>
           <div className="border-border flex justify-between border-t pt-1.5 text-xs font-medium">
             <span className="text-muted">Net P&L (USD)</span>
-            <span className={parseFloat(data.pnl.netPnlUsd) >= 0 ? "text-green-700" : "text-error"}>
+            <span className={parseFloat(data.pnl.netPnlUsd) >= 0 ? "text-accent" : "text-error"}>
               {parseFloat(data.pnl.netPnlUsd) >= 0 ? "+" : ""}${data.pnl.netPnlUsd}
             </span>
           </div>
@@ -158,7 +158,7 @@ export function Dashboard({ token }: { token: string }) {
                     {story.genre && <span className="text-accent ml-2 text-[10px]">{story.genre}</span>}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">published</span>
+                    <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-accent">published</span>
                     {story.storylineId ? (
                       <a
                         href={`https://plotlink.xyz/story/${story.storylineId}`}

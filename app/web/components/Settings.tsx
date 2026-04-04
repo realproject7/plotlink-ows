@@ -117,7 +117,7 @@ export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLo
             onChange={(e) => setSpendCap(e.target.value)}
             min="0"
             step="1"
-            className="bg-surface border-border text-foreground w-24 rounded border px-2 py-1.5 text-sm font-mono outline-none focus:border-accent"
+            className="bg-surface border-border text-foreground w-24 rounded border px-2 py-1.5 text-sm outline-none focus:border-accent"
           />
           <span className="text-muted text-xs">USDC per session</span>
           <button
@@ -139,17 +139,17 @@ export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLo
             value={newPassphrase}
             onChange={(e) => setNewPassphrase(e.target.value)}
             placeholder="new passphrase"
-            className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+            className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
           />
           <input
             type="password"
             value={confirmPassphrase}
             onChange={(e) => setConfirmPassphrase(e.target.value)}
             placeholder="confirm passphrase"
-            className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+            className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
           />
           {passphraseError && <p className="text-error text-xs">{passphraseError}</p>}
-          {passphraseSuccess && <p className="text-xs text-green-700">passphrase updated</p>}
+          {passphraseSuccess && <p className="text-xs text-accent">passphrase updated</p>}
           <button
             onClick={handleResetPassphrase}
             disabled={savingPassphrase || !newPassphrase.trim()}

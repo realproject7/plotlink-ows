@@ -94,7 +94,7 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
                 <span className="text-foreground text-sm font-medium">{p.name}</span>
                 <span className="flex gap-1.5">
                   {p.tag && <span className="text-accent border-accent/30 rounded border px-1.5 py-0.5 text-[9px]">{p.tag}</span>}
-                  {p.configured && <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">configured</span>}
+                  {p.configured && <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-accent">configured</span>}
                 </span>
               </div>
             </button>
@@ -117,7 +117,7 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="http://localhost:11434"
-                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
                 />
               </div>
               <div>
@@ -127,7 +127,7 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="llama3.2"
-                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
                 />
               </div>
             </div>
@@ -175,7 +175,7 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={`paste your ${selectedProvider.name} API key`}
-                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm font-mono outline-none focus:border-accent"
+                  className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
                 />
                 {selectedProvider.configured && (
                   <p className="text-muted mt-1.5 text-[10px]">key already saved — leave blank to keep current</p>
@@ -244,7 +244,7 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
           )}
 
           {testResult && (
-            <div className={`rounded border p-3 text-xs ${testResult.success ? "border-green-700/30 text-green-700" : "border-red-700/30 text-red-700"}`}>
+            <div className={`rounded border p-3 text-xs ${testResult.success ? "border-accent/30 text-accent" : "border-error/30 text-error"}`}>
               {testResult.success ? "connected" : "failed"}: {testResult.message}
             </div>
           )}

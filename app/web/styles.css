@@ -1,14 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0a0a0a;
-  --bg-surface: #141414;
-  --text: #e0e0e0;
-  --text-muted: #666666;
-  --accent: #00ff88;
-  --accent-dim: #00cc6a;
-  --border: #2a2a2a;
-  --error: #ff4444;
+  --bg: #E8DFD0;
+  --bg-surface: #F0EBE1;
+  --bg-shelf: #DDD3C2;
+  --text: #2C1810;
+  --text-muted: #8B7355;
+  --accent: #8B4513;
+  --accent-dim: #6B3410;
+  --border: #D4C5B0;
+  --error: #CC3333;
+  --paper-bg: #F5F0E8;
 }
 
 @theme inline {
@@ -20,18 +22,30 @@
   --color-accent-dim: var(--accent-dim);
   --color-border: var(--border);
   --color-error: var(--error);
-  --default-font-family: "Geist Mono", ui-monospace, monospace;
+  --default-font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Geist Mono", ui-monospace, monospace;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
   background: var(--accent);
-  color: var(--bg);
+  color: #fff;
+}
+
+h1, h2, h3, h4 {
+  font-family: "Lora", Georgia, "Times New Roman", serif;
+}
+
+.prose, .prose p, .prose li, .prose blockquote {
+  font-family: "Lora", Georgia, "Times New Roman", serif;
+}
+
+code, pre {
+  font-family: "Geist Mono", ui-monospace, monospace;
 }

@@ -77,7 +77,7 @@ export function WalletCard({ token }: { token: string }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-muted text-[10px] uppercase tracking-wider">Address (Base)</span>
-            <span className={`rounded border px-1.5 py-0.5 text-[9px] ${wallet.usdcBalance && parseFloat(wallet.usdcBalance) > 0 ? "border-green-700/30 text-green-700" : "border-yellow-600/30 text-yellow-600"}`}>
+            <span className={`rounded border px-1.5 py-0.5 text-[9px] ${wallet.usdcBalance && parseFloat(wallet.usdcBalance) > 0 ? "border-accent/30 text-accent" : "border-accent-dim/30 text-accent-dim"}`}>
               {wallet.usdcBalance && parseFloat(wallet.usdcBalance) > 0 ? "active" : "no balance"}
             </span>
           </div>
