@@ -125,7 +125,7 @@ export function Publish({ token }: { token: string }) {
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">ETH Balance</span>
-            <span className={preflight.hasEnoughEth ? "text-green-700" : "text-error"}>{preflight.ethBalance ? formatEth(preflight.ethBalance) : "0"} ETH</span>
+            <span className={preflight.hasEnoughEth ? "text-accent" : "text-error"}>{preflight.ethBalance ? formatEth(preflight.ethBalance) : "0"} ETH</span>
           </div>
           {preflight.creationFee && BigInt(preflight.creationFee) > 0n && (
             <div className="flex justify-between text-xs">
@@ -141,7 +141,7 @@ export function Publish({ token }: { token: string }) {
           )}
           <div className="flex justify-between text-xs">
             <span className="text-muted">Filebase (IPFS)</span>
-            <span className={preflight.hasFilebase ? "text-green-700" : "text-error"}>{preflight.hasFilebase ? "configured" : "missing"}</span>
+            <span className={preflight.hasFilebase ? "text-accent" : "text-error"}>{preflight.hasFilebase ? "configured" : "missing"}</span>
           </div>
           {preflight.error && <p className="text-error text-xs">{preflight.error}</p>}
         </div>
@@ -163,7 +163,7 @@ export function Publish({ token }: { token: string }) {
             <div className="space-y-3">
               {/* Full preview */}
               <div className="bg-surface max-h-80 overflow-y-auto rounded p-3">
-                <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed">
+                <div className="prose prose-xs max-w-none text-xs leading-relaxed">
                   <Markdown>{draft.content}</Markdown>
                 </div>
               </div>
@@ -212,7 +212,7 @@ export function Publish({ token }: { token: string }) {
             {progress.step !== "done" && progress.step !== "error" && (
               <span className="text-accent animate-pulse text-xs">&#x25CF;</span>
             )}
-            <span className={`text-xs font-medium ${progress.step === "error" ? "text-red-700" : progress.step === "done" ? "text-green-700" : "text-accent"}`}>
+            <span className={`text-xs font-medium ${progress.step === "error" ? "text-red-700" : progress.step === "done" ? "text-accent" : "text-accent"}`}>
               {progress.message}
             </span>
           </div>
