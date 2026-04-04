@@ -84,7 +84,17 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
         {page === "llm-setup" && (
           <LLMSetup
             token={token}
-            onComplete={() => { setLlmConfigured(true); setPage("home"); }}
+            onComplete={async () => {
+              // Auto-create wallet on first setup
+              try {
+                await fetch(`${API_BASE}/api/wallet/create`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                });
+              } catch { /* wallet creation is best-effort */ }
+              setLlmConfigured(true);
+              setPage("home");
+            }}
           />
         )}
 

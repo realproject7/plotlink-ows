@@ -1,18 +1,25 @@
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Load .env before anything else
+const __dirnamePre = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirnamePre, "..", ".env") });
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { authRoutes } from "./routes/auth";
+import { authRoutes, requireAuth } from "./routes/auth";
 import { configRoutes } from "./routes/config";
 import { walletRoutes } from "./routes/wallet";
+import { oauthRoutes } from "./routes/oauth";
 import { initDb } from "./db";
 import { execSync } from "child_process";
-import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = __dirnamePre;
 
 const app = new Hono();
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
@@ -22,8 +29,12 @@ app.use("/*", cors({ origin: "http://localhost:5173", credentials: true }));
 
 // API routes
 app.route("/api/auth", authRoutes);
+// Protected routes
+app.use("/api/config/*", requireAuth);
+app.use("/api/wallet/*", requireAuth);
 app.route("/api/config", configRoutes);
 app.route("/api/wallet", walletRoutes);
+app.route("/api/oauth", oauthRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));

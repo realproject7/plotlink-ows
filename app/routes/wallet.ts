@@ -35,11 +35,33 @@ wallet.get("/", async (c) => {
     }
 
     const address = getBaseAddress(plotlinkWallet);
+
+    // Fetch USDC balance on Base via RPC
+    let usdcBalance = "0";
+    if (address) {
+      try {
+        const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base mainnet
+        const balanceOfSig = "0x70a08231000000000000000000000000" + address.slice(2).toLowerCase();
+        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
+        const res = await fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: USDC_BASE, data: balanceOfSig }, "latest"] }),
+        });
+        const data = await res.json() as { result?: string };
+        if (data.result && data.result !== "0x") {
+          const raw = BigInt(data.result);
+          usdcBalance = (Number(raw) / 1e6).toFixed(2); // USDC has 6 decimals
+        }
+      } catch { /* balance fetch best-effort */ }
+    }
+
     return c.json({
       exists: true,
       walletId: plotlinkWallet.id,
       name: plotlinkWallet.name,
       address,
+      usdcBalance,
       accounts: plotlinkWallet.accounts,
     });
   } catch (err: unknown) {

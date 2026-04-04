@@ -125,4 +125,18 @@ auth.get("/verify", async (c) => {
   return c.json({ valid: true });
 });
 
+/** Auth middleware for protected routes */
+export async function requireAuth(c: any, next: () => Promise<void>) {
+  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return c.json({ error: "Unauthorized" }, 401);
+
+  const session = await db.session.findUnique({ where: { token } });
+  if (!session || session.expiresAt < new Date()) {
+    if (session) await db.session.delete({ where: { token } });
+    return c.json({ error: "Session expired" }, 401);
+  }
+
+  return next();
+}
+
 export { auth as authRoutes };
