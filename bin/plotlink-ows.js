@@ -175,6 +175,7 @@ async function cmdInit() {
     baseUrl = await ask(rl, "  Base URL [http://localhost:11434]: ") || "http://localhost:11434";
     const modelName = await ask(rl, `  Model name [${provider.model}]: `) || provider.model;
     provider.model = modelName;
+    rl.close();
   } else {
     rl.close();
     const apiKey = await askSecret(`  ${provider.name} API key: `);

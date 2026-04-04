@@ -4,6 +4,11 @@
   "bin": {
     "plotlink-ows": "./bin/plotlink-ows.js"
   },
+  "files": [
+    "bin/",
+    "app/",
+    "packages/"
+  ],
   "workspaces": [
     "packages/*"
   ],
