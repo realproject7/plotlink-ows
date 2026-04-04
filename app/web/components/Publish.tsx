@@ -16,7 +16,9 @@ interface Preflight {
   ready: boolean;
   address?: string;
   ethBalance?: string;
-  hasGas?: boolean;
+  creationFee?: string;
+  requiredBalance?: string;
+  hasEnoughEth?: boolean;
   hasFilebase?: boolean;
   error?: string | null;
 }
@@ -123,8 +125,20 @@ export function Publish({ token }: { token: string }) {
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">ETH Balance</span>
-            <span className={preflight.hasGas ? "text-green-700" : "text-error"}>{preflight.ethBalance ? formatEth(preflight.ethBalance) : "0"} ETH</span>
+            <span className={preflight.hasEnoughEth ? "text-green-700" : "text-error"}>{preflight.ethBalance ? formatEth(preflight.ethBalance) : "0"} ETH</span>
           </div>
+          {preflight.creationFee && BigInt(preflight.creationFee) > 0n && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">Creation Fee</span>
+              <span className="text-foreground">{formatEth(preflight.creationFee)} ETH</span>
+            </div>
+          )}
+          {preflight.requiredBalance && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">Required (fee + gas)</span>
+              <span className="text-foreground">~{formatEth(preflight.requiredBalance)} ETH</span>
+            </div>
+          )}
           <div className="flex justify-between text-xs">
             <span className="text-muted">Filebase (IPFS)</span>
             <span className={preflight.hasFilebase ? "text-green-700" : "text-error"}>{preflight.hasFilebase ? "configured" : "missing"}</span>
@@ -214,6 +228,14 @@ export function Publish({ token }: { token: string }) {
             <div className="text-xs">
               <span className="text-muted">IPFS: </span>
               <span className="text-foreground font-mono text-[10px]">{progress.contentCid}</span>
+            </div>
+          )}
+          {progress.storylineId && (
+            <div className="text-xs">
+              <span className="text-muted">story: </span>
+              <a href={`https://plotlink.xyz/story/${progress.storylineId}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
+                plotlink.xyz/story/{progress.storylineId}
+              </a>
             </div>
           )}
         </div>

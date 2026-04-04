@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { db } from "../db";
-import { publishStoryline, getEthBalance, uploadToIPFS } from "../lib/publish";
+import { publishStoryline, getEthBalance, getCreationFee } from "../lib/publish";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
 const publish = new Hono();
@@ -21,20 +21,28 @@ publish.get("/preflight", async (c) => {
       return c.json({ ready: false, error: "No EVM address on wallet" });
     }
 
-    // Check ETH balance for gas
+    // Check ETH balance for gas + creation fee
     const balance = await getEthBalance(address);
-    const hasGas = balance > BigInt(0);
+    let creationFee = BigInt(0);
+    try { creationFee = await getCreationFee(); } catch { /* estimation may fail */ }
+    const estimatedGas = BigInt(300000) * BigInt(100000000); // ~300k gas * ~0.1 gwei (Base is cheap)
+    const requiredBalance = creationFee + estimatedGas;
+    const hasEnoughEth = balance >= requiredBalance;
 
     // Check Filebase config
     const hasFilebase = !!(process.env.FILEBASE_ACCESS_KEY && process.env.FILEBASE_SECRET_KEY);
 
     return c.json({
-      ready: hasGas && hasFilebase,
+      ready: hasEnoughEth && hasFilebase,
       address,
       ethBalance: balance.toString(),
-      hasGas,
+      creationFee: creationFee.toString(),
+      requiredBalance: requiredBalance.toString(),
+      hasEnoughEth,
       hasFilebase,
-      error: !hasGas ? "No ETH for gas fees" : !hasFilebase ? "Filebase not configured" : null,
+      error: !hasEnoughEth
+        ? `Insufficient ETH. Need ~${(Number(requiredBalance) / 1e18).toFixed(6)} ETH (creation fee + gas)`
+        : !hasFilebase ? "Filebase not configured" : null,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Preflight check failed";
@@ -67,19 +75,10 @@ publish.post("/:draftId", async (c) => {
         },
       );
 
-      // Update draft status
+      // Only mark published after tx confirmed (publishStoryline waits for confirmation)
       await db.draft.update({
         where: { id: draftId },
         data: { status: "published" },
-      });
-
-      await stream.writeSSE({
-        data: JSON.stringify({
-          step: "done",
-          message: "Published!",
-          txHash: result.txHash,
-          contentCid: result.contentCid,
-        }),
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Publish failed";

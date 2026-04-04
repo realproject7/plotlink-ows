@@ -1,21 +1,15 @@
 /**
  * PlotLink publish flow — uploads content to IPFS and publishes on-chain via OWS wallet.
- * Uses the existing CLI SDK for ABI/constants and OWS wallet for signing.
  */
-import { createPublicClient, http, encodeFunctionData, keccak256, toBytes, type Hex } from "viem";
+import { createPublicClient, http, encodeFunctionData, keccak256, toBytes, decodeEventLog, type Hex } from "viem";
 import { base } from "viem/chains";
-import { STORY_FACTORY_ABI } from "../../packages/cli/src/sdk/abi";
+import { STORY_FACTORY_ABI, mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
 import { uploadWithRetry } from "../../packages/cli/src/sdk/ipfs";
 import { signAndSendAgent } from "../../lib/ows/wallet";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const configPath = path.join(__dirname, "..", "..", "agent.config.json");
 
 // Contract addresses (Base mainnet)
-const STORY_FACTORY = "0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf";
+const STORY_FACTORY = "0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf" as const;
+const MCV2_BOND = "0xc5a076cad94176c2996B32d8466Be1cE757FAa27" as const;
 
 const publicClient = createPublicClient({
   chain: base,
@@ -63,17 +57,32 @@ export async function uploadToIPFS(content: string, title: string, genre?: strin
 }
 
 /**
- * Estimate gas for createStoryline transaction.
+ * Get the MCV2 Bond creation fee required for createStoryline.
  */
-export async function estimatePublishGas(
+export async function getCreationFee(): Promise<bigint> {
+  const fee = await publicClient.readContract({
+    address: MCV2_BOND,
+    abi: mcv2BondAbi,
+    functionName: "creationFee",
+  }) as bigint;
+  return fee;
+}
+
+/**
+ * Estimate total cost for publishing (creation fee + gas).
+ */
+export async function estimatePublishCost(
   walletAddress: string,
   title: string,
   contentCid: string,
   contentHash: Hex,
-): Promise<{ gas: bigint; gasPrice: bigint; totalCost: bigint }> {
+): Promise<{ creationFee: bigint; gasEstimate: bigint; gasPrice: bigint; totalCost: bigint }> {
+  const creationFee = await getCreationFee();
+
   const gas = await publicClient.estimateGas({
     account: walletAddress as `0x${string}`,
-    to: STORY_FACTORY as `0x${string}`,
+    to: STORY_FACTORY,
+    value: creationFee,
     data: encodeFunctionData({
       abi: STORY_FACTORY_ABI,
       functionName: "createStoryline",
@@ -82,19 +91,49 @@ export async function estimatePublishGas(
   });
 
   const gasPrice = await publicClient.getGasPrice();
-  return { gas, gasPrice, totalCost: gas * gasPrice };
+  const gasCost = gas * gasPrice;
+
+  return {
+    creationFee,
+    gasEstimate: gas,
+    gasPrice,
+    totalCost: creationFee + gasCost,
+  };
 }
 
 /**
- * Check ETH balance on Base for gas fees.
+ * Check ETH balance on Base.
  */
 export async function getEthBalance(address: string): Promise<bigint> {
   return publicClient.getBalance({ address: address as `0x${string}` });
 }
 
 /**
+ * Wait for transaction confirmation and decode storylineId from event.
+ */
+async function waitForConfirmation(txHash: string): Promise<number | undefined> {
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash as `0x${string}`,
+  });
+
+  // Decode StorylineCreated event to get storylineId
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: STORY_FACTORY_ABI,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName === "StorylineCreated") {
+        return Number((decoded.args as { storylineId: bigint }).storylineId);
+      }
+    } catch { /* not our event */ }
+  }
+  return undefined;
+}
+
+/**
  * Publish a new storyline to PlotLink on-chain.
- * Signs transaction with OWS wallet and broadcasts to Base.
  */
 export async function publishStoryline(
   walletName: string,
@@ -107,11 +146,13 @@ export async function publishStoryline(
   onProgress({ step: "uploading", message: "Uploading story to IPFS..." });
   const contentCid = await uploadToIPFS(content, title, genre);
 
-  // Step 2: Compute content hash
+  // Step 2: Compute content hash + get creation fee
   const contentHash = keccak256(toBytes(content));
 
-  // Step 3: Build transaction
-  onProgress({ step: "estimating", message: "Estimating gas..." });
+  onProgress({ step: "estimating", message: "Fetching creation fee and estimating gas..." });
+  const creationFee = await getCreationFee();
+
+  // Step 3: Build transaction with creation fee as value
   const calldata = encodeFunctionData({
     abi: STORY_FACTORY_ABI,
     functionName: "createStoryline",
@@ -122,23 +163,26 @@ export async function publishStoryline(
   onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
   const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 
-  // Build raw transaction hex (to + data + value)
-  // OWS signAndSend handles nonce, gas, and broadcasting
   const txHex = JSON.stringify({
     to: STORY_FACTORY,
     data: calldata,
-    value: "0x0", // createStoryline may require creation fee
+    value: `0x${creationFee.toString(16)}`,
   });
 
   onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
   const result = signAndSendAgent(walletName, txHex, undefined, rpcUrl);
 
+  // Step 5: Wait for confirmation and decode storylineId
+  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
+  const storylineId = await waitForConfirmation(result.txHash);
+
   onProgress({
     step: "done",
-    message: "Story published!",
+    message: storylineId ? `Published! Storyline #${storylineId}` : "Published!",
     txHash: result.txHash,
     contentCid,
+    storylineId,
   });
 
-  return { txHash: result.txHash, contentCid };
+  return { txHash: result.txHash, contentCid, storylineId };
 }
