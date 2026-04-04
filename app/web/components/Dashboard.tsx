@@ -123,17 +123,19 @@ export function Dashboard({ token }: { token: string }) {
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Royalties earned</span>
-            <span className="text-green-700">+{data.pnl.totalRoyalties} ETH</span>
+            <span className="text-green-700">+{data.pnl.totalRoyalties} PLOT</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Unclaimed royalties</span>
-            <span className="text-foreground">{data.royalties.unclaimed} ETH</span>
+            <span className="text-foreground">{data.royalties.unclaimed} PLOT</span>
           </div>
-          <div className="border-border flex justify-between border-t pt-1.5 text-xs font-medium">
-            <span className="text-muted">Net P&L</span>
-            <span className={parseFloat(data.pnl.net) >= 0 ? "text-green-700" : "text-error"}>
-              {parseFloat(data.pnl.net) >= 0 ? "+" : ""}{data.pnl.net} ETH
-            </span>
+          <div className="border-border border-t pt-1.5 text-xs font-medium">
+            <div className="flex justify-between">
+              <span className="text-muted">Net</span>
+              <span className="text-foreground">
+                -{data.pnl.totalCosts} ETH / +{data.pnl.totalRoyalties} PLOT
+              </span>
+            </div>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Stories published</span>

@@ -7,7 +7,8 @@ import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 import { mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
 
 const MCV2_BOND = "0xc5a076cad94176c2996B32d8466Be1cE757FAa27" as const;
-const WETH_BASE = "0x4200000000000000000000000000000000000006" as const;
+// Reserve token for PlotLink bonding curves (PLOT token on Base mainnet)
+const RESERVE_TOKEN = "0x4F567DACBF9D15A6acBe4A47FC2Ade0719Fb63C4" as const;
 
 const publicClient = createPublicClient({
   chain: base,
@@ -76,14 +77,16 @@ dashboard.get("/", async (c) => {
   let royaltiesClaimed = "0";
   if (walletInfo?.address) {
     try {
-      const [balance, claimed] = await publicClient.readContract({
+      // getRoyaltyInfo returns (unclaimed, totalClaimed)
+      const [unclaimed, totalClaimed] = await publicClient.readContract({
         address: MCV2_BOND,
         abi: mcv2BondAbi,
         functionName: "getRoyaltyInfo",
-        args: [walletInfo.address as `0x${string}`, WETH_BASE],
+        args: [walletInfo.address as `0x${string}`, RESERVE_TOKEN],
       }) as [bigint, bigint];
-      royaltiesEarned = (Number(balance) / 1e18).toFixed(6);
-      royaltiesClaimed = (Number(claimed) / 1e18).toFixed(6);
+      // Total earned = unclaimed + previously claimed
+      royaltiesEarned = (Number(unclaimed + totalClaimed) / 1e18).toFixed(6);
+      royaltiesClaimed = (Number(totalClaimed) / 1e18).toFixed(6);
     } catch { /* no royalties or contract not available */ }
   }
 
@@ -128,7 +131,9 @@ dashboard.get("/", async (c) => {
     royalties: {
       earned: royaltiesEarned,
       claimed: royaltiesClaimed,
+      // unclaimed = earned - claimed (already correct since earned = unclaimed + claimed)
       unclaimed: (parseFloat(royaltiesEarned) - parseFloat(royaltiesClaimed)).toFixed(6),
+      token: "PLOT",
     },
     pnl: {
       totalCosts: totalGasCostEth,
