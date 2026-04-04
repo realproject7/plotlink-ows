@@ -1,11 +1,9 @@
 import { Hono } from "hono";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { AGENT_CONFIG_FILE, ENV_FILE } from "../lib/paths";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const configPath = path.join(__dirname, "..", "..", "agent.config.json");
-const envPath = path.join(__dirname, "..", "..", ".env");
+const configPath = AGENT_CONFIG_FILE;
+const envPath = ENV_FILE;
 
 const config = new Hono();
 

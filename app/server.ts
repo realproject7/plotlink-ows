@@ -1,10 +1,11 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { ENV_FILE } from "./lib/paths";
 
-// Load .env before anything else
+// Load .env from ~/.plotlink-ows/ before anything else
 const __dirnamePre = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirnamePre, "..", ".env") });
+dotenv.config({ path: ENV_FILE });
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";

@@ -97,24 +97,34 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 - An LLM provider account (Anthropic, OpenAI, or Gemini) or a local model running
 - A small amount of ETH on Base for gas (~$0.01 per publish)
 
-### Install & Run
+### Quick Start
+
+```bash
+npx plotlink-ows init    # guided setup: passphrase, LLM, wallet
+npx plotlink-ows         # start app + open browser
+```
+
+The setup wizard will walk you through:
+
+1. Set a passphrase (encrypts your OWS wallet)
+2. Connect your LLM (Anthropic, OpenAI, Gemini, or local model)
+3. Create your OWS wallet (encrypted on your machine)
+
+### Commands
+
+```bash
+npx plotlink-ows         # Start app + open browser
+npx plotlink-ows init    # Guided setup wizard
+npx plotlink-ows stop    # Stop the server
+npx plotlink-ows status  # Show config + wallet + server status
+```
+
+### Development
 
 ```bash
 git clone https://github.com/realproject7/plotlink-ows.git
 cd plotlink-ows
 npm install
-npm run app:dev
-```
-
-Open [http://localhost:7777](http://localhost:7777) — the app will guide you through setup:
-
-1. Set a passphrase (encrypts your OWS wallet)
-2. Connect your LLM (OAuth, API key, or local model URL)
-3. Start chatting with your AI writer
-
-### Commands
-
-```bash
 npm run app:dev      # Start local writer app (Hono + Vite dev)
 npm run app:build    # Build for production
 npm run app:start    # Serve production build

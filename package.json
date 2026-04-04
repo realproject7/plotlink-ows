@@ -1,7 +1,14 @@
 {
-  "name": "plotlink",
+  "name": "plotlink-ows",
   "version": "0.1.13",
-  "private": true,
+  "bin": {
+    "plotlink-ows": "./bin/plotlink-ows.js"
+  },
+  "files": [
+    "bin/",
+    "app/",
+    "packages/"
+  ],
   "workspaces": [
     "packages/*"
   ],
@@ -42,28 +49,28 @@
     "rehype-sanitize": "^6.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "viem": "^2.47.2",
+    "vite": "^6.4.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@tailwindcss/vite": "^4.2.2",
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
-    "@tailwindcss/vite": "^4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "jsdom": "^27.0.1",
-    "tailwindcss": "^4",
-    "tsx": "^4.21.0",
     "typescript": "^5",
-    "vite": "^6.4.1",
     "vitest": "^3.2.4"
   }
 }

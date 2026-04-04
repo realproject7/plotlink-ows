@@ -2,11 +2,9 @@ import { Hono } from "hono";
 import { createHmac, randomBytes } from "crypto";
 import { db } from "../db";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { ENV_FILE } from "../lib/paths";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.join(__dirname, "..", "..", ".env");
+const envPath = ENV_FILE;
 
 const auth = new Hono();
 
