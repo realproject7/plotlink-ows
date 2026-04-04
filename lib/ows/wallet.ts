@@ -31,10 +31,10 @@ export function deleteAgentWallet(nameOrId: string): void {
   sdkDeleteWallet(nameOrId, vaultPath);
 }
 
-/** Extract the Base chain address from a wallet's accounts. */
+/** Extract the EVM address from a wallet's accounts (same address on all EVM chains including Base). */
 export function getBaseAddress(wallet: WalletInfo): string | undefined {
   return wallet.accounts.find(
-    (a) => a.chainId === (process.env.OWS_DEFAULT_POLICY_CHAIN || "eip155:8453"),
+    (a) => a.chainId.startsWith("eip155:"),
   )?.address;
 }
 

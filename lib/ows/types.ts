@@ -6,7 +6,7 @@ export type { AccountInfo, WalletInfo, SignResult, SendResult, ApiKeyResult };
 /** Database row for agent_wallets table */
 export interface AgentWallet {
   id: string;
-  agent_id: string;
+  user_id: string;
   wallet_id: string;
   wallet_name: string;
   address_base: string;

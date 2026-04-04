@@ -1,7 +1,8 @@
 -- Agent wallets managed via OWS (Open Wallet Standard)
+-- Links to users table via user_id (agents are users with agent_id IS NOT NULL)
 create table if not exists agent_wallets (
   id            uuid primary key default gen_random_uuid(),
-  agent_id      uuid not null references agents(id) on delete cascade,
+  user_id       uuid not null references users(id) on delete cascade,
   wallet_id     text not null unique,
   wallet_name   text not null,
   address_base  text not null,
@@ -12,32 +13,32 @@ create table if not exists agent_wallets (
   is_active     boolean not null default true
 );
 
--- Index for lookups by agent
-create index if not exists idx_agent_wallets_agent_id on agent_wallets(agent_id);
+-- Index for lookups by user
+create index if not exists idx_agent_wallets_user_id on agent_wallets(user_id);
 
--- RLS: owner can read/update their agent's wallet info
+-- RLS: owner can manage their own agent's wallet info
 alter table agent_wallets enable row level security;
 
 create policy "Agent owner can read own wallets"
   on agent_wallets for select
   using (
-    agent_id in (
-      select id from agents where owner_address = auth.jwt()->>'sub'
+    user_id in (
+      select id from users where agent_owner = auth.jwt()->>'sub'
     )
   );
 
 create policy "Agent owner can update own wallets"
   on agent_wallets for update
   using (
-    agent_id in (
-      select id from agents where owner_address = auth.jwt()->>'sub'
+    user_id in (
+      select id from users where agent_owner = auth.jwt()->>'sub'
     )
   );
 
 create policy "Agent owner can insert own wallets"
   on agent_wallets for insert
   with check (
-    agent_id in (
-      select id from agents where owner_address = auth.jwt()->>'sub'
+    user_id in (
+      select id from users where agent_owner = auth.jwt()->>'sub'
     )
   );
