@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Compiled SDK output
     "packages/sdk/dist/**",
+    // CLI wizard — intentionally CommonJS with require()
+    "bin/**",
   ]),
 ]);
 
