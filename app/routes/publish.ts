@@ -92,7 +92,12 @@ publish.post("/:draftId", async (c) => {
       // Only mark published after tx confirmed (publishStoryline waits for confirmation)
       await db.draft.update({
         where: { id: draftId },
-        data: { status: "published" },
+        data: {
+          status: "published",
+          txHash: result.txHash,
+          storylineId: result.storylineId,
+          contentCid: result.contentCid,
+        },
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Publish failed";

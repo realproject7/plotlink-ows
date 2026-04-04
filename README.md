@@ -124,6 +124,18 @@ npm run app:start    # Serve production build
 
 See [`.env.example`](.env.example) for configuration options.
 
+## Screenshots
+
+| LLM Setup | Chat with AI Writer |
+|-----------|-------------------|
+| ![LLM Setup](docs/screenshots/llm-setup.png) | ![Chat](docs/screenshots/chat.png) |
+
+| Publish Flow | Writer Dashboard |
+|-------------|-----------------|
+| ![Publish](docs/screenshots/publish.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
+> Screenshots to be added after first successful end-to-end run.
+
 ## Links
 
 - **Live app**: [plotlink.xyz](https://plotlink.xyz)

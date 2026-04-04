@@ -14,12 +14,16 @@ interface Story {
   title: string;
   genre: string | null;
   status: string;
+  txHash?: string | null;
+  storylineId?: number | null;
+  gasCostEth?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
 
 interface DashboardData {
   wallet: WalletInfo | null;
+  costs: { totalGasCostEth: string; storiesPublished: number };
   stories: {
     published: Story[];
     drafts: Story[];
@@ -107,6 +111,29 @@ export function Dashboard({ token }: { token: string }) {
         </div>
       )}
 
+      {/* Cost & P&L */}
+      <div className="border-border rounded border p-4">
+        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Publishing Costs</h3>
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted">Total gas spent</span>
+            <span className="text-foreground">{data.costs.totalGasCostEth} ETH</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted">Stories published</span>
+            <span className="text-foreground">{data.costs.storiesPublished}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted">Avg cost per story</span>
+            <span className="text-foreground">
+              {data.costs.storiesPublished > 0
+                ? (parseFloat(data.costs.totalGasCostEth) / data.costs.storiesPublished).toFixed(6)
+                : "—"} ETH
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Published stories */}
       <div className="border-border rounded border p-4">
         <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Published Stories</h3>
@@ -115,22 +142,36 @@ export function Dashboard({ token }: { token: string }) {
         ) : (
           <div className="space-y-2">
             {data.stories.published.map((story) => (
-              <div key={story.id} className="bg-surface flex items-center justify-between rounded p-3">
-                <div>
-                  <span className="text-foreground text-sm font-medium">{story.title}</span>
-                  {story.genre && <span className="text-accent ml-2 text-[10px]">{story.genre}</span>}
-                  <div className="text-muted text-[10px]">{formatDate(story.createdAt)}</div>
+              <div key={story.id} className="bg-surface rounded p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-foreground text-sm font-medium">{story.title}</span>
+                    {story.genre && <span className="text-accent ml-2 text-[10px]">{story.genre}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">published</span>
+                    {story.storylineId ? (
+                      <a
+                        href={`https://plotlink.xyz/story/${story.storylineId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent text-[10px] underline"
+                      >
+                        view
+                      </a>
+                    ) : (
+                      <a href="https://plotlink.xyz" target="_blank" rel="noopener noreferrer" className="text-accent text-[10px] underline">plotlink.xyz</a>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">published</span>
-                  <a
-                    href={`https://plotlink.xyz`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent text-[10px] underline"
-                  >
-                    view
-                  </a>
+                <div className="mt-1 flex items-center gap-3 text-[10px]">
+                  <span className="text-muted">{formatDate(story.createdAt)}</span>
+                  {story.txHash && (
+                    <a href={`https://basescan.org/tx/${story.txHash}`} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-accent font-mono">
+                      tx:{story.txHash.slice(0, 10)}...
+                    </a>
+                  )}
+                  {story.gasCostEth && <span className="text-muted">{story.gasCostEth} ETH</span>}
                 </div>
               </div>
             ))}

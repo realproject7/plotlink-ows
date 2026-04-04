@@ -41,13 +41,17 @@ model Message {
 }
 
 model Draft {
-  id        String       @id @default(cuid())
-  sessionId String
-  session   StorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  title     String
-  content   String
-  genre     String?
-  status    String       @default("draft") // draft, ready, published
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id          String       @id @default(cuid())
+  sessionId   String
+  session     StorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  genre       String?
+  status      String       @default("draft") // draft, ready, published
+  txHash      String?
+  storylineId Int?
+  contentCid  String?
+  gasCost     String?      // ETH cost in wei
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }

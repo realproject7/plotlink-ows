@@ -10,7 +10,6 @@ dashboard.get("/", async (c) => {
   // Get all drafts (published and unpublished)
   const drafts = await db.draft.findMany({
     orderBy: { createdAt: "desc" },
-    include: { session: { select: { title: true, genre: true } } },
   });
 
   // Get wallet info
@@ -50,10 +49,16 @@ dashboard.get("/", async (c) => {
     }
   } catch { /* wallet not available */ }
 
-  // Compute stats
+  // Published stories with cost data
   const published = drafts.filter((d) => d.status === "published");
   const unpublished = drafts.filter((d) => d.status !== "published");
-  const totalStories = published.length;
+
+  // Compute total costs
+  const totalGasCostWei = published.reduce((sum, d) => {
+    if (d.gasCost) return sum + BigInt(d.gasCost);
+    return sum;
+  }, BigInt(0));
+  const totalGasCostEth = (Number(totalGasCostWei) / 1e18).toFixed(6);
 
   // Session stats
   const sessions = await db.storySession.findMany({
@@ -68,6 +73,11 @@ dashboard.get("/", async (c) => {
         title: d.title,
         genre: d.genre,
         status: d.status,
+        txHash: d.txHash,
+        storylineId: d.storylineId,
+        contentCid: d.contentCid,
+        gasCost: d.gasCost,
+        gasCostEth: d.gasCost ? (Number(BigInt(d.gasCost)) / 1e18).toFixed(6) : null,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       })),
@@ -78,8 +88,13 @@ dashboard.get("/", async (c) => {
         status: d.status,
         createdAt: d.createdAt,
       })),
-      totalPublished: totalStories,
+      totalPublished: published.length,
       totalDrafts: unpublished.length,
+    },
+    costs: {
+      totalGasCostWei: totalGasCostWei.toString(),
+      totalGasCostEth,
+      storiesPublished: published.length,
     },
     sessions: {
       total: sessions.length,
