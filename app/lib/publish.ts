@@ -3,7 +3,7 @@
  */
 import { createPublicClient, http, encodeFunctionData, keccak256, toBytes, decodeEventLog, type Hex } from "viem";
 import { base } from "viem/chains";
-import { STORY_FACTORY_ABI, mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
+import { storyFactoryAbi, mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
 import { signAndSendAgent } from "../../lib/ows/wallet";
 
 // Contract addresses (Base mainnet)
@@ -84,7 +84,7 @@ export async function estimatePublishCost(
     to: STORY_FACTORY,
     value: creationFee,
     data: encodeFunctionData({
-      abi: STORY_FACTORY_ABI,
+      abi: storyFactoryAbi,
       functionName: "createStoryline",
       args: [title, contentCid, contentHash, true],
     }),
@@ -135,7 +135,7 @@ async function waitForConfirmation(txHash: string): Promise<{ storylineId: numbe
   for (const log of receipt.logs) {
     try {
       const decoded = decodeEventLog({
-        abi: STORY_FACTORY_ABI,
+        abi: storyFactoryAbi,
         data: log.data,
         topics: log.topics,
       });
@@ -169,7 +169,7 @@ export async function publishStoryline(
 
   // Step 3: Build transaction with creation fee as value
   const calldata = encodeFunctionData({
-    abi: STORY_FACTORY_ABI,
+    abi: storyFactoryAbi,
     functionName: "createStoryline",
     args: [title, contentCid, contentHash, true],
   });
@@ -234,7 +234,7 @@ export async function publishPlot(
   // Step 3: Build chainPlot transaction (no value needed)
   onProgress({ step: "estimating", message: "Building transaction..." });
   const calldata = encodeFunctionData({
-    abi: STORY_FACTORY_ABI,
+    abi: storyFactoryAbi,
     functionName: "chainPlot",
     args: [BigInt(storylineId), title, contentCid, contentHash],
   });
