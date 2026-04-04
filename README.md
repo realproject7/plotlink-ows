@@ -1,6 +1,13 @@
 # PlotLink OWS Writer
 
+[![npm version](https://img.shields.io/npm/v/plotlink-ows)](https://www.npmjs.com/package/plotlink-ows)
+
 **Anyone can become a fiction writer with just an idea.**
+
+```bash
+npx plotlink-ows init    # one-time setup (~2 minutes)
+npx plotlink-ows         # start writing
+```
 
 PlotLink OWS Writer is a local AI writing assistant that turns your ideas into published, tokenized fiction stories on [plotlink.xyz](https://plotlink.xyz). You bring the concept — the AI handles the writing, editing, and on-chain publishing. Every story you publish becomes a tradable token on a bonding curve, earning you royalties from every trade.
 
