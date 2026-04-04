@@ -111,10 +111,14 @@ export async function getEthBalance(address: string): Promise<bigint> {
 /**
  * Wait for transaction confirmation and decode storylineId from event.
  */
-async function waitForConfirmation(txHash: string): Promise<number | undefined> {
+async function waitForConfirmation(txHash: string): Promise<number> {
   const receipt = await publicClient.waitForTransactionReceipt({
     hash: txHash as `0x${string}`,
   });
+
+  if (receipt.status === "reverted") {
+    throw new Error("Transaction reverted on-chain");
+  }
 
   // Decode StorylineCreated event to get storylineId
   for (const log of receipt.logs) {
@@ -129,7 +133,7 @@ async function waitForConfirmation(txHash: string): Promise<number | undefined> 
       }
     } catch { /* not our event */ }
   }
-  return undefined;
+  throw new Error("Transaction succeeded but StorylineCreated event not found");
 }
 
 /**
@@ -178,7 +182,7 @@ export async function publishStoryline(
 
   onProgress({
     step: "done",
-    message: storylineId ? `Published! Storyline #${storylineId}` : "Published!",
+    message: `Published! Storyline #${storylineId}`,
     txHash: result.txHash,
     contentCid,
     storylineId,
