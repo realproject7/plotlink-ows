@@ -1,45 +1,53 @@
-# PlotLink
+# PlotLink OWS
 
-On-chain storytelling protocol. Writers tokenise their storylines on a bonding curve from day 1 — every new plot drives trading, and every trade generates royalties for the author. Story artifacts stored on IPFS via Filebase. The app is mobile-first with a terminal/monospace design aesthetic.
+On-chain storytelling protocol with a local-first AI writing assistant. Writers collaborate with Claude to brainstorm, outline, and write fiction stories, then publish them on [plotlink.xyz](https://plotlink.xyz) where every storyline becomes a tradable token.
+
+## Writing Stories
+
+See **AGENTS.md** for the full writing workflow. Quick summary:
+
+1. Start `claude` in this directory
+2. Say "let's write a story" — brainstorm genre, tone, characters
+3. Claude creates files in `stories/your-story-name/`
+4. Review, iterate, refine with Claude
+5. Publish via the OWS app when ready
+
+Stories follow this structure:
+```
+stories/{story-name}/
+  structure.md    # Outline, characters, arc
+  genesis.md      # Synopsis hook (~1000 chars)
+  plot-01.md      # Chapter 1 (max 10K chars)
+  ...
+```
+
+See `stories/_example/` for a complete reference.
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **Auth & Database**: Supabase
+- **Web App**: Next.js 16 (App Router), TypeScript, Tailwind CSS v4, Supabase
+- **Local Writer App**: Hono + React 19 + Vite, SQLite + Prisma, OWS wallet
 - **Storage**: Filebase (IPFS)
-- **Chain**: EVM-compatible (RPC + contract interaction)
-
-## Repo Structure
-
-```
-src/
-  app/          # Next.js App Router pages and layouts
-    globals.css # Design tokens (CSS custom properties)
-    layout.tsx  # Root layout (monospace font)
-    page.tsx    # Home page
-.github/
-  workflows/
-    ci.yml      # Lint + type-check on PRs
-```
+- **Chain**: Base (L2)
 
 ## Commands
 
 ```sh
+# Next.js web app
 npm run dev        # Start dev server
 npm run build      # Production build
 npm run lint       # ESLint
-npm run typecheck  # TypeScript type-check (tsc --noEmit)
+npm run typecheck  # TypeScript type-check
+
+# Local writer app
+npm run app:dev    # Start local writer (Hono + Vite dev)
+npm run app:build  # Build frontend
+npm run app:start  # Serve production build
+
+# CLI
+npx plotlink-ows init   # Guided setup
+npx plotlink-ows        # Start app
 ```
-
-## Design System
-
-Terminal aesthetic: dark background (`#0a0a0a`), monospace font (Geist Mono), green accent (`#00ff88`), outline-based UI. CSS custom properties defined in `src/app/globals.css`.
-
-## Proposal
-
-The full project proposal will be added at `docs/PROPOSAL-plotlink.md` in a future ticket.
 
 ## Versioning
 

@@ -185,7 +185,7 @@ config.post("/llm/test", async (c) => {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as Record<string, any>;
+        const err = await res.json().catch(() => ({})) as Record<string, Record<string, string>>;
         const msg = err.error?.message || err.error?.type || JSON.stringify(err.error) || `HTTP ${res.status}`;
         throw new Error(msg);
       }
