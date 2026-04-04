@@ -1,7 +1,18 @@
 import { Hono } from "hono";
+import { createPublicClient, http } from "viem";
+import { base } from "viem/chains";
 import { db } from "../db";
 import { getEthBalance } from "../lib/publish";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import { mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
+
+const MCV2_BOND = "0xc5a076cad94176c2996B32d8466Be1cE757FAa27" as const;
+const WETH_BASE = "0x4200000000000000000000000000000000000006" as const;
+
+const publicClient = createPublicClient({
+  chain: base,
+  transport: http(process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org"),
+});
 
 const dashboard = new Hono();
 
@@ -60,6 +71,24 @@ dashboard.get("/", async (c) => {
   }, BigInt(0));
   const totalGasCostEth = (Number(totalGasCostWei) / 1e18).toFixed(6);
 
+  // Query on-chain royalties (WETH on Base — bonding curve reserve)
+  let royaltiesEarned = "0";
+  let royaltiesClaimed = "0";
+  if (walletInfo?.address) {
+    try {
+      const [balance, claimed] = await publicClient.readContract({
+        address: MCV2_BOND,
+        abi: mcv2BondAbi,
+        functionName: "getRoyaltyInfo",
+        args: [walletInfo.address as `0x${string}`, WETH_BASE],
+      }) as [bigint, bigint];
+      royaltiesEarned = (Number(balance) / 1e18).toFixed(6);
+      royaltiesClaimed = (Number(claimed) / 1e18).toFixed(6);
+    } catch { /* no royalties or contract not available */ }
+  }
+
+  const netPnl = (parseFloat(royaltiesEarned) - parseFloat(totalGasCostEth)).toFixed(6);
+
   // Session stats
   const sessions = await db.storySession.findMany({
     include: { _count: { select: { messages: true } } },
@@ -95,6 +124,16 @@ dashboard.get("/", async (c) => {
       totalGasCostWei: totalGasCostWei.toString(),
       totalGasCostEth,
       storiesPublished: published.length,
+    },
+    royalties: {
+      earned: royaltiesEarned,
+      claimed: royaltiesClaimed,
+      unclaimed: (parseFloat(royaltiesEarned) - parseFloat(royaltiesClaimed)).toFixed(6),
+    },
+    pnl: {
+      totalCosts: totalGasCostEth,
+      totalRoyalties: royaltiesEarned,
+      net: netPnl,
     },
     sessions: {
       total: sessions.length,

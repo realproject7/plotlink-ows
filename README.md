@@ -126,15 +126,14 @@ See [`.env.example`](.env.example) for configuration options.
 
 ## Screenshots
 
-| LLM Setup | Chat with AI Writer |
-|-----------|-------------------|
-| ![LLM Setup](docs/screenshots/llm-setup.png) | ![Chat](docs/screenshots/chat.png) |
+The local app runs on `localhost:7777` with the PlotLink Moleskine dark design:
 
-| Publish Flow | Writer Dashboard |
-|-------------|-----------------|
-| ![Publish](docs/screenshots/publish.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+- **LLM Setup** — Multi-step wizard: choose provider (Anthropic/OpenAI/Gemini/local), enter API key or OAuth, select model, test connection
+- **Chat with AI Writer** — Full-screen chat UI with session sidebar, streaming markdown responses, draft preview panel
+- **Publish Flow** — Preflight checks (wallet balance, Filebase config), IPFS upload, OWS wallet signing, on-chain confirmation with Basescan link
+- **Writer Dashboard** — Stats overview, P&L tracking (costs vs royalties), published stories with plotlink.xyz links, draft management
 
-> Screenshots to be added after first successful end-to-end run.
+> Run `npm run app:dev` and visit `http://localhost:7777` to see the full UI.
 
 ## Links
 

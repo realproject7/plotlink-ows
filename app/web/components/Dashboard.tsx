@@ -24,6 +24,8 @@ interface Story {
 interface DashboardData {
   wallet: WalletInfo | null;
   costs: { totalGasCostEth: string; storiesPublished: number };
+  royalties: { earned: string; claimed: string; unclaimed: string };
+  pnl: { totalCosts: string; totalRoyalties: string; net: string };
   stories: {
     published: Story[];
     drafts: Story[];
@@ -111,25 +113,31 @@ export function Dashboard({ token }: { token: string }) {
         </div>
       )}
 
-      {/* Cost & P&L */}
+      {/* P&L */}
       <div className="border-border rounded border p-4">
-        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Publishing Costs</h3>
+        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Profit & Loss</h3>
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs">
-            <span className="text-muted">Total gas spent</span>
-            <span className="text-foreground">{data.costs.totalGasCostEth} ETH</span>
+            <span className="text-muted">Total costs (gas)</span>
+            <span className="text-error">-{data.pnl.totalCosts} ETH</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted">Royalties earned</span>
+            <span className="text-green-700">+{data.pnl.totalRoyalties} ETH</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted">Unclaimed royalties</span>
+            <span className="text-foreground">{data.royalties.unclaimed} ETH</span>
+          </div>
+          <div className="border-border flex justify-between border-t pt-1.5 text-xs font-medium">
+            <span className="text-muted">Net P&L</span>
+            <span className={parseFloat(data.pnl.net) >= 0 ? "text-green-700" : "text-error"}>
+              {parseFloat(data.pnl.net) >= 0 ? "+" : ""}{data.pnl.net} ETH
+            </span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Stories published</span>
             <span className="text-foreground">{data.costs.storiesPublished}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted">Avg cost per story</span>
-            <span className="text-foreground">
-              {data.costs.storiesPublished > 0
-                ? (parseFloat(data.costs.totalGasCostEth) / data.costs.storiesPublished).toFixed(6)
-                : "—"} ETH
-            </span>
           </div>
         </div>
       </div>
