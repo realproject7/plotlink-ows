@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { WalletCard } from "./WalletCard";
 
-const API_BASE = "http://localhost:7777";
 
-export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLogout: () => void; onChangeLLM: () => void }) {
+
+export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLogout: () => void; onChangeLLM?: () => void }) {
   const [llmConfig, setLlmConfig] = useState<{ llm: Record<string, unknown>; configured: string[] } | null>(null);
   const [spendCap, setSpendCap] = useState<string>("10");
   const [savingCap, setSavingCap] = useState(false);
@@ -18,7 +18,7 @@ export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLo
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
 
   useEffect(() => {
-    authFetch(`${API_BASE}/api/config/llm`)
+    authFetch(`/api/config/llm`)
       .then((r) => r.json())
       .then((data) => setLlmConfig(data));
   }, []);
@@ -30,7 +30,7 @@ export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLo
     setSavingCap(true);
     setCapSaved(false);
     // Persist spending cap to agent.config.json
-    await authFetch(`${API_BASE}/api/config/llm`, {
+    await authFetch(`/api/config/llm`, {
       method: "POST",
       body: JSON.stringify({ provider: activeProvider || "anthropic", model: activeModel || "", spendCap: Number(spendCap) }),
     });
@@ -52,7 +52,7 @@ export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLo
     }
     setSavingPassphrase(true);
     try {
-      const res = await authFetch(`${API_BASE}/api/auth/reset-passphrase`, {
+      const res = await authFetch(`/api/auth/reset-passphrase`, {
         method: "POST",
         body: JSON.stringify({ passphrase: newPassphrase }),
       });

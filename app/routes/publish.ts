@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { db } from "../db";
-import { publishStoryline, getEthBalance, estimatePublishCost } from "../lib/publish";
+import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
@@ -99,6 +99,75 @@ publish.post("/:draftId", async (c) => {
           contentCid: result.contentCid,
           gasCost: result.gasCost,
         },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Publish failed";
+      await stream.writeSSE({
+        data: JSON.stringify({ step: "error", message, error: message }),
+      });
+    }
+  });
+});
+
+/** POST /api/publish/file — publish a story file on-chain (streams progress) */
+publish.post("/file", async (c) => {
+  const body = await c.req.json<{
+    storyName: string;
+    fileName: string;
+    title: string;
+    content: string;
+    genre?: string;
+    storylineId?: number;
+  }>();
+
+  if (!body.title || !body.content) {
+    return c.json({ error: "title and content required" }, 400);
+  }
+
+  // Get wallet
+  const wallets = listAgentWallets();
+  const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+  if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+  // Determine if this is genesis (createStoryline) or plot (chainPlot)
+  const isPlot = body.fileName.match(/^plot-\d+\.md$/);
+
+  return streamSSE(c, async (stream) => {
+    try {
+      let result;
+      if (isPlot && body.storylineId) {
+        // Chain plot to existing storyline
+        result = await publishPlot(
+          wallet.name,
+          body.storylineId,
+          body.title,
+          body.content,
+          body.genre,
+          async (progress) => {
+            await stream.writeSSE({ data: JSON.stringify(progress) });
+          },
+        );
+      } else {
+        // Create new storyline (genesis or first file)
+        result = await publishStoryline(
+          wallet.name,
+          body.title,
+          body.content,
+          body.genre,
+          async (progress) => {
+            await stream.writeSSE({ data: JSON.stringify(progress) });
+          },
+        );
+      }
+
+      await stream.writeSSE({
+        data: JSON.stringify({
+          step: "done",
+          txHash: result.txHash,
+          storylineId: result.storylineId,
+          contentCid: result.contentCid,
+          gasCost: result.gasCost,
+        }),
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Publish failed";

@@ -3,8 +3,6 @@ import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
 import { Layout } from "./components/Layout";
 
-const API_BASE = "http://localhost:7777";
-
 export function App() {
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem("ows-token"),
@@ -14,7 +12,7 @@ export function App() {
 
   useEffect(() => {
     // Check if passphrase is configured (first-run detection)
-    fetch(`${API_BASE}/api/auth/status`)
+    fetch(`/api/auth/status`)
       .then((r) => r.json())
       .then((d) => setConfigured(d.configured))
       .catch(() => setConfigured(null));
@@ -26,7 +24,7 @@ export function App() {
       setChecking(false);
       return;
     }
-    fetch(`${API_BASE}/api/auth/verify`, {
+    fetch(`/api/auth/verify`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
@@ -44,7 +42,7 @@ export function App() {
 
   const handleLogin = async (passphrase: string): Promise<string | null> => {
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const res = await fetch(`/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passphrase }),
@@ -61,7 +59,7 @@ export function App() {
 
   const handleSetup = async (passphrase: string): Promise<string | null> => {
     try {
-      const res = await fetch(`${API_BASE}/api/auth/setup`, {
+      const res = await fetch(`/api/auth/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passphrase }),

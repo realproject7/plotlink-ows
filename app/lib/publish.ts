@@ -202,3 +202,57 @@ export async function publishStoryline(
 
   return { txHash: result.txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
 }
+
+/**
+ * Chain a new plot to an existing storyline on-chain.
+ */
+export async function publishPlot(
+  walletName: string,
+  storylineId: number,
+  title: string,
+  content: string,
+  genre: string | undefined,
+  onProgress: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  // Step 1: Upload to IPFS
+  onProgress({ step: "uploading", message: "Uploading plot to IPFS..." });
+  const contentCid = await uploadToIPFS(content, title, genre);
+
+  // Step 2: Compute content hash
+  const contentHash = keccak256(toBytes(content));
+
+  // Step 3: Build chainPlot transaction (no value needed)
+  onProgress({ step: "estimating", message: "Building transaction..." });
+  const calldata = encodeFunctionData({
+    abi: STORY_FACTORY_ABI,
+    functionName: "chainPlot",
+    args: [BigInt(storylineId), title, contentCid, contentHash],
+  });
+
+  // Step 4: Sign and send via OWS
+  onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
+  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
+
+  const txHex = JSON.stringify({
+    to: STORY_FACTORY,
+    data: calldata,
+    value: "0x0",
+  });
+
+  onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
+  const result = signAndSendAgent(walletName, txHex, undefined, rpcUrl);
+
+  // Step 5: Wait for confirmation
+  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
+  const confirmation = await waitForConfirmation(result.txHash);
+
+  onProgress({
+    step: "done",
+    message: `Plot chained to storyline #${storylineId}`,
+    txHash: result.txHash,
+    contentCid,
+    storylineId,
+  });
+
+  return { txHash: result.txHash, contentCid, storylineId, gasCost: confirmation.gasCost };
+}

@@ -19,6 +19,8 @@ import { oauthRoutes } from "./routes/oauth";
 import { chatRoutes } from "./routes/chat";
 import { publishRoutes } from "./routes/publish";
 import { dashboardRoutes } from "./routes/dashboard";
+import { terminalRoutes, attachTerminalWs } from "./routes/terminal";
+import { storiesRoutes } from "./routes/stories";
 import { initDb } from "./db";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -48,6 +50,10 @@ app.route("/api/chat", chatRoutes);
 app.route("/api/publish", publishRoutes);
 app.use("/api/dashboard/*", requireAuth);
 app.route("/api/dashboard", dashboardRoutes);
+app.use("/api/terminal/*", requireAuth);
+app.route("/api/terminal", terminalRoutes);
+app.use("/api/stories/*", requireAuth);
+app.route("/api/stories", storiesRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
@@ -143,12 +149,35 @@ async function start() {
   // Initialize database connection
   await initDb();
 
+  // Ensure stories directory exists
+  const storiesDir = path.join(__dirname, "..", "stories");
+  if (!fs.existsSync(storiesDir)) fs.mkdirSync(storiesDir, { recursive: true });
+
   const port = Number(process.env.APP_PORT) || 7777;
   const server = serve({ fetch: app.fetch, port }, (info) => {
     console.log(`\n  PlotLink OWS running at http://localhost:${info.port}\n`);
   });
 
   injectWebSocket(server);
+
+  // Terminal WebSocket: raw WS on /ws/terminal (bypasses Hono for raw PTY relay)
+  const { WebSocketServer } = await import("ws");
+  const wss = new WebSocketServer({ noServer: true });
+  (server as import("http").Server).on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url || "", `http://localhost:${port}`);
+    if (url.pathname === "/ws/terminal") {
+      // Auth check: verify token from query params
+      const wsToken = url.searchParams.get("token");
+      if (!wsToken) { socket.destroy(); return; }
+      import("./db").then(async ({ db }) => {
+        const session = await db.session.findUnique({ where: { token: wsToken } });
+        if (!session || session.expiresAt < new Date()) { socket.destroy(); return; }
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          attachTerminalWs(ws as unknown as WebSocket);
+        });
+      }).catch(() => socket.destroy());
+    }
+  });
 }
 
 start().catch(console.error);

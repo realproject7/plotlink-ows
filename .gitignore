@@ -70,6 +70,7 @@ next-env.d.ts
 # stories — keep _example, ignore user stories
 stories/*/
 !stories/_example/
+.publish-status.json
 
 # test results
 test-results/
