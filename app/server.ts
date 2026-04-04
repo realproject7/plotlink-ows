@@ -15,6 +15,7 @@ import { authRoutes, requireAuth } from "./routes/auth";
 import { configRoutes } from "./routes/config";
 import { walletRoutes } from "./routes/wallet";
 import { oauthRoutes } from "./routes/oauth";
+import { chatRoutes } from "./routes/chat";
 import { initDb } from "./db";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -38,6 +39,8 @@ app.use("/api/oauth/:provider/status", requireAuth);
 app.route("/api/config", configRoutes);
 app.route("/api/wallet", walletRoutes);
 app.route("/api/oauth", oauthRoutes);
+app.use("/api/chat/*", requireAuth);
+app.route("/api/chat", chatRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
