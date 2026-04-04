@@ -1,19 +1,55 @@
 /**
  * PlotLink publish flow — uploads content to IPFS and publishes on-chain via OWS wallet.
  */
-import { createPublicClient, http, encodeFunctionData, keccak256, toBytes, decodeEventLog, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, keccak256, toBytes, decodeEventLog, serializeTransaction, type Hex } from "viem";
 import { base } from "viem/chains";
+import { toAccount } from "viem/accounts";
 import { storyFactoryAbi, mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
-import { signAndSendAgent } from "../../lib/ows/wallet";
+import {
+  signTransaction as owsSignTx,
+  signMessage as owsSignMsg,
+} from "@open-wallet-standard/core";
 
 // Contract addresses (Base mainnet)
 const STORY_FACTORY = "0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf" as const;
 const MCV2_BOND = "0xc5a076cad94176c2996B32d8466Be1cE757FAa27" as const;
 
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const publicClient = createPublicClient({
   chain: base,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org"),
+  transport: http(rpcUrl),
 });
+
+/** Parse OWS signature into viem-compatible r,s,v */
+function parseEvmSignature(sigHex: string, recoveryId?: number): { r: Hex; s: Hex; v: bigint } {
+  const sig = sigHex.startsWith("0x") ? sigHex.slice(2) : sigHex;
+  const r = `0x${sig.slice(0, 64)}` as Hex;
+  const s = `0x${sig.slice(64, 128)}` as Hex;
+  // recovery id from OWS or from the last byte of signature
+  const v = recoveryId !== undefined ? BigInt(recoveryId + 27) : BigInt(parseInt(sig.slice(128, 130), 16));
+  return { r, s, v };
+}
+
+/** Create a viem-compatible account backed by OWS wallet (same pattern as claw-on-chain) */
+function createOwsAccount(walletName: string, address: `0x${string}`) {
+  const passphrase = process.env.OWS_PASSPHRASE;
+  return toAccount({
+    address,
+    signMessage: async ({ message }) => {
+      const msg = typeof message === "string" ? message : typeof message.raw === "string" ? message.raw : Buffer.from(message.raw).toString("hex");
+      const result = owsSignMsg(walletName, "eip155:8453", msg, passphrase);
+      return (result.signature.startsWith("0x") ? result.signature : `0x${result.signature}`) as Hex;
+    },
+    signTransaction: async (tx) => {
+      const unsigned = serializeTransaction(tx);
+      const hexWithout0x = unsigned.startsWith("0x") ? unsigned.slice(2) : unsigned;
+      const result = owsSignTx(walletName, "eip155:8453", hexWithout0x, passphrase);
+      const sig = parseEvmSignature(result.signature, result.recoveryId);
+      return serializeTransaction(tx, sig);
+    },
+    signTypedData: async () => { throw new Error("signTypedData not implemented"); },
+  });
+}
 
 export interface PublishResult {
   txHash: string;
@@ -167,35 +203,36 @@ export async function publishStoryline(
   onProgress({ step: "estimating", message: "Fetching creation fee and estimating gas..." });
   const creationFee = await getCreationFee();
 
-  // Step 3: Build transaction with creation fee as value
-  const calldata = encodeFunctionData({
+  // Step 3: Create OWS-backed viem wallet client
+  onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
+  const { listAgentWallets, getBaseAddress } = await import("../../lib/ows/wallet");
+  const wallets = listAgentWallets();
+  const owsWallet = wallets.find((w) => w.name === walletName);
+  if (!owsWallet) throw new Error("OWS wallet not found");
+  const address = getBaseAddress(owsWallet);
+  if (!address) throw new Error("No EVM address on wallet");
+
+  const account = createOwsAccount(walletName, address as `0x${string}`);
+  const walletClient = createWalletClient({ account, chain: base, transport: http(rpcUrl) });
+
+  // Step 4: Write contract via viem (handles signing + broadcasting)
+  onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
+  const txHash = await walletClient.writeContract({
+    address: STORY_FACTORY,
     abi: storyFactoryAbi,
     functionName: "createStoryline",
     args: [title, contentCid, contentHash, true],
+    value: creationFee,
   });
-
-  // Step 4: Sign and send via OWS
-  onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
-  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
-
-  const txHex = JSON.stringify({
-    to: STORY_FACTORY,
-    data: calldata,
-    value: `0x${creationFee.toString(16)}`,
-  });
-
-  onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
-  const passphrase = process.env.OWS_PASSPHRASE;
-  const result = signAndSendAgent(walletName, txHex, passphrase, rpcUrl);
 
   // Step 5: Wait for confirmation and decode storylineId
-  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
-  const confirmation = await waitForConfirmation(result.txHash);
+  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
+  const confirmation = await waitForConfirmation(txHash);
 
   onProgress({
     step: "done",
     message: `Published! Storyline #${confirmation.storylineId}`,
-    txHash: result.txHash,
+    txHash,
     contentCid,
     storylineId: confirmation.storylineId,
   });
@@ -206,11 +243,11 @@ export async function publishStoryline(
     await fetch(`${PLOTLINK_URL}/api/index/storyline`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txHash: result.txHash, content, genre }),
+      body: JSON.stringify({ txHash, content, genre }),
     });
   } catch { /* indexing is best-effort */ }
 
-  return { txHash: result.txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
+  return { txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
 }
 
 /**
@@ -231,36 +268,35 @@ export async function publishPlot(
   // Step 2: Compute content hash
   const contentHash = keccak256(toBytes(content));
 
-  // Step 3: Build chainPlot transaction (no value needed)
-  onProgress({ step: "estimating", message: "Building transaction..." });
-  const calldata = encodeFunctionData({
+  // Step 3: Create OWS-backed viem wallet client
+  onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
+  const { listAgentWallets, getBaseAddress } = await import("../../lib/ows/wallet");
+  const wallets = listAgentWallets();
+  const owsWallet = wallets.find((w) => w.name === walletName);
+  if (!owsWallet) throw new Error("OWS wallet not found");
+  const address = getBaseAddress(owsWallet);
+  if (!address) throw new Error("No EVM address on wallet");
+
+  const account = createOwsAccount(walletName, address as `0x${string}`);
+  const walletClient = createWalletClient({ account, chain: base, transport: http(rpcUrl) });
+
+  // Step 4: Write contract via viem
+  onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
+  const txHash = await walletClient.writeContract({
+    address: STORY_FACTORY,
     abi: storyFactoryAbi,
     functionName: "chainPlot",
     args: [BigInt(storylineId), title, contentCid, contentHash],
   });
 
-  // Step 4: Sign and send via OWS
-  onProgress({ step: "signing", message: "Signing transaction with OWS wallet..." });
-  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
-
-  const txHex = JSON.stringify({
-    to: STORY_FACTORY,
-    data: calldata,
-    value: "0x0",
-  });
-
-  onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
-  const passphrase = process.env.OWS_PASSPHRASE;
-  const result = signAndSendAgent(walletName, txHex, passphrase, rpcUrl);
-
   // Step 5: Wait for confirmation
-  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
-  const confirmation = await waitForConfirmation(result.txHash);
+  onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
+  const confirmation = await waitForConfirmation(txHash);
 
   onProgress({
     step: "done",
     message: `Plot chained to storyline #${storylineId}`,
-    txHash: result.txHash,
+    txHash,
     contentCid,
     storylineId,
   });
@@ -271,9 +307,9 @@ export async function publishPlot(
     await fetch(`${PLOTLINK_URL}/api/index/plot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txHash: result.txHash }),
+      body: JSON.stringify({ txHash }),
     });
   } catch { /* indexing is best-effort */ }
 
-  return { txHash: result.txHash, contentCid, storylineId, gasCost: confirmation.gasCost };
+  return { txHash, contentCid, storylineId, gasCost: confirmation.gasCost };
 }
