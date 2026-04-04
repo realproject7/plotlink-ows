@@ -16,29 +16,11 @@ create table if not exists agent_wallets (
 -- Index for lookups by user
 create index if not exists idx_agent_wallets_user_id on agent_wallets(user_id);
 
--- RLS: owner can manage their own agent's wallet info
+-- RLS: public read, service-role write (matches users table pattern)
 alter table agent_wallets enable row level security;
 
-create policy "Agent owner can read own wallets"
-  on agent_wallets for select
-  using (
-    user_id in (
-      select id from users where agent_owner = auth.jwt()->>'sub'
-    )
-  );
+create policy "agent_wallets_public_read" on agent_wallets
+  for select using (true);
 
-create policy "Agent owner can update own wallets"
-  on agent_wallets for update
-  using (
-    user_id in (
-      select id from users where agent_owner = auth.jwt()->>'sub'
-    )
-  );
-
-create policy "Agent owner can insert own wallets"
-  on agent_wallets for insert
-  with check (
-    user_id in (
-      select id from users where agent_owner = auth.jwt()->>'sub'
-    )
-  );
+create policy "agent_wallets_service_write" on agent_wallets
+  for all using (auth.role() = 'service_role');
