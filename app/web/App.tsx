@@ -22,6 +22,7 @@ export function App() {
 
   useEffect(() => {
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync guard before async work
       setChecking(false);
       return;
     }
