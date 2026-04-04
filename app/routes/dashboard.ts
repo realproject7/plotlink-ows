@@ -90,7 +90,17 @@ dashboard.get("/", async (c) => {
     } catch { /* no royalties or contract not available */ }
   }
 
-  const netPnl = (parseFloat(royaltiesEarned) - parseFloat(totalGasCostEth)).toFixed(6);
+  // Fetch ETH/USD price for common-unit P&L
+  let ethUsdPrice = 0;
+  try {
+    const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+    const priceData = await priceRes.json() as { ethereum?: { usd?: number } };
+    ethUsdPrice = priceData.ethereum?.usd ?? 0;
+  } catch { /* price fetch best-effort */ }
+
+  const totalCostUsd = parseFloat(totalGasCostEth) * ethUsdPrice;
+  // Note: royalties are in PLOT (different token), so net P&L in USD requires PLOT/USD price
+  // For now, show costs in USD and royalties in PLOT separately
 
   // Session stats
   const sessions = await db.storySession.findMany({
@@ -126,6 +136,8 @@ dashboard.get("/", async (c) => {
     costs: {
       totalGasCostWei: totalGasCostWei.toString(),
       totalGasCostEth,
+      totalCostUsd: totalCostUsd.toFixed(2),
+      ethUsdPrice,
       storiesPublished: published.length,
     },
     royalties: {
@@ -136,9 +148,9 @@ dashboard.get("/", async (c) => {
       token: "PLOT",
     },
     pnl: {
-      totalCosts: totalGasCostEth,
-      totalRoyalties: royaltiesEarned,
-      net: netPnl,
+      totalCostsEth: totalGasCostEth,
+      totalCostsUsd: totalCostUsd.toFixed(2),
+      totalRoyaltiesPlot: royaltiesEarned,
     },
     sessions: {
       total: sessions.length,

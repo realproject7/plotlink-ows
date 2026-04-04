@@ -23,9 +23,9 @@ interface Story {
 
 interface DashboardData {
   wallet: WalletInfo | null;
-  costs: { totalGasCostEth: string; storiesPublished: number };
-  royalties: { earned: string; claimed: string; unclaimed: string };
-  pnl: { totalCosts: string; totalRoyalties: string; net: string };
+  costs: { totalGasCostEth: string; totalCostUsd: string; ethUsdPrice: number; storiesPublished: number };
+  royalties: { earned: string; claimed: string; unclaimed: string; token: string };
+  pnl: { totalCostsEth: string; totalCostsUsd: string; totalRoyaltiesPlot: string };
   stories: {
     published: Story[];
     drafts: Story[];
@@ -119,11 +119,11 @@ export function Dashboard({ token }: { token: string }) {
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs">
             <span className="text-muted">Total costs (gas)</span>
-            <span className="text-error">-{data.pnl.totalCosts} ETH</span>
+            <span className="text-error">-{data.pnl.totalCostsEth} ETH (~${data.pnl.totalCostsUsd})</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Royalties earned</span>
-            <span className="text-green-700">+{data.pnl.totalRoyalties} PLOT</span>
+            <span className="text-green-700">+{data.pnl.totalRoyaltiesPlot} PLOT</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Unclaimed royalties</span>
@@ -131,9 +131,10 @@ export function Dashboard({ token }: { token: string }) {
           </div>
           <div className="border-border border-t pt-1.5 text-xs font-medium">
             <div className="flex justify-between">
-              <span className="text-muted">Net</span>
+              <span className="text-muted">Net costs</span>
               <span className="text-foreground">
-                -{data.pnl.totalCosts} ETH / +{data.pnl.totalRoyalties} PLOT
+                ${data.pnl.totalCostsUsd} USD spent
+                {data.costs.ethUsdPrice > 0 && <span className="text-muted ml-1">(ETH @ ${data.costs.ethUsdPrice.toFixed(0)})</span>}
               </span>
             </div>
           </div>
