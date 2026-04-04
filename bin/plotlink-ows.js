@@ -198,7 +198,7 @@ async function cmdInit() {
   log(`Config: ${CONFIG_FILE}`);
   log("");
   log('Run \x1b[1mnpx plotlink-ows\x1b[0m to start the app.');
-  log("You'll connect your LLM (Anthropic, OpenAI, Gemini) via the Web UI.");
+  log("Then run \x1b[1mclaude\x1b[0m in the terminal to start writing stories.");
   log("");
 
   process.exit(0);

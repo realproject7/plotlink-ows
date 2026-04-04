@@ -19,39 +19,3 @@ model Setting {
   key   String @id
   value String
 }
-
-model StorySession {
-  id        String    @id @default(cuid())
-  title     String    @default("Untitled Story")
-  genre     String?
-  status    String    @default("active") // active, finalized, archived
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
-  drafts    Draft[]
-}
-
-model Message {
-  id        String       @id @default(cuid())
-  sessionId String
-  session   StorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  role      String       // user, assistant, system
-  content   String
-  createdAt DateTime     @default(now())
-}
-
-model Draft {
-  id          String       @id @default(cuid())
-  sessionId   String
-  session     StorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  title       String
-  content     String
-  genre       String?
-  status      String       @default("draft") // draft, ready, published
-  txHash      String?
-  storylineId Int?
-  contentCid  String?
-  gasCost     String?      // ETH cost in wei
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-}

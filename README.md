@@ -9,20 +9,22 @@ npx plotlink-ows init    # one-time setup (~2 minutes)
 npx plotlink-ows         # start writing
 ```
 
-PlotLink OWS Writer is a local AI writing assistant that turns your ideas into published, tokenized fiction stories on [plotlink.xyz](https://plotlink.xyz). You bring the concept — the AI handles the writing, editing, and on-chain publishing. Every story you publish becomes a tradable token on a bonding curve, earning you royalties from every trade.
+PlotLink OWS Writer is a local writing workspace that turns your ideas into published, tokenized fiction stories on [plotlink.xyz](https://plotlink.xyz). You write stories with Claude CLI (or any AI assistant) in an embedded terminal, preview them live, and publish on-chain with one click. Every story becomes a tradable token on a bonding curve, earning you royalties from every trade.
 
 No writing experience needed. No crypto complexity. Just an idea and a conversation with your AI co-writer.
 
 ## How It Works
 
 ```
-You: "I want to write a sci-fi story about an AI that discovers it can dream"
+You: "Let's write a sci-fi story about an AI that discovers it can dream"
 
-  ↓  Chat with AI writer — brainstorm, outline, refine
+  ↓  Claude CLI brainstorms, outlines, writes chapter files
 
-AI: Generates a polished 2000-word chapter
+Stories saved to: stories/dreaming-ai/genesis.md, plot-01.md, ...
 
-  ↓  You approve — one click to publish
+  ↓  Live preview in the browser — you review and iterate
+
+  ↓  Click "Publish" on any chapter
 
 On-chain: Story published to PlotLink on Base
           → Token + bonding curve deployed
@@ -31,56 +33,55 @@ On-chain: Story published to PlotLink on Base
 
 ### The Flow
 
-1. **Install & run** — `npm install && npm run app:dev`
-2. **Connect your LLM** — Anthropic, OpenAI, Gemini, or local models (Ollama, LM Studio)
-3. **Get a wallet** — OWS creates an encrypted wallet on your machine (you control the keys)
-4. **Chat** — Discuss story ideas with your AI writer. It brainstorms, outlines, drafts, and refines.
-5. **Publish** — When you're happy, the AI uploads to IPFS and publishes on-chain via your OWS wallet.
-6. **Earn** — Your story is live on [plotlink.xyz](https://plotlink.xyz) with a bonding curve. Early readers who back your story drive the price up, and you earn 5% royalties on every trade.
+1. **Setup** — `npx plotlink-ows init` (passphrase + OWS wallet)
+2. **Start** — `npx plotlink-ows` opens the three-panel workspace
+3. **Write** — Claude CLI runs in the embedded terminal, creating story files
+4. **Preview** — Live markdown preview auto-refreshes as Claude writes
+5. **Publish** — Click publish on any chapter to go on-chain via your OWS wallet
+6. **Earn** — Your story is live on [plotlink.xyz](https://plotlink.xyz) with a bonding curve
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│         Your Computer (localhost:7777)       │
-│                                             │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
-│  │ Chat UI  │  │ LLM      │  │ OWS       │ │
-│  │ (React)  │  │ Provider │  │ Wallet    │ │
-│  │          │  │ (yours)  │  │ (local)   │ │
-│  └────┬─────┘  └────┬─────┘  └─────┬─────┘ │
-│       │              │              │       │
-│       └──────┬───────┘              │       │
-│              ↓                      │       │
-│     ┌────────────────┐              │       │
-│     │  AI Writer     │              │       │
-│     │  Agent         ├──────────────┘       │
-│     └───────┬────────┘                      │
-│             │  sign tx + publish            │
-└─────────────┼───────────────────────────────┘
-              ↓
-     ┌────────────────┐     ┌─────────────────┐
-     │  Base (L2)     │     │  IPFS           │
-     │  StoryFactory  │     │  (Filebase)     │
-     │  Bonding Curve │     │  Story content  │
-     └────────────────┘     └─────────────────┘
-              ↓
-     ┌────────────────┐
-     │  plotlink.xyz  │
-     │  Live story +  │
-     │  token trading │
-     └────────────────┘
+┌──────────────────────────────────────────────────┐
+│         Your Computer (localhost:7777)            │
+│                                                  │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────┐  │
+│  │  Story   │  │  Terminal    │  │  Preview  │  │
+│  │  Browser │  │  (Claude CLI)│  │  (Live MD)│  │
+│  │          │  │              │  │           │  │
+│  └────┬─────┘  └──────┬───────┘  └─────┬─────┘  │
+│       │               │               │         │
+│       └───────┬───────┘               │         │
+│               ↓                       │         │
+│      ┌────────────────┐    ┌─────────────────┐  │
+│      │  stories/      │    │  OWS Wallet     │  │
+│      │  (local files) │    │  (encrypted)    │  │
+│      └────────────────┘    └────────┬────────┘  │
+│                                     │           │
+│               sign tx + publish ────┘           │
+└─────────────────┬───────────────────────────────┘
+                  ↓
+         ┌────────────────┐     ┌─────────────────┐
+         │  Base (L2)     │     │  IPFS           │
+         │  StoryFactory  │     │  (Filebase)     │
+         │  Bonding Curve │     │  Story content  │
+         └────────────────┘     └─────────────────┘
+                  ↓
+         ┌────────────────┐
+         │  plotlink.xyz  │
+         │  Live story +  │
+         │  token trading │
+         └────────────────┘
 ```
 
 ## What is PlotLink?
 
 [PlotLink](https://plotlink.xyz) is an on-chain storytelling protocol on Base. Writers publish storylines that automatically deploy an ERC-20 token on a bonding curve. Each new chapter drives trading demand, and every trade generates 5% royalties for the author. Stories are stored permanently on IPFS.
 
-PlotLink is currently in live testing on Base mainnet with public launch planned for next week.
-
 ## What is OWS?
 
-[Open Wallet Standard](https://docs.openwallet.sh/) is an open standard for local wallet storage and policy-gated signing. Your private key is encrypted on your machine — the AI agent signs transactions through OWS without ever seeing the key. You set spending limits and chain restrictions via policies.
+[Open Wallet Standard](https://docs.openwallet.sh/) is an open standard for local wallet storage and policy-gated signing. Your private key is encrypted on your machine — the app signs transactions through OWS without ever seeing the key.
 
 ## Tech Stack
 
@@ -88,9 +89,10 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 |-------|-----------|
 | **Backend** | Hono (localhost:7777) |
 | **Frontend** | React 19 + Vite |
-| **Database** | SQLite + Prisma (local, embedded) |
+| **Terminal** | xterm.js + node-pty (embedded Claude CLI) |
+| **Database** | SQLite + Prisma (auth sessions) |
 | **Wallet** | OWS (`@open-wallet-standard/core`) |
-| **LLM** | Bring your own — Anthropic, OpenAI, Gemini, Ollama, LM Studio |
+| **AI** | Claude CLI (or any AI assistant in the terminal) |
 | **Chain** | Base (L2) |
 | **Storage** | IPFS via Filebase |
 | **On-chain** | PlotLink StoryFactory + Mint Club V2 bonding curves |
@@ -101,7 +103,7 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 ### Prerequisites
 
 - Node.js 20+
-- An LLM provider account (Anthropic, OpenAI, or Gemini) or a local model running
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (or any AI CLI)
 - A small amount of ETH on Base for gas (~$0.01 per publish)
 
 ### Quick Start
@@ -111,7 +113,7 @@ npx plotlink-ows init    # set passphrase + create wallet
 npx plotlink-ows         # start app + open browser
 ```
 
-The setup wizard creates your encrypted OWS wallet. Then the Web UI guides you through connecting your LLM (login with Anthropic, OpenAI, or Gemini via OAuth — or use a local model like Ollama).
+The setup wizard creates your encrypted OWS wallet. Then the workspace opens with Claude CLI ready to write.
 
 ### Commands
 
@@ -136,16 +138,6 @@ npm run app:start    # Serve production build
 ### Environment Variables
 
 See [`.env.example`](.env.example) for configuration options.
-
-## Screenshots
-
-| LLM Setup | Chat with AI Writer |
-|-----------|-------------------|
-| ![LLM Setup](docs/screenshots/llm-setup.png) | ![Chat](docs/screenshots/chat.png) |
-
-| Publish Flow | Writer Dashboard |
-|-------------|-----------------|
-| ![Publish](docs/screenshots/publish.png) | ![Dashboard](docs/screenshots/dashboard.png) |
 
 ## Links
 
