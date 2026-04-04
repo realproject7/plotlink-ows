@@ -145,9 +145,9 @@ export async function getEthBalance(address: string): Promise<bigint> {
 }
 
 /**
- * Wait for transaction confirmation and decode storylineId from event.
+ * Wait for tx confirmation and compute gas cost.
  */
-async function waitForConfirmation(txHash: string): Promise<{ storylineId: number; gasCost: string }> {
+async function waitForReceipt(txHash: string) {
   const receipt = await publicClient.waitForTransactionReceipt({
     hash: txHash as `0x${string}`,
   });
@@ -158,8 +158,6 @@ async function waitForConfirmation(txHash: string): Promise<{ storylineId: numbe
 
   // Compute actual total cost: gasUsed * effectiveGasPrice + tx value (creation fee)
   const gasOnly = receipt.gasUsed * receipt.effectiveGasPrice;
-  const txValue = receipt.logs.length > 0 ? BigInt(0) : BigInt(0); // value is in the tx itself
-  // Include creation fee from tx value — read from the original transaction
   let creationFeeUsed = BigInt(0);
   try {
     const tx = await publicClient.getTransaction({ hash: txHash as `0x${string}` });
@@ -167,7 +165,15 @@ async function waitForConfirmation(txHash: string): Promise<{ storylineId: numbe
   } catch { /* best effort */ }
   const gasCost = (gasOnly + creationFeeUsed).toString();
 
-  // Decode StorylineCreated event to get storylineId
+  return { receipt, gasCost };
+}
+
+/**
+ * Wait for storyline creation confirmation — decodes StorylineCreated event.
+ */
+async function waitForStorylineConfirmation(txHash: string): Promise<{ storylineId: number; gasCost: string }> {
+  const { receipt, gasCost } = await waitForReceipt(txHash);
+
   for (const log of receipt.logs) {
     try {
       const decoded = decodeEventLog({
@@ -181,6 +187,28 @@ async function waitForConfirmation(txHash: string): Promise<{ storylineId: numbe
     } catch { /* not our event */ }
   }
   throw new Error("Transaction succeeded but StorylineCreated event not found");
+}
+
+/**
+ * Wait for plot chain confirmation — decodes PlotChained event.
+ */
+async function waitForPlotConfirmation(txHash: string): Promise<{ plotIndex: number; gasCost: string }> {
+  const { receipt, gasCost } = await waitForReceipt(txHash);
+
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: storyFactoryAbi,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName === "PlotChained") {
+        return { plotIndex: Number((decoded.args as { plotIndex: bigint }).plotIndex), gasCost };
+      }
+    } catch { /* not our event */ }
+  }
+  // If we can't find PlotChained but receipt succeeded, still return (best effort)
+  return { plotIndex: -1, gasCost };
 }
 
 /**
@@ -227,7 +255,7 @@ export async function publishStoryline(
 
   // Step 5: Wait for confirmation and decode storylineId
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
-  const confirmation = await waitForConfirmation(txHash);
+  const confirmation = await waitForStorylineConfirmation(txHash);
 
   onProgress({
     step: "done",
@@ -289,9 +317,9 @@ export async function publishPlot(
     args: [BigInt(storylineId), title, contentCid, contentHash],
   });
 
-  // Step 5: Wait for confirmation
+  // Step 5: Wait for plot confirmation
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
-  const confirmation = await waitForConfirmation(txHash);
+  const confirmation = await waitForPlotConfirmation(txHash);
 
   onProgress({
     step: "done",
