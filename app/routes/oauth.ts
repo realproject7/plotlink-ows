@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -53,12 +53,16 @@ oauth.get("/:provider/start", (c) => {
 
   pendingFlows.set(state, { provider, codeVerifier, status: "pending" });
 
+  // Compute S256 code_challenge from verifier
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+
   // Build authorization URL with PKCE
   const params = new URLSearchParams({
     client_id: config.clientId,
     response_type: "code",
     redirect_uri: "http://localhost:7777/api/oauth/callback",
     state,
+    code_challenge: codeChallenge,
     code_challenge_method: "S256",
     scope: "api",
   });

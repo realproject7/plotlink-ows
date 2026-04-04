@@ -11,11 +11,24 @@ const config = new Hono();
 
 /** Provider catalog with metadata */
 const PROVIDERS = [
-  { id: "anthropic", name: "Anthropic", envKey: "ANTHROPIC_API_KEY", models: ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"], tag: "recommended" },
-  { id: "openai", name: "OpenAI", envKey: "OPENAI_API_KEY", models: ["gpt-4.1", "gpt-4.1-mini", "o3-mini"], tag: null },
-  { id: "gemini", name: "Google Gemini", envKey: "GEMINI_API_KEY", models: ["gemini-2.5-flash", "gemini-2.5-pro"], tag: null },
-  { id: "local", name: "Local (Ollama/LM Studio)", envKey: null, models: [], tag: "free" },
+  { id: "anthropic", name: "Anthropic", envKeys: ["ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN"], models: ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"], tag: "recommended" },
+  { id: "openai", name: "OpenAI", envKeys: ["OPENAI_API_KEY", "OPENAI_OAUTH_TOKEN"], models: ["gpt-4.1", "gpt-4.1-mini", "o3-mini"], tag: null },
+  { id: "gemini", name: "Google Gemini", envKeys: ["GEMINI_API_KEY"], models: ["gemini-2.5-flash", "gemini-2.5-pro"], tag: null },
+  { id: "local", name: "Local (Ollama/LM Studio)", envKeys: [], models: [], tag: "free" },
 ];
+
+/** Check if any env key for a provider is set */
+function isProviderConfigured(p: typeof PROVIDERS[number]): boolean {
+  return p.envKeys.some((k) => !!process.env[k]);
+}
+
+/** Get the active credential for a provider */
+function getProviderCredential(p: typeof PROVIDERS[number]): string | null {
+  for (const k of p.envKeys) {
+    if (process.env[k]) return process.env[k]!;
+  }
+  return null;
+}
 
 function readConfig(): Record<string, unknown> {
   try {
@@ -53,7 +66,7 @@ config.get("/llm", (c) => {
   // Check which providers are configured
   const configured = PROVIDERS.filter((p) => {
     if (p.id === "local") return !!(llm as Record<string, unknown>).local;
-    return !!process.env[p.envKey!];
+    return isProviderConfigured(p);
   }).map((p) => p.id);
 
   return c.json({ llm, configured });
@@ -61,15 +74,10 @@ config.get("/llm", (c) => {
 
 /** GET /api/config/llm/providers — provider catalog */
 config.get("/llm/providers", (c) => {
-  const configured = PROVIDERS.filter((p) => {
-    if (p.id === "local") return false;
-    return !!process.env[p.envKey!];
-  }).map((p) => p.id);
-
   return c.json(
     PROVIDERS.map((p) => ({
       ...p,
-      configured: configured.includes(p.id),
+      configured: isProviderConfigured(p),
     })),
   );
 });
@@ -91,9 +99,9 @@ config.post("/llm", async (c) => {
   const provider = PROVIDERS.find((p) => p.id === body.provider);
   if (!provider) return c.json({ error: "Unknown provider" }, 400);
 
-  // Save API key to .env if provided
-  if (body.apiKey && provider.envKey) {
-    writeEnvVar(provider.envKey, body.apiKey);
+  // Save API key to .env if provided (use first envKey as the primary)
+  if (body.apiKey && provider.envKeys.length > 0) {
+    writeEnvVar(provider.envKeys[0], body.apiKey);
   }
 
   // Build config
@@ -107,8 +115,10 @@ config.post("/llm", async (c) => {
       model: body.model,
     };
   } else {
+    // Find which env key is active (API key or OAuth token)
+    const activeEnvKey = provider.envKeys.find((k) => !!process.env[k]) || provider.envKeys[0];
     llmConfig[body.provider] = {
-      apiKey: provider.envKey ? `env:${provider.envKey}` : undefined,
+      apiKey: activeEnvKey ? `env:${activeEnvKey}` : undefined,
       model: body.model,
     };
   }
@@ -141,7 +151,7 @@ config.post("/llm/test", async (c) => {
 
     // For cloud providers, do a minimal test
     const provider = PROVIDERS.find((p) => p.id === body.provider);
-    const apiKey = body.apiKey || (provider?.envKey ? process.env[provider.envKey] : null);
+    const apiKey = body.apiKey || (provider ? getProviderCredential(provider) : null);
 
     if (!apiKey) {
       return c.json({ success: false, message: "No API key configured" }, 400);

@@ -87,11 +87,17 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             onComplete={async () => {
               // Auto-create wallet on first setup
               try {
-                await fetch(`${API_BASE}/api/wallet/create`, {
+                const res = await fetch(`${API_BASE}/api/wallet/create`, {
                   method: "POST",
                   headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
                 });
-              } catch { /* wallet creation is best-effort */ }
+                if (!res.ok) {
+                  const data = await res.json();
+                  console.warn("Wallet creation failed:", data.error);
+                }
+              } catch (err) {
+                console.warn("Wallet creation failed:", err);
+              }
               setLlmConfigured(true);
               setPage("home");
             }}
