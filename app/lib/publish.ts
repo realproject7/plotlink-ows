@@ -121,8 +121,16 @@ async function waitForConfirmation(txHash: string): Promise<{ storylineId: numbe
     throw new Error("Transaction reverted on-chain");
   }
 
-  // Compute actual gas cost: gasUsed * effectiveGasPrice
-  const gasCost = (receipt.gasUsed * receipt.effectiveGasPrice).toString();
+  // Compute actual total cost: gasUsed * effectiveGasPrice + tx value (creation fee)
+  const gasOnly = receipt.gasUsed * receipt.effectiveGasPrice;
+  const txValue = receipt.logs.length > 0 ? BigInt(0) : BigInt(0); // value is in the tx itself
+  // Include creation fee from tx value — read from the original transaction
+  let creationFeeUsed = BigInt(0);
+  try {
+    const tx = await publicClient.getTransaction({ hash: txHash as `0x${string}` });
+    creationFeeUsed = tx.value;
+  } catch { /* best effort */ }
+  const gasCost = (gasOnly + creationFeeUsed).toString();
 
   // Decode StorylineCreated event to get storylineId
   for (const log of receipt.logs) {
