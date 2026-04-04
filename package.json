@@ -7,7 +7,10 @@
   "files": [
     "bin/",
     "app/",
-    "packages/"
+    "lib/ows/",
+    "packages/",
+    "public/",
+    "scripts/"
   ],
   "workspaces": [
     "packages/*"

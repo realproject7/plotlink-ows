@@ -87,7 +87,7 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 | **Chain** | Base (L2) |
 | **Storage** | IPFS via Filebase |
 | **On-chain** | PlotLink StoryFactory + Mint Club V2 bonding curves |
-| **Design** | PlotLink Moleskine aesthetic — dark, monospace, literary |
+| **Design** | PlotLink Moleskine aesthetic — warm cream, serif headings, literary |
 
 ## Getting Started
 

@@ -145,8 +145,8 @@ async function cmdInit() {
     rl.close();
     process.exit(1);
   }
-  if (passphrase.length < 4) {
-    error("Passphrase must be at least 4 characters.");
+  if (passphrase.length < 8) {
+    error("Passphrase must be at least 8 characters.");
     rl.close();
     process.exit(1);
   }
