@@ -152,28 +152,130 @@
 
 ---
 
-## Tonight's Queue — Batch 62: Storyline Page Polish + Deadline Enforcement
+## Completed — Batch 62
 
-### 1. plotlink#802 — Storyline page: 3-col stats boxes like profile page, beside Moleskine on desktop
-- Redesign Market Cap, Supply Minted, Deadline as bordered stat boxes matching profile page style
-- Desktop: place in the header area next to the Moleskine cover
-- Mobile: full-width row below header
-- Branch: `task/802-storyline-stats-boxes`
+- Batch 62: Stats boxes #805, Mobile left-align #806, Deadline enforcement #807
 
-### 2. plotlink#803 — Storyline page: left-align title and info on mobile
-- Mobile: title, rating, Writer/Plots/Genre rows should be left-aligned, not centered
-- Moleskine cover can stay centered
-- Desktop: no changes (already left-aligned)
-- Branch: `task/803-storyline-mobile-left-align`
+---
 
-### 3. plotlink#804 — Block new plot creation when deadline is expired
-- `sunset` flag is never set to `true` by app code — button stays clickable after countdown expires
-- Front-end: disable "+ Add a new Plot" button (visible but `opacity-50 pointer-events-none`) when `last_plot_time + 168h < now`
-- Create page: show expired storylines in dropdown but disabled with "(expired)" label
-- API: add deadline validation in `src/app/api/index/plot/route.ts`
-- Optional: cron/trigger to set `sunset=true` for expired storylines
-- Contract already enforces (`chainPlot()` reverts), this is UX + defense-in-depth
-- Branch: `task/804-deadline-enforcement`
+## Completed — Batch 63
+
+- Batch 63: Deadline has_deadline fix #810, DeadlineCountdown style fix #811
+
+---
+
+## Completed — Batch 64
+
+- Batch 64: Hide countdown #814, 3-zone header redesign #815
+
+---
+
+## Completed — Batch 65
+
+- Batch 65: Hide countdown #814 (via #812), Unified header #817 (via #816)
+
+---
+
+## Completed — Batch 66
+
+- Batch 66: Stats next to cover #819 (via #818)
+
+---
+
+## Completed — Batch 67
+
+- Batch 67: Mobile restore + spacing #821 (via #820)
+
+---
+
+## Completed — Batch 68
+
+- Batch 68: Header single-render #822, Cover width mobile #823, Writer active badge #824
+
+---
+
+## Tonight's Queue — Batch 69: OWS Local Writer App
+
+> ⚠️ ALL WORK HAPPENS IN `realproject7/plotlink-ows` (public repo).
+> Code already mirrored. T3 clones plotlink-ows, not plotlink.
+>
+> **Architecture pivot**: This is now a LOCAL-FIRST app (Hono + React + Vite) that runs
+> on the user's PC. Users bring their own LLM, get an OWS wallet, and collaborate with
+> an AI writer agent to publish fiction stories on plotlink.xyz.
+>
+> **Reference repos** (read, don't modify):
+> - `claw-on-chain` — LLM OAuth/API key setup, OWS wallet, Hono+React+Vite architecture
+> - `quadwork` — local web UI patterns
+>
+> OWS docs: https://docs.openwallet.sh/
+> OWS SDK: `@open-wallet-standard/core` (already installed from Phase 1)
+> PlotLink CLI SDK: `packages/cli/src/sdk/` (existing — reuse for on-chain publishing)
+
+### OPERATOR GATE (T1 — before assigning)
+- ✅ Code mirrored to plotlink-ows (done)
+- ✅ Phase 1 merged (PR #9 — OWS SDK + wrappers)
+- ⚠️ Verify: T3 can clone and `npm install` on plotlink-ows
+- ⚠️ Verify: plotlink-ows branch protection enabled (require PR reviews)
+- After verification, assign ticket #1 below to @t3
+
+### 1. plotlink-ows#10 — Local App Scaffold (Hono + React + Vite)
+- Create `app/` directory (separate from existing Next.js webapp)
+- Hono backend on localhost:3333 + WebSocket support
+- React 19 + Vite frontend with PlotLink Moleskine design (dark #0a0a0a, Geist Mono, green #00ff88)
+- SQLite + Prisma for local storage
+- Passphrase onboarding (first run → set passphrase → stored in .env)
+- Auth: passphrase → HMAC token (same pattern as claw-on-chain)
+- Scripts: `npm run app:dev`, `npm run app:build`, `npm run app:start`
+- **Cleanup**: remove `supabase/migrations/00032_*`, remove `AgentWallet` type, fix `lib/ows/index.ts` bad export
+- Keep existing Next.js app working (`npm run dev`)
+- **Repo**: `realproject7/plotlink-ows`
+- **Branch**: `task/10-local-app-scaffold`
+- **PR closes**: `Fixes #10`
+
+### 2. plotlink-ows#11 — LLM Setup + OWS Wallet UI
+- LLM setup wizard: Provider → Auth (OAuth or API key) → Model → Test connection
+- OAuth flow via `pi-ai` library (copy from claw-on-chain: `src/app/routes/llm-setup.ts`, `src/llm/adapter-piai.ts`)
+- API key input fallback (paste sk-...)
+- Local model support (Ollama localhost:11434, LM Studio localhost:1234/v1)
+- Config saved to `agent.config.json`
+- OWS wallet creation on first setup (using passphrase)
+- Wallet status card: address, USDC balance on Base, fund instructions
+- Settings page: change LLM provider, view wallet, update spending cap
+- **Repo**: `realproject7/plotlink-ows`
+- **Branch**: `task/11-llm-wallet-setup`
+- **PR closes**: `Fixes #11`
+
+### 3. plotlink-ows#12 — Chat UI + AI Writer Agent
+- Full-screen chat panel with PlotLink Moleskine aesthetic
+- WebSocket streaming (`/ws/chat`) with token-by-token response
+- Multi-provider LLM adapter layer (Anthropic/OpenAI/Gemini/local)
+- AI writer system prompt: collaborative fiction writer that brainstorms → outlines → drafts → refines
+- Session management in SQLite (sessions, messages, drafts tables)
+- Story preview panel alongside chat
+- Draft finalization: user approves → story saved as draft ready for publish
+- **Repo**: `realproject7/plotlink-ows`
+- **Branch**: `task/12-chat-ai-writer`
+- **PR closes**: `Fixes #12`
+
+### 4. plotlink-ows#13 — PlotLink Publish via OWS
+- Reuse existing PlotLink CLI SDK (`packages/cli/src/sdk/`) for on-chain publishing
+- Publish flow: IPFS upload (Filebase) → build tx → OWS sign → broadcast to Base
+- Viem-compatible account adapter from OWS wallet (same pattern as claw-on-chain `wallet/manager.ts`)
+- Publish UI: preview → balance check → gas estimate → confirm → progress → success with plotlink.xyz link
+- Track costs per story in SQLite
+- **Repo**: `realproject7/plotlink-ows`
+- **Branch**: `task/13-plotlink-publish`
+- **PR closes**: `Fixes #13`
+
+### 5. plotlink-ows#14 — Writer Dashboard + Submission
+- Dashboard: published stories list, cost per story, royalties, P&L
+- Wallet overview: address, USDC balance, ETH balance
+- Draft management (view, delete, retry failed publishes)
+- Update README.md for hackathon: setup instructions, screenshots, architecture diagram
+- Cleanup: .gitignore covers .env*, .ows/, SQLite files; verify no secrets
+- **Repo**: `realproject7/plotlink-ows`
+- **Branch**: `task/14-dashboard-submission`
+- **PR closes**: `Fixes #14`
 
 ---
 
