@@ -1,0 +1,53 @@
+{
+  "name": "plotlink",
+  "version": "0.1.13",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1009.0",
+    "@farcaster/miniapp-node": "^0.1.13",
+    "@farcaster/miniapp-sdk": "^0.3.0",
+    "@farcaster/miniapp-wagmi-connector": "^2.0.0",
+    "@rainbow-me/rainbowkit": "^2.2.10",
+    "@supabase/supabase-js": "^2.99.1",
+    "@tanstack/react-query": "^5.90.21",
+    "@vercel/analytics": "^2.0.1",
+    "next": "16.1.6",
+    "ox": "^0.14.8",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "viem": "^2.47.2",
+    "wagmi": "^2.19.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "jsdom": "^27.0.1",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  }
+}

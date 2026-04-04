@@ -1,0 +1,81 @@
+# [#476] Production deploy to Vercel via GitHub Actions
+#
+# Triggers on push to main (i.e. merged PRs) or manual dispatch.
+# Uses repository secrets instead of builder identities.
+#
+# Required GitHub repo secrets:
+#   VERCEL_TOKEN      — Vercel personal access token (Settings > Tokens)
+#   VERCEL_ORG_ID     — from .vercel/project.json or Vercel dashboard
+#   VERCEL_PROJECT_ID — from .vercel/project.json or Vercel dashboard
+#
+# Vercel-side configuration required:
+#   Settings > Git > Ignored Build Step: set command to `exit 0`
+#   This prevents Vercel's Git integration from running its own builds
+#   while preserving cron jobs, domains, and other integration features.
+#   If this is not set, both Vercel and Actions will attempt to build on push.
+
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.repository == 'realproject7/plotlink'
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Summary
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo "### Production Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deployed to: $DEPLOY_URL" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`$(echo $GITHUB_SHA | cut -c1-7)\`" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,29 @@
+name: Update Visual Snapshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-snapshots:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_CHAIN_ID: "8453"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Generate snapshots
+        run: npx playwright test e2e/visual-regression.spec.ts --update-snapshots
+      - name: Upload snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots-linux
+          path: e2e/__snapshots__/
+          retention-days: 30

@@ -1,0 +1,287 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #E8DFD0;
+  --bg-surface: #F0EBE1;
+  --bg-shelf: #DDD3C2;
+  --shelf-shadow: rgba(44, 24, 16, 0.08);
+  --text: #2C1810;
+  --text-muted: #8B7355;
+  --accent: #8B4513;
+  --accent-dim: #6B3410;
+  --border: #D4C5B0;
+  --error: #CC3333;
+  --paper-line: hsl(234, 25%, 93%);
+  --paper-margin: hsl(350, 35%, 93%);
+  --paper-bg: #F5F0E8;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-surface: var(--bg-surface);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-border: var(--border);
+  --color-error: var(--error);
+  /* Two-font system: Inter (default), Lora for headlines + prose only
+     REVERT POINT: git revert to 71b4ed8 to restore Lora-default system */
+  --font-heading: var(--font-lora), "Lora", Georgia, "Times New Roman", serif;
+  --font-body: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  --font-ui: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  --font-prose: var(--font-lora), "Lora", Georgia, "Times New Roman", serif;
+  --default-font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  --default-font-feature-settings: normal;
+  --default-font-variation-settings: normal;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* Headlines: Lora (serif) */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-lora), "Lora", Georgia, "Times New Roman", serif;
+}
+
+/* Prose/story content: Lora (serif) — apply to story text areas */
+.font-serif, .prose {
+  font-family: var(--font-lora), "Lora", Georgia, "Times New Roman", serif;
+}
+
+/* Monospace elements: addresses, code blocks, contract data */
+code, pre, .font-mono {
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+}
+
+/* Selection */
+::selection {
+  background: var(--accent);
+  color: var(--bg-surface);
+}
+
+/* Ruled notebook paper — story content uses Lora */
+.ruled-paper {
+  --line-height: 28px;
+  background: var(--paper-bg);
+  padding: calc(var(--line-height) * 2) 2rem var(--line-height) 4.5rem;
+  font-size: 1rem;
+  line-height: var(--line-height);
+  color: var(--text);
+  font-family: var(--font-lora), "Lora", Georgia, "Times New Roman", serif;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent, transparent 3.5rem,
+      var(--paper-margin) 3.5rem,
+      var(--paper-margin) calc(3.5rem + 2px),
+      transparent calc(3.5rem + 2px)
+    ),
+    repeating-linear-gradient(
+      transparent,
+      transparent calc(var(--line-height) - 1px),
+      var(--paper-line) calc(var(--line-height) - 1px),
+      var(--paper-line) var(--line-height)
+    );
+  background-position-y: calc(var(--line-height) * 2);
+  box-shadow: 0 0 0.75rem rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+
+@media (max-width: 640px) {
+  .ruled-paper {
+    padding: calc(var(--line-height) * 2) 1rem var(--line-height) 2.5rem;
+    background-image:
+      linear-gradient(
+        90deg,
+        transparent, transparent 1.75rem,
+        var(--paper-margin) 1.75rem,
+        var(--paper-margin) calc(1.75rem + 2px),
+        transparent calc(1.75rem + 2px)
+      ),
+      repeating-linear-gradient(
+        transparent,
+        transparent calc(var(--line-height) - 1px),
+        var(--paper-line) calc(var(--line-height) - 1px),
+        var(--paper-line) var(--line-height)
+      );
+    background-position-y: calc(var(--line-height) * 2);
+  }
+}
+
+/* Markdown rendering inside ruled paper — fiction-focused prose.
+   All vertical spacing must be multiples of var(--line-height) (28px)
+   to stay aligned with the ruled-paper grid lines. */
+.story-markdown {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.story-markdown h1 {
+  font-size: 1.5rem;
+  line-height: calc(var(--line-height) * 2);
+  font-weight: 700;
+  margin: var(--line-height) 0 var(--line-height);
+}
+.story-markdown h2 {
+  font-size: 1.25rem;
+  line-height: calc(var(--line-height) * 2);
+  font-weight: 700;
+  margin: var(--line-height) 0 0;
+}
+.story-markdown h3 {
+  font-size: 1.1rem;
+  line-height: var(--line-height);
+  font-weight: 600;
+  margin: var(--line-height) 0 0;
+}
+.story-markdown p {
+  margin: 0 0 var(--line-height);
+}
+.story-markdown blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+  margin: var(--line-height) 0;
+  font-style: italic;
+  color: var(--text-muted);
+}
+.story-markdown hr {
+  border: none;
+  text-align: center;
+  margin: var(--line-height) 0;
+  line-height: var(--line-height);
+}
+.story-markdown hr::after {
+  content: "* * *";
+  color: var(--text-muted);
+  letter-spacing: 0.5em;
+  font-size: 0.875rem;
+}
+.story-markdown ul,
+.story-markdown ol {
+  margin: 0 0 var(--line-height) 1.5em;
+}
+.story-markdown li {
+  margin-bottom: 0;
+}
+.story-markdown strong {
+  font-weight: 700;
+}
+.story-markdown em {
+  font-style: italic;
+}
+.story-markdown del {
+  text-decoration: line-through;
+}
+.story-markdown code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+}
+
+/* Moleskine notebook cards */
+.moleskine-notebook {
+  position: relative;
+  transition: transform 0.4s ease-in-out;
+  perspective: 800px;
+}
+
+.notebook-cover {
+  transition: transform 0.5s linear, box-shadow 0.5s linear;
+  transform-style: preserve-3d;
+  transform-origin: left center 0px;
+}
+
+@media (hover: hover) {
+  .moleskine-notebook:hover {
+    transform: rotateZ(-10deg);
+  }
+  .moleskine-notebook:hover .notebook-cover {
+    transform: rotateY(-50deg);
+    z-index: 999;
+    box-shadow: 20px 10px 50px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Prevent iOS Safari auto-zoom on input focus (triggers at font-size < 16px) */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Reading Mode — two-phase book page turn */
+.page-flip-container {
+  perspective: 1500px;
+}
+
+.page-flip-stack {
+  position: relative;
+  min-height: 100%;
+}
+
+.page-flip-page {
+  position: relative;
+  will-change: transform, opacity;
+}
+
+/* Outgoing page stacks on top and flips away */
+.page-outgoing {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* Incoming page: subtle fade-in from underneath */
+.page-incoming {
+  animation: page-reveal 500ms ease-out;
+}
+
+@keyframes page-reveal {
+  0%   { opacity: 0.4; }
+  60%  { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+/* Next: outgoing page flips from right edge (like turning a book page forward) */
+@keyframes flip-out-forward {
+  0%   { transform: rotateY(0deg); box-shadow: -4px 0 16px rgba(0,0,0,0.1); }
+  40%  { box-shadow: -10px 0 30px rgba(0,0,0,0.2); }
+  100% { transform: rotateY(-120deg); box-shadow: none; }
+}
+
+/* Prev: outgoing page flips from left edge (like turning a book page backward) */
+@keyframes flip-out-backward {
+  0%   { transform: rotateY(0deg); box-shadow: 4px 0 16px rgba(0,0,0,0.1); }
+  40%  { box-shadow: 10px 0 30px rgba(0,0,0,0.2); }
+  100% { transform: rotateY(120deg); box-shadow: none; }
+}
+
+.page-flip-out-left {
+  transform-origin: left center;
+  animation: flip-out-forward 500ms ease-in forwards;
+}
+
+.page-flip-out-right {
+  transform-origin: right center;
+  animation: flip-out-backward 500ms ease-in forwards;
+}
+
+/* Custom select dropdown styling */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B7355' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}

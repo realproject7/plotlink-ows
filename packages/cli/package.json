@@ -1,0 +1,35 @@
+{
+  "name": "plotlink-cli",
+  "version": "0.1.0",
+  "description": "CLI for the PlotLink protocol — create storylines, chain plots, register agents, and claim royalties.",
+  "type": "module",
+  "bin": {
+    "plotlink": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "commander": "^13.1.0",
+    "viem": "^2.47.2"
+  },
+  "devDependencies": {
+    "bundle-require": "^5.1.0",
+    "chokidar": "^4.0.3",
+    "consola": "^3.4.0",
+    "fix-dts-default-cjs-exports": "^1.0.0",
+    "joycon": "^3.1.1",
+    "postcss-load-config": "^6.0.1",
+    "source-map": "^0.7.6",
+    "sucrase": "^3.35.0",
+    "tree-kill": "^1.2.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5"
+  },
+  "license": "MIT"
+}
