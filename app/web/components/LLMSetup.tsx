@@ -162,40 +162,6 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
             </div>
           ) : (
             <div className="space-y-4">
-              {/* OAuth option */}
-              {(selected === "anthropic" || selected === "openai") && (
-                <div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await authFetch(`${API_BASE}/api/oauth/${selected}/start`);
-                        const data = await res.json();
-                        if (data.authUrl) {
-                          window.open(data.authUrl, "oauth", "width=600,height=700");
-                          // Poll for completion
-                          const poll = setInterval(async () => {
-                            const status = await authFetch(`${API_BASE}/api/oauth/${selected}/status`).then((r) => r.json());
-                            if (status.complete) {
-                              clearInterval(poll);
-                              setStep("model");
-                            }
-                          }, 1500);
-                          setTimeout(() => clearInterval(poll), 120000);
-                        }
-                      } catch { /* ignore */ }
-                    }}
-                    className="border-accent text-accent hover:bg-accent/10 w-full rounded border px-4 py-2 text-sm font-medium transition-colors"
-                  >
-                    connect with OAuth (recommended)
-                  </button>
-                  <div className="text-muted my-3 flex items-center gap-2 text-[10px]">
-                    <div className="border-border flex-1 border-t" />
-                    <span>or use API key</span>
-                    <div className="border-border flex-1 border-t" />
-                  </div>
-                </div>
-              )}
-
               {/* API key input */}
               <div>
                 <label className="text-muted mb-1.5 block text-xs uppercase tracking-wider">API Key</label>
@@ -206,9 +172,11 @@ export function LLMSetup({ token, onComplete }: { token: string; onComplete: () 
                   placeholder={`paste your ${selectedProvider.name} API key`}
                   className="bg-surface border-border text-foreground w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
                 />
-                {selectedProvider.configured && (
-                  <p className="text-muted mt-1.5 text-[10px]">key already saved — leave blank to keep current</p>
-                )}
+                <p className="text-muted mt-1.5 text-[10px]">
+                  {selectedProvider.configured
+                    ? "key already saved — leave blank to keep current"
+                    : `get your API key from ${selected === "anthropic" ? "console.anthropic.com" : selected === "openai" ? "platform.openai.com" : "aistudio.google.com"}`}
+                </p>
               </div>
             </div>
           )}
