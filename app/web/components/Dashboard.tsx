@@ -17,6 +17,7 @@ interface Story {
   txHash?: string | null;
   storylineId?: number | null;
   gasCostEth?: string | null;
+  gasCostUsd?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -25,7 +26,7 @@ interface DashboardData {
   wallet: WalletInfo | null;
   costs: { totalGasCostEth: string; totalCostUsd: string; ethUsdPrice: number; storiesPublished: number };
   royalties: { earned: string; claimed: string; unclaimed: string; token: string };
-  pnl: { totalCostsEth: string; totalCostsUsd: string; totalRoyaltiesPlot: string };
+  pnl: { totalCostsEth: string; totalCostsUsd: string; totalRoyaltiesPlot: string; totalRoyaltiesUsd: string; netPnlUsd: string; plotUsdPrice: string };
   stories: {
     published: Story[];
     drafts: Story[];
@@ -129,14 +130,11 @@ export function Dashboard({ token }: { token: string }) {
             <span className="text-muted">Unclaimed royalties</span>
             <span className="text-foreground">{data.royalties.unclaimed} PLOT</span>
           </div>
-          <div className="border-border border-t pt-1.5 text-xs font-medium">
-            <div className="flex justify-between">
-              <span className="text-muted">Net costs</span>
-              <span className="text-foreground">
-                ${data.pnl.totalCostsUsd} USD spent
-                {data.costs.ethUsdPrice > 0 && <span className="text-muted ml-1">(ETH @ ${data.costs.ethUsdPrice.toFixed(0)})</span>}
-              </span>
-            </div>
+          <div className="border-border flex justify-between border-t pt-1.5 text-xs font-medium">
+            <span className="text-muted">Net P&L (USD)</span>
+            <span className={parseFloat(data.pnl.netPnlUsd) >= 0 ? "text-green-700" : "text-error"}>
+              {parseFloat(data.pnl.netPnlUsd) >= 0 ? "+" : ""}${data.pnl.netPnlUsd}
+            </span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted">Stories published</span>
@@ -182,7 +180,7 @@ export function Dashboard({ token }: { token: string }) {
                       tx:{story.txHash.slice(0, 10)}...
                     </a>
                   )}
-                  {story.gasCostEth && <span className="text-muted">{story.gasCostEth} ETH</span>}
+                  {story.gasCostEth && <span className="text-muted">{story.gasCostEth} ETH{story.gasCostUsd ? ` (~$${story.gasCostUsd})` : ""}</span>}
                 </div>
               </div>
             ))}

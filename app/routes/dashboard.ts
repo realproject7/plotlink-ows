@@ -99,8 +99,24 @@ dashboard.get("/", async (c) => {
   } catch { /* price fetch best-effort */ }
 
   const totalCostUsd = parseFloat(totalGasCostEth) * ethUsdPrice;
-  // Note: royalties are in PLOT (different token), so net P&L in USD requires PLOT/USD price
-  // For now, show costs in USD and royalties in PLOT separately
+
+  // Estimate PLOT/USD: use bonding curve price if available, otherwise ~0
+  // For net P&L in a common unit (USD)
+  let plotUsdPrice = 0;
+  try {
+    // Read current PLOT price from bonding curve (priceForNextMint returns price in reserve token)
+    const priceInReserve = await publicClient.readContract({
+      address: MCV2_BOND,
+      abi: mcv2BondAbi,
+      functionName: "priceForNextMint",
+      args: [RESERVE_TOKEN],
+    }) as bigint;
+    // PLOT price in ETH terms (reserve is PLOT token, so approximate)
+    plotUsdPrice = (Number(priceInReserve) / 1e18) * ethUsdPrice;
+  } catch { /* price estimation best-effort */ }
+
+  const totalRoyaltiesUsd = parseFloat(royaltiesEarned) * plotUsdPrice;
+  const netPnlUsd = totalRoyaltiesUsd - totalCostUsd;
 
   // Session stats
   const sessions = await db.storySession.findMany({
@@ -120,6 +136,7 @@ dashboard.get("/", async (c) => {
         contentCid: d.contentCid,
         gasCost: d.gasCost,
         gasCostEth: d.gasCost ? (Number(BigInt(d.gasCost)) / 1e18).toFixed(6) : null,
+        gasCostUsd: d.gasCost && ethUsdPrice ? ((Number(BigInt(d.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       })),
@@ -151,6 +168,9 @@ dashboard.get("/", async (c) => {
       totalCostsEth: totalGasCostEth,
       totalCostsUsd: totalCostUsd.toFixed(2),
       totalRoyaltiesPlot: royaltiesEarned,
+      totalRoyaltiesUsd: totalRoyaltiesUsd.toFixed(2),
+      netPnlUsd: netPnlUsd.toFixed(2),
+      plotUsdPrice: plotUsdPrice.toFixed(4),
     },
     sessions: {
       total: sessions.length,
