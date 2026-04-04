@@ -32,7 +32,9 @@ app.route("/api/auth", authRoutes);
 // Protected routes
 app.use("/api/config/*", requireAuth);
 app.use("/api/wallet/*", requireAuth);
-app.use("/api/oauth/*", requireAuth);
+// OAuth: protect start/status but NOT callback (provider redirects without auth)
+app.use("/api/oauth/:provider/start", requireAuth);
+app.use("/api/oauth/:provider/status", requireAuth);
 app.route("/api/config", configRoutes);
 app.route("/api/wallet", walletRoutes);
 app.route("/api/oauth", oauthRoutes);

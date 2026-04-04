@@ -90,6 +90,7 @@ config.post("/llm", async (c) => {
     apiKey?: string;
     baseUrl?: string;
     apiType?: string;
+    spendCap?: number;
   }>();
 
   if (!body.provider || !body.model) {
@@ -127,6 +128,12 @@ config.post("/llm", async (c) => {
   llmConfig.activeModel = body.model;
 
   cfg.llm = llmConfig;
+
+  // Persist spending cap if provided
+  if (body.spendCap !== undefined) {
+    (cfg as Record<string, unknown>).spendCap = body.spendCap;
+  }
+
   writeConfig(cfg);
 
   return c.json({ success: true });
