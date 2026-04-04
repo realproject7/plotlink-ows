@@ -3,7 +3,7 @@ import { WalletCard } from "./WalletCard";
 
 const API_BASE = "http://localhost:7777";
 
-export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLogout: () => void; onChangeLLM: () => void }) {
+export function Settings({ token, onLogout, onChangeLLM }: { token: string; onLogout: () => void; onChangeLLM?: () => void }) {
   const [llmConfig, setLlmConfig] = useState<{ llm: Record<string, unknown>; configured: string[] } | null>(null);
   const [spendCap, setSpendCap] = useState<string>("10");
   const [savingCap, setSavingCap] = useState(false);

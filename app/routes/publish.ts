@@ -109,4 +109,53 @@ publish.post("/:draftId", async (c) => {
   });
 });
 
+/** POST /api/publish/file — publish a story file on-chain (streams progress) */
+publish.post("/file", async (c) => {
+  const body = await c.req.json<{
+    storyName: string;
+    fileName: string;
+    title: string;
+    content: string;
+    genre?: string;
+  }>();
+
+  if (!body.title || !body.content) {
+    return c.json({ error: "title and content required" }, 400);
+  }
+
+  // Get wallet
+  const wallets = listAgentWallets();
+  const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+  if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+  return streamSSE(c, async (stream) => {
+    try {
+      const result = await publishStoryline(
+        wallet.name,
+        body.title,
+        body.content,
+        body.genre,
+        async (progress) => {
+          await stream.writeSSE({ data: JSON.stringify(progress) });
+        },
+      );
+
+      await stream.writeSSE({
+        data: JSON.stringify({
+          step: "done",
+          txHash: result.txHash,
+          storylineId: result.storylineId,
+          contentCid: result.contentCid,
+          gasCost: result.gasCost,
+        }),
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Publish failed";
+      await stream.writeSSE({
+        data: JSON.stringify({ step: "error", message, error: message }),
+      });
+    }
+  });
+});
+
 export { publish as publishRoutes };
