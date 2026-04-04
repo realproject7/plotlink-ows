@@ -47,12 +47,6 @@ function WalletSetupPage({ token, onComplete }: { token: string; onComplete: () 
           >
             retry
           </button>
-          <button
-            onClick={onComplete}
-            className="text-muted hover:text-foreground w-full py-2 text-xs transition-colors"
-          >
-            skip for now
-          </button>
         </div>
       )}
 
