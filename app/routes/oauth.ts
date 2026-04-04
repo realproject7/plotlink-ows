@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import fs from "fs";
+import path from "path";
 import { ENV_FILE } from "../lib/paths";
 
 const oauth = new Hono();
@@ -14,7 +15,7 @@ const OAUTH_TOKEN_KEY_MAP: Record<string, string> = {
 const activeOAuthFlows = new Map<string, { resolve: (creds: unknown) => void; reject: (err: Error) => void }>();
 
 function writeEnvVar(key: string, value: string) {
-  const dir = require("path").dirname(ENV_FILE);
+  const dir = path.dirname(ENV_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   if (fs.existsSync(ENV_FILE)) {
     const content = fs.readFileSync(ENV_FILE, "utf-8");
@@ -84,19 +85,19 @@ oauth.get("/:provider/start", async (c) => {
 
   // Persist token when flow completes (background, doesn't block response)
   credentialsPromise
-    .then(async (creds: any) => {
+    .then(async (creds: Record<string, unknown>) => {
       const piOAuth = await import("@mariozechner/pi-ai/oauth");
       let apiKey: string;
 
       // Extract API key from credentials using provider interface
       if (provider === "anthropic") {
-        apiKey = piOAuth.anthropicOAuthProvider.getApiKey(creds) ?? creds.access;
+        apiKey = piOAuth.anthropicOAuthProvider.getApiKey(creds) ?? String(creds.access ?? "");
       } else if (provider === "openai") {
-        apiKey = piOAuth.openaiCodexOAuthProvider.getApiKey(creds) ?? creds.access;
+        apiKey = piOAuth.openaiCodexOAuthProvider.getApiKey(creds) ?? String(creds.access ?? "");
       } else if (provider === "gemini") {
-        apiKey = piOAuth.geminiCliOAuthProvider.getApiKey(creds) ?? creds.access;
+        apiKey = piOAuth.geminiCliOAuthProvider.getApiKey(creds) ?? String(creds.access ?? "");
       } else {
-        apiKey = creds.access;
+        apiKey = String(creds.access ?? "");
       }
 
       writeEnvVar(envKey, apiKey);
