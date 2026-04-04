@@ -249,14 +249,20 @@ export function Chat({ token }: { token: string }) {
 
       {/* Draft preview panel */}
       {activeSession?.drafts && activeSession.drafts.length > 0 && (
-        <div className="border-border w-72 shrink-0 overflow-y-auto border-l p-4">
+        <div className="border-border w-80 shrink-0 overflow-y-auto border-l p-4">
           <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Draft Preview</h3>
           {activeSession.drafts.map((draft) => (
             <div key={draft.id} className="border-border space-y-2 rounded border p-3">
-              <h4 className="text-foreground text-sm font-medium">{draft.title}</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-foreground text-sm font-medium">{draft.title}</h4>
+                <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">{draft.status}</span>
+              </div>
               {draft.genre && <span className="text-accent text-[10px]">{draft.genre}</span>}
-              <pre className="text-muted max-h-60 overflow-y-auto whitespace-pre-wrap text-[10px] leading-relaxed">{draft.content.slice(0, 500)}{draft.content.length > 500 ? "..." : ""}</pre>
-              <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">{draft.status}</span>
+              <div className="bg-surface max-h-[60vh] overflow-y-auto rounded p-3">
+                <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed">
+                  <Markdown>{draft.content}</Markdown>
+                </div>
+              </div>
             </div>
           ))}
         </div>
