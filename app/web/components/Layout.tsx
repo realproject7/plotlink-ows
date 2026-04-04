@@ -110,8 +110,9 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
       {/* Header */}
       <header className="border-border flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => { if (page !== "wallet-setup") setPage("home"); }} className="text-accent text-sm font-bold tracking-tight hover:opacity-80">
-            PlotLink OWS
+          <button onClick={() => { if (page !== "wallet-setup") setPage("home"); }} className="flex items-center gap-2 hover:opacity-80">
+            <img src="/plotlink-logo.svg" alt="PlotLink" className="h-5 w-5" />
+            <span className="text-accent text-sm font-bold tracking-tight">PlotLink OWS</span>
           </button>
           <span className="text-muted text-[10px] uppercase tracking-wider">local writer</span>
         </div>

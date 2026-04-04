@@ -42,6 +42,10 @@ h1, h2, h3, h4 {
   font-family: "Lora", Georgia, "Times New Roman", serif;
 }
 
+.prose, .prose p, .prose li, .prose blockquote {
+  font-family: "Lora", Georgia, "Times New Roman", serif;
+}
+
 code, pre {
   font-family: "Geist Mono", ui-monospace, monospace;
 }
