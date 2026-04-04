@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { LLMSetup } from "./LLMSetup";
 import { WalletCard } from "./WalletCard";
 import { Settings } from "./Settings";
+import { Chat } from "./Chat";
 
 const API_BASE = "http://localhost:7777";
 
-type Page = "home" | "llm-setup" | "wallet-setup" | "settings";
+type Page = "home" | "chat" | "llm-setup" | "wallet-setup" | "settings";
 
 function WalletSetupPage({ token, onComplete }: { token: string; onComplete: () => void }) {
   const [creating, setCreating] = useState(false);
@@ -115,6 +116,12 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
         {page !== "wallet-setup" && (
         <nav className="flex items-center gap-4">
           <button
+            onClick={() => setPage("chat")}
+            className={`text-xs transition-colors ${page === "chat" ? "text-accent" : "text-muted hover:text-foreground"}`}
+          >
+            write
+          </button>
+          <button
             onClick={() => setPage("llm-setup")}
             className={`text-xs transition-colors ${page === "llm-setup" ? "text-accent" : "text-muted hover:text-foreground"}`}
           >
@@ -153,13 +160,23 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             {llmConfigured && (
               <>
                 <div className="text-center">
-                  <p className="text-foreground text-sm font-medium">ready</p>
-                  <p className="text-muted mt-1 text-xs">chat UI &amp; story publishing coming in next phases</p>
+                  <p className="text-foreground text-sm font-medium">ready to write</p>
+                  <p className="text-muted mt-1 text-xs">start a collaborative story session with the AI writer</p>
+                  <button
+                    onClick={() => setPage("chat")}
+                    className="border-accent text-accent hover:bg-accent/10 mt-3 rounded border px-4 py-2 text-xs font-medium transition-colors"
+                  >
+                    start writing
+                  </button>
                 </div>
                 <WalletCard token={token} />
               </>
             )}
           </div>
+        )}
+
+        {page === "chat" && (
+          <Chat token={token} />
         )}
 
         {page === "llm-setup" && (

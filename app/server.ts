@@ -15,6 +15,7 @@ import { authRoutes, requireAuth } from "./routes/auth";
 import { configRoutes } from "./routes/config";
 import { walletRoutes } from "./routes/wallet";
 import { oauthRoutes } from "./routes/oauth";
+import { chatRoutes } from "./routes/chat";
 import { initDb } from "./db";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -38,18 +39,76 @@ app.use("/api/oauth/:provider/status", requireAuth);
 app.route("/api/config", configRoutes);
 app.route("/api/wallet", walletRoutes);
 app.route("/api/oauth", oauthRoutes);
+app.use("/api/chat/*", requireAuth);
+app.route("/api/chat", chatRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
-// WebSocket endpoint (placeholder for future chat streaming)
+// WebSocket chat endpoint (auth via query param since WS can't send headers)
 app.get(
-  "/ws",
-  upgradeWebSocket(() => ({
-    onMessage(event, ws) {
-      ws.send(`echo: ${event.data}`);
+  "/ws/chat",
+  upgradeWebSocket((c) => {
+    const wsToken = new URL(c.req.url).searchParams.get("token");
+    let authenticated = false;
+
+    return {
+    async onOpen(_event, ws) {
+      if (!wsToken) { ws.close(4001, "Missing token"); return; }
+      const { db } = await import("./db");
+      const session = await db.session.findUnique({ where: { token: wsToken } });
+      if (!session || session.expiresAt < new Date()) { ws.close(4001, "Invalid token"); return; }
+      authenticated = true;
     },
-  })),
+    async onMessage(event, ws) {
+      if (!authenticated) { ws.close(4001, "Not authenticated"); return; }
+      try {
+        const data = JSON.parse(String(event.data));
+        if (data.type === "message" && data.sessionId && data.content) {
+          const { db } = await import("./db");
+          const { streamChat } = await import("./lib/llm-client");
+          const { WRITER_SYSTEM_PROMPT } = await import("./lib/writer-prompt");
+
+          // Save user message
+          await db.message.create({
+            data: { sessionId: data.sessionId, role: "user", content: data.content },
+          });
+
+          // Build context
+          const messages = await db.message.findMany({
+            where: { sessionId: data.sessionId },
+            orderBy: { createdAt: "asc" },
+          });
+
+          const chatMessages = [
+            { role: "system" as const, content: WRITER_SYSTEM_PROMPT },
+            ...messages.map((m: { role: string; content: string }) => ({
+              role: m.role as "user" | "assistant" | "system",
+              content: m.content,
+            })),
+          ];
+
+          // Stream response
+          let fullResponse = "";
+          for await (const chunk of streamChat(chatMessages)) {
+            fullResponse += chunk;
+            ws.send(JSON.stringify({ type: "chunk", content: chunk }));
+          }
+
+          // Save assistant message
+          await db.message.create({
+            data: { sessionId: data.sessionId, role: "assistant", content: fullResponse },
+          });
+
+          ws.send(JSON.stringify({ type: "done" }));
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "WebSocket error";
+        ws.send(JSON.stringify({ type: "error", message }));
+      }
+    },
+  };
+  }),
 );
 
 // In production, serve the built frontend
