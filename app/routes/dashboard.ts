@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
-import { db } from "../db";
+import fs from "fs";
+import path from "path";
 import { getEthBalance } from "../lib/publish";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 import { mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
+import { STORIES_DIR, readPublishStatus } from "./stories";
 
 const MCV2_BOND = "0xc5a076cad94176c2996B32d8466Be1cE757FAa27" as const;
 // Reserve token for PlotLink bonding curves (PLOT token on Base mainnet)
@@ -19,10 +21,38 @@ const dashboard = new Hono();
 
 /** GET /api/dashboard — writer dashboard data */
 dashboard.get("/", async (c) => {
-  // Get all drafts (published and unpublished)
-  const drafts = await db.draft.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  // Scan stories/ for publish status
+  interface PublishedFile {
+    storyName: string;
+    file: string;
+    txHash?: string;
+    storylineId?: number;
+    contentCid?: string;
+    publishedAt?: string;
+    gasCost?: string;
+  }
+  const publishedFiles: PublishedFile[] = [];
+  let totalFiles = 0;
+  let totalStories = 0;
+
+  if (fs.existsSync(STORIES_DIR)) {
+    const dirs = fs.readdirSync(STORIES_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "_example");
+    totalStories = dirs.length;
+
+    for (const dir of dirs) {
+      const storyDir = path.join(STORIES_DIR, dir.name);
+      const status = readPublishStatus(storyDir);
+      const mdFiles = fs.readdirSync(storyDir).filter((f) => f.endsWith(".md"));
+      totalFiles += mdFiles.length;
+
+      for (const [file, info] of Object.entries(status)) {
+        if (info.status === "published") {
+          publishedFiles.push({ storyName: dir.name, file, ...info });
+        }
+      }
+    }
+  }
 
   // Get wallet info
   let walletInfo = null;
@@ -61,13 +91,9 @@ dashboard.get("/", async (c) => {
     }
   } catch { /* wallet not available */ }
 
-  // Published stories with cost data
-  const published = drafts.filter((d) => d.status === "published");
-  const unpublished = drafts.filter((d) => d.status !== "published");
-
-  // Compute total costs
-  const totalGasCostWei = published.reduce((sum, d) => {
-    if (d.gasCost) return sum + BigInt(d.gasCost);
+  // Compute total costs from published files
+  const totalGasCostWei = publishedFiles.reduce((sum, f) => {
+    if (f.gasCost) return sum + BigInt(f.gasCost);
     return sum;
   }, BigInt(0));
   const totalGasCostEth = (Number(totalGasCostWei) / 1e18).toFixed(6);
@@ -111,49 +137,35 @@ dashboard.get("/", async (c) => {
   const totalRoyaltiesUsd = parseFloat(royaltiesEarned) * plotUsdPrice;
   const netPnlUsd = totalRoyaltiesUsd - totalCostUsd;
 
-  // Session stats
-  const sessions = await db.storySession.findMany({
-    include: { _count: { select: { messages: true } } },
-  });
-
   return c.json({
     wallet: walletInfo,
     stories: {
-      published: published.map((d) => ({
-        id: d.id,
-        title: d.title,
-        genre: d.genre,
-        status: d.status,
-        txHash: d.txHash,
-        storylineId: d.storylineId,
-        contentCid: d.contentCid,
-        gasCost: d.gasCost,
-        gasCostEth: d.gasCost ? (Number(BigInt(d.gasCost)) / 1e18).toFixed(6) : null,
-        gasCostUsd: d.gasCost && ethUsdPrice ? ((Number(BigInt(d.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt,
+      published: publishedFiles.map((f) => ({
+        storyName: f.storyName,
+        file: f.file,
+        txHash: f.txHash,
+        storylineId: f.storylineId,
+        contentCid: f.contentCid,
+        gasCost: f.gasCost,
+        gasCostEth: f.gasCost ? (Number(BigInt(f.gasCost)) / 1e18).toFixed(6) : null,
+        gasCostUsd: f.gasCost && ethUsdPrice ? ((Number(BigInt(f.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
+        publishedAt: f.publishedAt,
       })),
-      drafts: unpublished.map((d) => ({
-        id: d.id,
-        title: d.title,
-        genre: d.genre,
-        status: d.status,
-        createdAt: d.createdAt,
-      })),
-      totalPublished: published.length,
-      totalDrafts: unpublished.length,
+      totalPublished: publishedFiles.length,
+      totalStories,
+      totalFiles,
+      pendingFiles: totalFiles - publishedFiles.length,
     },
     costs: {
       totalGasCostWei: totalGasCostWei.toString(),
       totalGasCostEth,
       totalCostUsd: totalCostUsd.toFixed(2),
       ethUsdPrice,
-      storiesPublished: published.length,
+      storiesPublished: publishedFiles.length,
     },
     royalties: {
       earned: royaltiesEarned,
       claimed: royaltiesClaimed,
-      // unclaimed = earned - claimed (already correct since earned = unclaimed + claimed)
       unclaimed: (parseFloat(royaltiesEarned) - parseFloat(royaltiesClaimed)).toFixed(6),
       token: "PLOT",
     },
@@ -165,22 +177,7 @@ dashboard.get("/", async (c) => {
       netPnlUsd: netPnlUsd.toFixed(2),
       plotUsdPrice: plotUsdPrice.toFixed(4),
     },
-    sessions: {
-      total: sessions.length,
-      totalMessages: sessions.reduce((sum, s) => sum + s._count.messages, 0),
-    },
   });
-});
-
-/** DELETE /api/dashboard/drafts/:id — delete a draft */
-dashboard.delete("/drafts/:id", async (c) => {
-  const id = c.req.param("id");
-  try {
-    await db.draft.delete({ where: { id } });
-    return c.json({ success: true });
-  } catch {
-    return c.json({ error: "Draft not found" }, 404);
-  }
 });
 
 export { dashboard as dashboardRoutes };

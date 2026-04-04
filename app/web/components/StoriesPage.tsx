@@ -44,12 +44,31 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         }
       } catch { /* ignore */ }
 
+      // For plot files, find the storylineId from the genesis publish status
+      let storylineId: number | undefined;
+      if (fileName.match(/^plot-\d+\.md$/)) {
+        try {
+          const storyRes = await authFetch(`/api/stories/${storyName}`);
+          if (storyRes.ok) {
+            const storyData = await storyRes.json();
+            const genesis = storyData.files.find((f: { file: string; storylineId?: number }) =>
+              f.file === "genesis.md" && f.storylineId);
+            storylineId = genesis?.storylineId;
+          }
+        } catch { /* ignore */ }
+        if (!storylineId) {
+          setPublishProgress("Error: Publish genesis first to create the storyline");
+          setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 3000);
+          return;
+        }
+      }
+
       // Run publish flow via SSE
       setPublishProgress("Publishing...");
       const publishRes = await authFetch("/api/publish/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre }),
+        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, storylineId }),
       });
 
       if (!publishRes.ok) {

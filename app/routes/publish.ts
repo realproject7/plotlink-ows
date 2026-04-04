@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { db } from "../db";
-import { publishStoryline, getEthBalance, estimatePublishCost } from "../lib/publish";
+import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
@@ -117,6 +117,7 @@ publish.post("/file", async (c) => {
     title: string;
     content: string;
     genre?: string;
+    storylineId?: number;
   }>();
 
   if (!body.title || !body.content) {
@@ -128,17 +129,36 @@ publish.post("/file", async (c) => {
   const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
   if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
 
+  // Determine if this is genesis (createStoryline) or plot (chainPlot)
+  const isPlot = body.fileName.match(/^plot-\d+\.md$/);
+
   return streamSSE(c, async (stream) => {
     try {
-      const result = await publishStoryline(
-        wallet.name,
-        body.title,
-        body.content,
-        body.genre,
-        async (progress) => {
-          await stream.writeSSE({ data: JSON.stringify(progress) });
-        },
-      );
+      let result;
+      if (isPlot && body.storylineId) {
+        // Chain plot to existing storyline
+        result = await publishPlot(
+          wallet.name,
+          body.storylineId,
+          body.title,
+          body.content,
+          body.genre,
+          async (progress) => {
+            await stream.writeSSE({ data: JSON.stringify(progress) });
+          },
+        );
+      } else {
+        // Create new storyline (genesis or first file)
+        result = await publishStoryline(
+          wallet.name,
+          body.title,
+          body.content,
+          body.genre,
+          async (progress) => {
+            await stream.writeSSE({ data: JSON.stringify(progress) });
+          },
+        );
+      }
 
       await stream.writeSSE({
         data: JSON.stringify({
