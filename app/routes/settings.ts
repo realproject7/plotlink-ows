@@ -150,10 +150,12 @@ settings.post("/register-agent", async (c) => {
       } catch { /* not our event */ }
     }
 
-    // Save locally (agentIdByWallet won't work without setAgentWallet)
-    if (agentId > 0) {
-      saveLocalAgentStatus({ registered: true, agentId, txHash });
+    if (agentId === 0) {
+      return c.json({ error: "Transaction succeeded but could not decode agentId from mint event", txHash }, 500);
     }
+
+    // Save locally (agentIdByWallet won't work without setAgentWallet)
+    saveLocalAgentStatus({ registered: true, agentId, txHash });
 
     // Index on PlotLink (best-effort) with correct fields
     try {
