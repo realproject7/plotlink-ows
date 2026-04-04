@@ -137,7 +137,10 @@ async function cmdInit() {
 
   // Step 2: Passphrase
   header("Step 2: Passphrase");
-  log("Choose a passphrase to protect your wallet and app access.\n");
+  log("This passphrase encrypts your OWS (Open Wallet Standard) wallet.");
+  log("Your private key is stored locally and never leaves your machine.");
+  log("The passphrase protects signing and app access.\n");
+  log("Learn more: https://docs.openwallet.sh/\n");
   const passphrase = await askSecret("  Passphrase (min 8 chars): ");
   const confirm = await askSecret("  Confirm:                  ");
 
