@@ -211,7 +211,7 @@
 > OWS SDK: `@open-wallet-standard/core` (already installed from Phase 1)
 > PlotLink CLI SDK: `packages/cli/src/sdk/` (existing — reuse for on-chain publishing)
 
-### 1. plotlink-ows#10 — Local App Scaffold (Hono + React + Vite)
+### 1. plotlink-ows#11 — Local App Scaffold (Hono + React + Vite)
 - Create `app/` directory (separate from existing Next.js webapp)
 - Hono backend on localhost:3333 + WebSocket support
 - React 19 + Vite frontend with PlotLink Moleskine design (dark #0a0a0a, Geist Mono, green #00ff88)
@@ -222,10 +222,10 @@
 - **Cleanup**: remove `supabase/migrations/00032_*`, remove `AgentWallet` type, fix `lib/ows/index.ts` bad export
 - Keep existing Next.js app working (`npm run dev`)
 - **Repo**: `realproject7/plotlink-ows`
-- **Branch**: `task/10-local-app-scaffold`
-- **PR closes**: `Fixes #10`
+- **Branch**: `task/11-local-app-scaffold`
+- **PR closes**: `Fixes #11`
 
-### 2. plotlink-ows#11 — LLM Setup + OWS Wallet UI
+### 2. plotlink-ows#12 — LLM Setup + OWS Wallet UI
 - LLM setup wizard: Provider → Auth (OAuth or API key) → Model → Test connection
 - OAuth flow via `pi-ai` library (copy from claw-on-chain: `src/app/routes/llm-setup.ts`, `src/llm/adapter-piai.ts`)
 - API key input fallback (paste sk-...)
@@ -235,10 +235,10 @@
 - Wallet status card: address, USDC balance on Base, fund instructions
 - Settings page: change LLM provider, view wallet, update spending cap
 - **Repo**: `realproject7/plotlink-ows`
-- **Branch**: `task/11-llm-wallet-setup`
-- **PR closes**: `Fixes #11`
+- **Branch**: `task/12-llm-wallet-setup`
+- **PR closes**: `Fixes #12`
 
-### 3. plotlink-ows#12 — Chat UI + AI Writer Agent
+### 3. plotlink-ows#13 — Chat UI + AI Writer Agent
 - Full-screen chat panel with PlotLink Moleskine aesthetic
 - WebSocket streaming (`/ws/chat`) with token-by-token response
 - Multi-provider LLM adapter layer (Anthropic/OpenAI/Gemini/local)
@@ -247,28 +247,28 @@
 - Story preview panel alongside chat
 - Draft finalization: user approves → story saved as draft ready for publish
 - **Repo**: `realproject7/plotlink-ows`
-- **Branch**: `task/12-chat-ai-writer`
-- **PR closes**: `Fixes #12`
+- **Branch**: `task/13-chat-ai-writer`
+- **PR closes**: `Fixes #13`
 
-### 4. plotlink-ows#13 — PlotLink Publish via OWS
+### 4. plotlink-ows#14 — PlotLink Publish via OWS
 - Reuse existing PlotLink CLI SDK (`packages/cli/src/sdk/`) for on-chain publishing
 - Publish flow: IPFS upload (Filebase) → build tx → OWS sign → broadcast to Base
 - Viem-compatible account adapter from OWS wallet (same pattern as claw-on-chain `wallet/manager.ts`)
 - Publish UI: preview → balance check → gas estimate → confirm → progress → success with plotlink.xyz link
 - Track costs per story in SQLite
 - **Repo**: `realproject7/plotlink-ows`
-- **Branch**: `task/13-plotlink-publish`
-- **PR closes**: `Fixes #13`
+- **Branch**: `task/14-plotlink-publish`
+- **PR closes**: `Fixes #14`
 
-### 5. plotlink-ows#14 — Writer Dashboard + Submission
+### 5. plotlink-ows#15 — Writer Dashboard + Submission
 - Dashboard: published stories list, cost per story, royalties, P&L
 - Wallet overview: address, USDC balance, ETH balance
 - Draft management (view, delete, retry failed publishes)
 - Update README.md for hackathon: setup instructions, screenshots, architecture diagram
 - Cleanup: .gitignore covers .env*, .ows/, SQLite files; verify no secrets
 - **Repo**: `realproject7/plotlink-ows`
-- **Branch**: `task/14-dashboard-submission`
-- **PR closes**: `Fixes #14`
+- **Branch**: `task/15-dashboard-submission`
+- **PR closes**: `Fixes #15`
 
 ---
 
