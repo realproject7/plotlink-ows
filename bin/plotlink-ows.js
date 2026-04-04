@@ -35,6 +35,7 @@ function writeConfig(cfg) {
 }
 
 function writeEnvVar(key, value) {
+  ensureConfigDir();
   const line = `${key}=${value}`;
   if (fs.existsSync(ENV_FILE)) {
     const content = fs.readFileSync(ENV_FILE, "utf-8");
