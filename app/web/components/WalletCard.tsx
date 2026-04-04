@@ -7,7 +7,9 @@ interface WalletInfo {
   walletId?: string;
   name?: string;
   address?: string;
+  ethBalance?: string;
   usdcBalance?: string;
+  plotBalance?: string;
   error?: string;
 }
 
@@ -77,8 +79,8 @@ export function WalletCard({ token }: { token: string }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-muted text-[10px] uppercase tracking-wider">Address (Base)</span>
-            <span className={`rounded border px-1.5 py-0.5 text-[9px] ${wallet.usdcBalance && parseFloat(wallet.usdcBalance) > 0 ? "border-accent/30 text-accent" : "border-accent-dim/30 text-accent-dim"}`}>
-              {wallet.usdcBalance && parseFloat(wallet.usdcBalance) > 0 ? "active" : "no balance"}
+            <span className={`rounded border px-1.5 py-0.5 text-[9px] ${wallet.ethBalance && parseFloat(wallet.ethBalance) > 0 ? "border-accent/30 text-accent" : "border-accent-dim/30 text-accent-dim"}`}>
+              {wallet.ethBalance && parseFloat(wallet.ethBalance) > 0 ? "active" : "no balance"}
             </span>
           </div>
 
@@ -91,23 +93,27 @@ export function WalletCard({ token }: { token: string }) {
 
           <div className="border-border space-y-1 border-t pt-3">
             <div className="flex justify-between text-xs">
-              <span className="text-muted">USDC Balance</span>
+              <span className="text-muted">ETH</span>
+              <span className="text-foreground font-medium">{wallet.ethBalance || "0.000000"} ETH</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">USDC</span>
               <span className="text-foreground font-medium">${wallet.usdcBalance || "0.00"}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">PLOT</span>
+              <span className="text-foreground font-medium">{wallet.plotBalance || "0.0000"} PLOT</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted">Network</span>
               <span className="text-foreground">Base</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted">Wallet ID</span>
-              <span className="text-foreground font-mono text-[10px]">{wallet.walletId?.slice(0, 12)}...</span>
             </div>
           </div>
 
           {/* Fund wallet */}
           <div className="border-border border-t pt-3">
             <p className="text-muted mb-2 text-[10px] font-medium uppercase tracking-wider">Fund Wallet</p>
-            <p className="text-muted text-[10px]">Send USDC on Base to:</p>
+            <p className="text-muted text-[10px]">Send ETH on Base for gas (~$0.01 per publish):</p>
             <code className="text-foreground bg-surface mt-1 block break-all rounded px-2 py-1.5 text-[10px] font-mono">{wallet.address}</code>
           </div>
         </div>
