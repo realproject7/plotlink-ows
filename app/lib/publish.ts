@@ -4,7 +4,6 @@
 import { createPublicClient, http, encodeFunctionData, keccak256, toBytes, decodeEventLog, type Hex } from "viem";
 import { base } from "viem/chains";
 import { STORY_FACTORY_ABI, mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
-import { uploadWithRetry } from "../../packages/cli/src/sdk/ipfs";
 import { signAndSendAgent } from "../../lib/ows/wallet";
 
 // Contract addresses (Base mainnet)
@@ -15,14 +14,6 @@ const publicClient = createPublicClient({
   chain: base,
   transport: http(process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org"),
 });
-
-function getFilebaseConfig() {
-  return {
-    accessKey: process.env.FILEBASE_ACCESS_KEY || "",
-    secretKey: process.env.FILEBASE_SECRET_KEY || "",
-    bucket: process.env.FILEBASE_BUCKET || "",
-  };
-}
 
 export interface PublishResult {
   txHash: string;
@@ -41,20 +32,28 @@ export interface PublishProgress {
 }
 
 /**
- * Upload story content to IPFS via Filebase.
+ * Upload story content to IPFS via PlotLink's API (plotlink.xyz/api/upload).
+ * PlotLink handles Filebase credentials server-side.
  */
 export async function uploadToIPFS(content: string, title: string, genre?: string): Promise<string> {
-  const filebaseConfig = getFilebaseConfig();
-  if (!filebaseConfig.accessKey || !filebaseConfig.secretKey) {
-    throw new Error("Filebase not configured. Set FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY in .env");
-  }
-
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
   const metadata = JSON.stringify({ title, genre, content });
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
   const key = `plotlink/storylines/${Date.now()}-${slug}.json`;
 
-  const cid = await uploadWithRetry(metadata, key, filebaseConfig);
-  return cid;
+  const res = await fetch(`${PLOTLINK_URL}/api/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: metadata, key }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, string>;
+    throw new Error(err.error || `Upload failed: HTTP ${res.status}`);
+  }
+
+  const data = await res.json() as { cid: string };
+  return data.cid;
 }
 
 /**
@@ -200,6 +199,16 @@ export async function publishStoryline(
     storylineId: confirmation.storylineId,
   });
 
+  // Index on PlotLink (best-effort — story appears on plotlink.xyz)
+  try {
+    const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+    await fetch(`${PLOTLINK_URL}/api/index/storyline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ txHash: result.txHash, content, genre }),
+    });
+  } catch { /* indexing is best-effort */ }
+
   return { txHash: result.txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
 }
 
@@ -253,6 +262,16 @@ export async function publishPlot(
     contentCid,
     storylineId,
   });
+
+  // Index on PlotLink (best-effort — plot appears on plotlink.xyz)
+  try {
+    const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+    await fetch(`${PLOTLINK_URL}/api/index/plot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ txHash: result.txHash }),
+    });
+  } catch { /* indexing is best-effort */ }
 
   return { txHash: result.txHash, contentCid, storylineId, gasCost: confirmation.gasCost };
 }
