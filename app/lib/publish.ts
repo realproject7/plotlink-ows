@@ -185,7 +185,8 @@ export async function publishStoryline(
   });
 
   onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
-  const result = signAndSendAgent(walletName, txHex, undefined, rpcUrl);
+  const passphrase = process.env.OWS_PASSPHRASE;
+  const result = signAndSendAgent(walletName, txHex, passphrase, rpcUrl);
 
   // Step 5: Wait for confirmation and decode storylineId
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
@@ -249,7 +250,8 @@ export async function publishPlot(
   });
 
   onProgress({ step: "broadcasting", message: "Broadcasting transaction..." });
-  const result = signAndSendAgent(walletName, txHex, undefined, rpcUrl);
+  const passphrase = process.env.OWS_PASSPHRASE;
+  const result = signAndSendAgent(walletName, txHex, passphrase, rpcUrl);
 
   // Step 5: Wait for confirmation
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
