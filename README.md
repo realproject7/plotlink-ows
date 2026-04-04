@@ -35,7 +35,7 @@ On-chain: Story published to PlotLink on Base
 
 ```
 ┌─────────────────────────────────────────────┐
-│         Your Computer (localhost:3333)       │
+│         Your Computer (localhost:7777)       │
 │                                             │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
 │  │ Chat UI  │  │ LLM      │  │ OWS       │ │
@@ -79,7 +79,7 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 
 | Layer | Technology |
 |-------|-----------|
-| **Backend** | Hono (localhost:3333) |
+| **Backend** | Hono (localhost:7777) |
 | **Frontend** | React 19 + Vite |
 | **Database** | SQLite + Prisma (local, embedded) |
 | **Wallet** | OWS (`@open-wallet-standard/core`) |
@@ -106,7 +106,7 @@ npm install
 npm run app:dev
 ```
 
-Open [http://localhost:3333](http://localhost:3333) — the app will guide you through setup:
+Open [http://localhost:7777](http://localhost:7777) — the app will guide you through setup:
 
 1. Set a passphrase (encrypts your OWS wallet)
 2. Connect your LLM (OAuth, API key, or local model URL)

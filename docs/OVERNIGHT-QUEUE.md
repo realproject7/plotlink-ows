@@ -213,7 +213,7 @@
 
 ### 1. plotlink-ows#11 — Local App Scaffold (Hono + React + Vite)
 - Create `app/` directory (separate from existing Next.js webapp)
-- Hono backend on localhost:3333 + WebSocket support
+- Hono backend on localhost:7777 + WebSocket support
 - React 19 + Vite frontend with PlotLink Moleskine design (dark #0a0a0a, Geist Mono, green #00ff88)
 - SQLite + Prisma for local storage
 - Passphrase onboarding (first run → set passphrase → stored in .env)
