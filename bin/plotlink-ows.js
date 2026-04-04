@@ -12,7 +12,8 @@ const CONFIG_DIR = path.join(require("os").homedir(), ".plotlink-ows");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const PID_FILE = path.join(CONFIG_DIR, "server.pid");
 const PROJECT_DIR = path.dirname(__dirname);
-const ENV_FILE = path.join(PROJECT_DIR, ".env");
+const ENV_FILE = path.join(CONFIG_DIR, ".env");
+const AGENT_CONFIG_FILE = path.join(CONFIG_DIR, "agent.config.json");
 
 // ── Helpers ──
 
@@ -240,7 +241,7 @@ async function cmdInit() {
       }),
     },
   };
-  fs.writeFileSync(path.join(PROJECT_DIR, "agent.config.json"), JSON.stringify(agentConfig, null, 2) + "\n");
+  fs.writeFileSync(AGENT_CONFIG_FILE, JSON.stringify(agentConfig, null, 2) + "\n");
 
   // Step 5: Done
   header("Setup Complete!");
@@ -279,6 +280,13 @@ function cmdStart() {
   if (!fs.existsSync(path.join(PROJECT_DIR, "node_modules"))) {
     log("Installing dependencies...");
     execSync("npm install", { cwd: PROJECT_DIR, stdio: "inherit" });
+  }
+
+  // Ensure frontend is built
+  const distDir = path.join(PROJECT_DIR, "app", "web", "dist");
+  if (!fs.existsSync(distDir)) {
+    log("Building frontend...");
+    execSync("npx vite build --config app/vite.config.ts", { cwd: PROJECT_DIR, stdio: "inherit" });
   }
 
   const port = config.port || 7777;
