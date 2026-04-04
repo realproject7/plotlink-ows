@@ -30,6 +30,9 @@ data/
 # local app config (contains API keys)
 agent.config.json
 
+# OWS wallet vault
+.ows/
+
 # misc
 .DS_Store
 *.pem
