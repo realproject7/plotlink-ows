@@ -24,21 +24,21 @@ publish.get("/preflight", async (c) => {
 
     // Check ETH balance against real estimated cost
     const balance = await getEthBalance(address);
-    let totalCost = BigInt(0);
+    let totalCost: bigint | null = null;
     let creationFee = BigInt(0);
+    let estimationFailed = false;
     try {
-      // Use a dummy CID + hash for estimation (gas cost is the same regardless of content)
       const dummyCid = "QmDummy";
       const dummyHash = keccak256(toBytes("estimation"));
       const estimate = await estimatePublishCost(address, "Test", dummyCid, dummyHash);
       totalCost = estimate.totalCost;
       creationFee = estimate.creationFee;
     } catch {
-      // If estimation fails (e.g. contract not deployed), use creation fee only
-      totalCost = creationFee;
+      estimationFailed = true;
     }
-    const requiredBalance = totalCost;
-    const hasEnoughEth = balance >= requiredBalance;
+    // Fail closed: if estimation fails, block publishing
+    const requiredBalance = totalCost ?? BigInt(0);
+    const hasEnoughEth = !estimationFailed && totalCost !== null && balance >= requiredBalance;
 
     // Check Filebase config
     const hasFilebase = !!(process.env.FILEBASE_ACCESS_KEY && process.env.FILEBASE_SECRET_KEY);
@@ -51,7 +51,10 @@ publish.get("/preflight", async (c) => {
       requiredBalance: requiredBalance.toString(),
       hasEnoughEth,
       hasFilebase,
-      error: !hasEnoughEth
+      estimationFailed,
+      error: estimationFailed
+        ? "Could not estimate publish cost — check RPC and contract config"
+        : !hasEnoughEth
         ? `Insufficient ETH. Need ~${(Number(requiredBalance) / 1e18).toFixed(6)} ETH (creation fee + gas)`
         : !hasFilebase ? "Filebase not configured" : null,
     });
