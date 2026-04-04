@@ -136,9 +136,9 @@ async function cmdInit() {
 
   // Step 2: Passphrase
   header("Step 2: Passphrase");
-  log("Choose a passphrase to protect your writer agent.\n");
-  const passphrase = await askSecret("  Passphrase: ");
-  const confirm = await askSecret("  Confirm:    ");
+  log("Choose a passphrase to protect your wallet and app access.\n");
+  const passphrase = await askSecret("  Passphrase (min 8 chars): ");
+  const confirm = await askSecret("  Confirm:                  ");
 
   if (passphrase !== confirm) {
     error("Passphrases don't match.");
@@ -154,42 +154,8 @@ async function cmdInit() {
   writeEnvVar("OWS_PASSPHRASE", passphrase);
   success("Passphrase set");
 
-  // Step 3: LLM Provider
-  header("Step 3: LLM Provider");
-  log("1) Anthropic (recommended)");
-  log("2) OpenAI");
-  log("3) Google Gemini");
-  log("4) Local (Ollama/LM Studio)\n");
-
-  const choice = await ask(rl, "  Choose [1-4]: ");
-  const providers = {
-    "1": { id: "anthropic", name: "Anthropic", envKey: "ANTHROPIC_API_KEY", model: "claude-sonnet-4-6" },
-    "2": { id: "openai", name: "OpenAI", envKey: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
-    "3": { id: "gemini", name: "Gemini", envKey: "GEMINI_API_KEY", model: "gemini-2.5-flash" },
-    "4": { id: "local", name: "Local", envKey: null, model: "llama3.2" },
-  };
-
-  const provider = providers[choice] || providers["1"];
-  let baseUrl = "";
-
-  if (provider.id === "local") {
-    baseUrl = await ask(rl, "  Base URL [http://localhost:11434]: ") || "http://localhost:11434";
-    const modelName = await ask(rl, `  Model name [${provider.model}]: `) || provider.model;
-    provider.model = modelName;
-    rl.close();
-  } else {
-    rl.close();
-    const apiKey = await askSecret(`  ${provider.name} API key: `);
-    if (apiKey) {
-      writeEnvVar(provider.envKey, apiKey);
-      success(`${provider.name} API key saved`);
-    }
-  }
-
-  success(`Provider: ${provider.name} / ${provider.model}`);
-
-  // Step 4: OWS Wallet
-  header("Step 4: OWS Wallet");
+  // Step 3: OWS Wallet
+  header("Step 3: OWS Wallet");
   try {
     const ows = require("@open-wallet-standard/core");
     const wallets = ows.listWallets();
@@ -211,45 +177,27 @@ async function cmdInit() {
     }
   } catch (err) {
     warn(`Wallet creation skipped: ${err.message}`);
-    warn("You can create it later from the app's wallet setup screen.");
+    warn("You can create it later from the app.");
   }
+
+  rl.close();
 
   // Save config
   const config = {
     port: 7777,
     passphrase_hash: hashPassphrase(passphrase),
-    llm: {
-      provider: provider.id,
-      model: provider.model,
-      ...(baseUrl && { baseUrl }),
-    },
     wallet_name: "plotlink-writer",
     created_at: new Date().toISOString(),
   };
   writeConfig(config);
 
-  // Also write agent.config.json for the app
-  const agentConfig = {
-    llm: {
-      activeProvider: provider.id,
-      activeModel: provider.model,
-      ...(provider.id === "local" && {
-        local: { baseUrl, model: provider.model, apiType: "ollama" },
-      }),
-      ...(provider.id !== "local" && {
-        [provider.id]: { apiKey: `env:${provider.envKey}`, model: provider.model },
-      }),
-    },
-  };
-  fs.writeFileSync(AGENT_CONFIG_FILE, JSON.stringify(agentConfig, null, 2) + "\n");
-
-  // Step 5: Done
+  // Step 4: Done
   header("Setup Complete!");
-  log(`LLM:    ${provider.name} / ${provider.model}`);
   log(`Port:   ${config.port}`);
   log(`Config: ${CONFIG_FILE}`);
   log("");
-  log('Run \x1b[1mnpx plotlink-ows\x1b[0m to start writing!');
+  log('Run \x1b[1mnpx plotlink-ows\x1b[0m to start the app.');
+  log("You'll connect your LLM (Anthropic, OpenAI, Gemini) via the Web UI.");
   log("");
 
   process.exit(0);
@@ -341,7 +289,6 @@ function cmdStatus() {
   }
 
   log(`Config:   ${CONFIG_FILE}`);
-  log(`LLM:      ${config.llm?.provider || "—"} / ${config.llm?.model || "—"}`);
   log(`Port:     ${config.port || 7777}`);
 
   // Wallet

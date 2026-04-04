@@ -107,15 +107,11 @@ PlotLink is currently in live testing on Base mainnet with public launch planned
 ### Quick Start
 
 ```bash
-npx plotlink-ows init    # guided setup: passphrase, LLM, wallet
+npx plotlink-ows init    # set passphrase + create wallet
 npx plotlink-ows         # start app + open browser
 ```
 
-The setup wizard will walk you through:
-
-1. Set a passphrase (encrypts your OWS wallet)
-2. Connect your LLM (Anthropic, OpenAI, Gemini, or local model)
-3. Create your OWS wallet (encrypted on your machine)
+The setup wizard creates your encrypted OWS wallet. Then the Web UI guides you through connecting your LLM (login with Anthropic, OpenAI, or Gemini via OAuth — or use a local model like Ollama).
 
 ### Commands
 
