@@ -4,6 +4,8 @@ import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { authRoutes } from "./routes/auth";
+import { configRoutes } from "./routes/config";
+import { walletRoutes } from "./routes/wallet";
 import { initDb } from "./db";
 import { execSync } from "child_process";
 import path from "path";
@@ -20,6 +22,8 @@ app.use("/*", cors({ origin: "http://localhost:5173", credentials: true }));
 
 // API routes
 app.route("/api/auth", authRoutes);
+app.route("/api/config", configRoutes);
+app.route("/api/wallet", walletRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));

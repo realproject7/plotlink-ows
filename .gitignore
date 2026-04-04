@@ -27,6 +27,9 @@ dist
 # local app data (SQLite)
 data/
 
+# local app config (contains API keys)
+agent.config.json
+
 # misc
 .DS_Store
 *.pem
