@@ -166,9 +166,16 @@ async function start() {
   (server as import("http").Server).on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "", `http://localhost:${port}`);
     if (url.pathname === "/ws/terminal") {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        attachTerminalWs(ws as unknown as WebSocket);
-      });
+      // Auth check: verify token from query params
+      const wsToken = url.searchParams.get("token");
+      if (!wsToken) { socket.destroy(); return; }
+      import("./db").then(async ({ db }) => {
+        const session = await db.session.findUnique({ where: { token: wsToken } });
+        if (!session || session.expiresAt < new Date()) { socket.destroy(); return; }
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          attachTerminalWs(ws as unknown as WebSocket);
+        });
+      }).catch(() => socket.destroy());
     }
   });
 }

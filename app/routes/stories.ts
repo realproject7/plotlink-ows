@@ -8,6 +8,14 @@ const STORIES_DIR = path.join(__dirname, "..", "..", "stories");
 
 const stories = new Hono();
 
+/** Sanitize path params to prevent directory traversal */
+function safeName(name: string): string | null {
+  if (!name || name.includes("..") || name.includes("/") || name.includes("\\") || name.startsWith(".")) {
+    return null;
+  }
+  return name;
+}
+
 interface FileStatus {
   file: string;
   status: "published" | "pending" | "draft";
@@ -78,7 +86,8 @@ stories.get("/", (c) => {
 
 /** GET /api/stories/:name — single story detail */
 stories.get("/:name", (c) => {
-  const name = c.req.param("name");
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
   const storyDir = path.join(STORIES_DIR, name);
 
   if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
@@ -99,8 +108,9 @@ stories.get("/:name", (c) => {
 
 /** GET /api/stories/:name/:file — single file content */
 stories.get("/:name/:file", (c) => {
-  const name = c.req.param("name");
-  const file = c.req.param("file");
+  const name = safeName(c.req.param("name"));
+  const file = safeName(c.req.param("file"));
+  if (!name || !file) return c.json({ error: "Invalid path" }, 400);
   const filePath = path.join(STORIES_DIR, name, file);
 
   if (!fs.existsSync(filePath)) {
@@ -116,8 +126,9 @@ stories.get("/:name/:file", (c) => {
 
 /** POST /api/stories/:name/:file/publish-status — update publish status after publishing */
 stories.post("/:name/:file/publish-status", async (c) => {
-  const name = c.req.param("name");
-  const file = c.req.param("file");
+  const name = safeName(c.req.param("name"));
+  const file = safeName(c.req.param("file"));
+  if (!name || !file) return c.json({ error: "Invalid path" }, 400);
   const storyDir = path.join(STORIES_DIR, name);
   const body = await c.req.json<{
     txHash: string;
