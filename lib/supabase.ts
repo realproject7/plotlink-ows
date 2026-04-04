@@ -529,6 +529,45 @@ export interface Database {
       };
       Relationships: [];
     };
+    agent_wallets: {
+      Row: {
+        id: string;
+        user_id: string;
+        wallet_id: string;
+        wallet_name: string;
+        address_base: string;
+        api_key_id: string | null;
+        policy_ids: string[];
+        spend_cap_usdc: number;
+        created_at: string;
+        is_active: boolean;
+      };
+      Insert: {
+        id?: string;
+        user_id: string;
+        wallet_id: string;
+        wallet_name: string;
+        address_base: string;
+        api_key_id?: string | null;
+        policy_ids?: string[];
+        spend_cap_usdc?: number;
+        created_at?: string;
+        is_active?: boolean;
+      };
+      Update: {
+        id?: string;
+        user_id?: string;
+        wallet_id?: string;
+        wallet_name?: string;
+        address_base?: string;
+        api_key_id?: string | null;
+        policy_ids?: string[];
+        spend_cap_usdc?: number;
+        created_at?: string;
+        is_active?: boolean;
+      };
+      Relationships: [];
+    };
     };
     Views: {
       [_ in never]: never;
