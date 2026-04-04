@@ -12,7 +12,6 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { authRoutes, requireAuth } from "./routes/auth";
-import { configRoutes } from "./routes/config";
 import { walletRoutes } from "./routes/wallet";
 import { publishRoutes } from "./routes/publish";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -31,9 +30,7 @@ app.use("/*", cors({ origin: "http://localhost:5173", credentials: true }));
 // API routes
 app.route("/api/auth", authRoutes);
 // Protected routes
-app.use("/api/config/*", requireAuth);
 app.use("/api/wallet/*", requireAuth);
-app.route("/api/config", configRoutes);
 app.route("/api/wallet", walletRoutes);
 app.use("/api/publish/*", requireAuth);
 app.route("/api/publish", publishRoutes);
