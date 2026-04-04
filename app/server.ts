@@ -17,6 +17,7 @@ import { publishRoutes } from "./routes/publish";
 import { dashboardRoutes } from "./routes/dashboard";
 import { terminalRoutes, attachTerminalWs } from "./routes/terminal";
 import { storiesRoutes } from "./routes/stories";
+import { settingsRoutes } from "./routes/settings";
 import { initDb } from "./db";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -40,6 +41,8 @@ app.use("/api/terminal/*", requireAuth);
 app.route("/api/terminal", terminalRoutes);
 app.use("/api/stories/*", requireAuth);
 app.route("/api/stories", storiesRoutes);
+app.use("/api/settings/*", requireAuth);
+app.route("/api/settings", settingsRoutes);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));

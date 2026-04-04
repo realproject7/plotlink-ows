@@ -31,7 +31,7 @@ function parseEvmSignature(sigHex: string, recoveryId?: number): { r: Hex; s: He
 }
 
 /** Create a viem-compatible account backed by OWS wallet (same pattern as claw-on-chain) */
-function createOwsAccount(walletName: string, address: `0x${string}`) {
+export function createOwsAccount(walletName: string, address: `0x${string}`) {
   const passphrase = process.env.OWS_PASSPHRASE;
   return toAccount({
     address,
