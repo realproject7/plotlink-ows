@@ -100,19 +100,12 @@ dashboard.get("/", async (c) => {
 
   const totalCostUsd = parseFloat(totalGasCostEth) * ethUsdPrice;
 
-  // Estimate PLOT/USD: use bonding curve price if available, otherwise ~0
-  // For net P&L in a common unit (USD)
+  // Get PLOT/USD via existing price helper (HUNT-backed derivation)
   let plotUsdPrice = 0;
   try {
-    // Read current PLOT price from bonding curve (priceForNextMint returns price in reserve token)
-    const priceInReserve = await publicClient.readContract({
-      address: MCV2_BOND,
-      abi: mcv2BondAbi,
-      functionName: "priceForNextMint",
-      args: [RESERVE_TOKEN],
-    }) as bigint;
-    // PLOT price in ETH terms (reserve is PLOT token, so approximate)
-    plotUsdPrice = (Number(priceInReserve) / 1e18) * ethUsdPrice;
+    const { getPlotUsdPrice } = await import("../../lib/usd-price");
+    const price = await getPlotUsdPrice();
+    if (price) plotUsdPrice = price;
   } catch { /* price estimation best-effort */ }
 
   const totalRoyaltiesUsd = parseFloat(royaltiesEarned) * plotUsdPrice;
