@@ -147,7 +147,6 @@ async function* streamGemini(messages: ChatMessage[], model: string): AsyncGener
   const apiKey = getCredential("gemini");
   if (!apiKey) { yield "Error: No Gemini API key configured."; return; }
 
-  // Gemini uses a different format — non-streaming for simplicity
   const contents = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
@@ -157,8 +156,9 @@ async function* streamGemini(messages: ChatMessage[], model: string): AsyncGener
 
   const systemInstruction = messages.find((m) => m.role === "system");
 
+  // Use streamGenerateContent for streaming
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -175,9 +175,28 @@ async function* streamGemini(messages: ChatMessage[], model: string): AsyncGener
     return;
   }
 
-  const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (text) yield text;
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const parsed = JSON.parse(line.slice(6));
+          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) yield text;
+        } catch { /* ignore */ }
+      }
+    }
+  }
 }
 
 async function* streamLocal(messages: ChatMessage[], baseUrl: string, model: string, apiType?: string): AsyncGenerator<string> {

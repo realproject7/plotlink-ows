@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Markdown from "react-markdown";
 
 const API_BASE = "http://localhost:7777";
 
@@ -202,7 +203,7 @@ export function Chat({ token }: { token: string }) {
                       ? "bg-accent/10 text-foreground"
                       : "bg-surface text-foreground border border-border"
                   }`}>
-                    <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{msg.content}</pre>
+                    <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed"><Markdown>{msg.content}</Markdown></div>
                   </div>
                 </div>
               ))}
@@ -211,7 +212,7 @@ export function Chat({ token }: { token: string }) {
               {streaming && streamContent && (
                 <div className="flex justify-start">
                   <div className="bg-surface border-border max-w-[80%] rounded border px-3 py-2">
-                    <pre className="text-foreground whitespace-pre-wrap font-mono text-xs leading-relaxed">{streamContent}</pre>
+                    <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed"><Markdown>{streamContent}</Markdown></div>
                     <span className="text-accent animate-pulse">▌</span>
                   </div>
                 </div>

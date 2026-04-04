@@ -45,12 +45,56 @@ app.route("/api/chat", chatRoutes);
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
-// WebSocket endpoint (placeholder for future chat streaming)
+// WebSocket chat endpoint
 app.get(
-  "/ws",
+  "/ws/chat",
   upgradeWebSocket(() => ({
-    onMessage(event, ws) {
-      ws.send(`echo: ${event.data}`);
+    async onMessage(event, ws) {
+      try {
+        const data = JSON.parse(String(event.data));
+        if (data.type === "message" && data.sessionId && data.content) {
+          // Dynamic import to avoid circular deps
+          const { db } = await import("./db");
+          const { streamChat } = await import("./lib/llm-client");
+          const { WRITER_SYSTEM_PROMPT } = await import("./lib/writer-prompt");
+
+          // Save user message
+          await db.message.create({
+            data: { sessionId: data.sessionId, role: "user", content: data.content },
+          });
+
+          // Build context
+          const messages = await db.message.findMany({
+            where: { sessionId: data.sessionId },
+            orderBy: { createdAt: "asc" },
+          });
+
+          const chatMessages = [
+            { role: "system" as const, content: WRITER_SYSTEM_PROMPT },
+            ...messages.map((m: { role: string; content: string }) => ({
+              role: m.role as "user" | "assistant" | "system",
+              content: m.content,
+            })),
+          ];
+
+          // Stream response
+          let fullResponse = "";
+          for await (const chunk of streamChat(chatMessages)) {
+            fullResponse += chunk;
+            ws.send(JSON.stringify({ type: "chunk", content: chunk }));
+          }
+
+          // Save assistant message
+          await db.message.create({
+            data: { sessionId: data.sessionId, role: "assistant", content: fullResponse },
+          });
+
+          ws.send(JSON.stringify({ type: "done" }));
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "WebSocket error";
+        ws.send(JSON.stringify({ type: "error", message }));
+      }
     },
   })),
 );
