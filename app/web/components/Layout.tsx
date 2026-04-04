@@ -5,13 +5,76 @@ import { Settings } from "./Settings";
 
 const API_BASE = "http://localhost:7777";
 
-type Page = "home" | "llm-setup" | "settings";
+type Page = "home" | "llm-setup" | "wallet-setup" | "settings";
+
+function WalletSetupPage({ token, onComplete }: { token: string; onComplete: () => void }) {
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const createWallet = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/create`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Wallet creation failed");
+      setSuccess(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Wallet creation failed");
+    }
+    setCreating(false);
+  };
+
+  useEffect(() => { createWallet(); }, []);
+
+  return (
+    <div className="mx-auto max-w-sm p-6 text-center">
+      <h2 className="text-accent mb-1 text-lg font-bold">Wallet Setup</h2>
+      <p className="text-muted mb-6 text-xs">creating your OWS wallet for autonomous transactions</p>
+
+      {creating && <p className="text-accent text-sm">creating wallet...</p>}
+
+      {error && (
+        <div className="space-y-4">
+          <div className="rounded border border-red-700/30 p-3 text-xs text-red-700">{error}</div>
+          <button
+            onClick={createWallet}
+            className="border-accent text-accent hover:bg-accent/10 w-full rounded border px-4 py-2 text-sm font-medium transition-colors"
+          >
+            retry
+          </button>
+          <button
+            onClick={onComplete}
+            className="text-muted hover:text-foreground w-full py-2 text-xs transition-colors"
+          >
+            skip for now
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="space-y-4">
+          <div className="text-accent text-2xl">&#x2713;</div>
+          <p className="text-foreground text-sm font-medium">wallet created</p>
+          <button
+            onClick={onComplete}
+            className="border-accent text-accent hover:bg-accent/10 w-full rounded border px-4 py-2 text-sm font-medium transition-colors"
+          >
+            continue
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Layout({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [page, setPage] = useState<Page>("home");
   const [llmConfigured, setLlmConfigured] = useState<boolean | null>(null);
-  const [walletError, setWalletError] = useState<string | null>(null);
-  const [creatingWallet, setCreatingWallet] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/config/llm`, {
@@ -77,22 +140,6 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
                   <p className="text-foreground text-sm font-medium">ready</p>
                   <p className="text-muted mt-1 text-xs">chat UI &amp; story publishing coming in next phases</p>
                 </div>
-                {creatingWallet && (
-                  <div className="rounded border border-accent/30 p-3 text-center text-xs text-accent">
-                    creating OWS wallet...
-                  </div>
-                )}
-                {walletError && (
-                  <div className="rounded border border-yellow-600/30 p-3 text-xs text-yellow-600">
-                    <p>wallet: {walletError}</p>
-                    <button
-                      onClick={() => setPage("settings")}
-                      className="text-accent mt-2 underline"
-                    >
-                      go to settings to retry
-                    </button>
-                  </div>
-                )}
                 <WalletCard token={token} />
               </>
             )}
@@ -102,26 +149,17 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
         {page === "llm-setup" && (
           <LLMSetup
             token={token}
-            onComplete={async () => {
+            onComplete={() => {
               setLlmConfigured(true);
-              // Auto-create wallet on first setup
-              setWalletError(null);
-              setCreatingWallet(true);
-              setPage("home");
-              try {
-                const res = await fetch(`${API_BASE}/api/wallet/create`, {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                });
-                if (!res.ok) {
-                  const data = await res.json();
-                  setWalletError(data.error || "Wallet creation failed — retry from settings.");
-                }
-              } catch {
-                setWalletError("Could not connect to OWS — retry wallet creation from settings.");
-              }
-              setCreatingWallet(false);
+              setPage("wallet-setup");
             }}
+          />
+        )}
+
+        {page === "wallet-setup" && (
+          <WalletSetupPage
+            token={token}
+            onComplete={() => setPage("home")}
           />
         )}
 

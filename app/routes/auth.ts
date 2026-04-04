@@ -158,6 +158,7 @@ auth.post("/reset-passphrase", async (c) => {
 });
 
 /** Auth middleware for protected routes */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Hono middleware signature
 export async function requireAuth(c: any, next: () => Promise<void>) {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
   if (!token) return c.json({ error: "Unauthorized" }, 401);
