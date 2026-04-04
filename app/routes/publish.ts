@@ -102,7 +102,7 @@ publish.post("/file", async (c) => {
   console.log("[publish/file] Starting publish for", body.storyName, body.fileName, "wallet:", wallet.name);
 
   // Determine if this is genesis (createStoryline) or plot (chainPlot)
-  const isPlot = body.fileName.match(/^plot-\d+\.md$/);
+  // isPlot already defined above from validation
 
   return streamSSE(c, async (stream) => {
     try {
