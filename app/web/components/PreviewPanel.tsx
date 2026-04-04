@@ -69,8 +69,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
   const charCount = fileData?.content?.length ?? 0;
   const isGenesis = fileName === "genesis.md";
-  const charLimit = isGenesis ? 1000 : 10000;
-  const overLimit = charCount > charLimit;
+  const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
+  const charLimit = isGenesis ? 1000 : isPlot ? 10000 : null;
+  const overLimit = charLimit !== null && charCount > charLimit;
 
   return (
     <div className="h-full flex flex-col">
@@ -86,7 +87,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-mono ${overLimit ? "text-error font-medium" : "text-muted"}`}>
-            {charCount.toLocaleString()}/{charLimit.toLocaleString()}
+            {charCount.toLocaleString()}{charLimit !== null ? `/${charLimit.toLocaleString()}` : " chars"}
           </span>
           {overLimit && (
             <span className="text-error text-xs font-medium">
