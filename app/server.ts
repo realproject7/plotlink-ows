@@ -8,6 +8,9 @@ import { initDb } from "./db";
 import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = new Hono();
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
@@ -32,7 +35,7 @@ app.get(
 );
 
 // In production, serve the built frontend
-const distPath = path.join(import.meta.dirname, "web", "dist");
+const distPath = path.join(__dirname, "web", "dist");
 if (fs.existsSync(distPath)) {
   app.use("/*", serveStatic({ root: "./app/web/dist" }));
   app.get("*", (c) => {
@@ -43,11 +46,11 @@ if (fs.existsSync(distPath)) {
 
 async function start() {
   // Ensure data directory exists
-  const dataDir = path.join(import.meta.dirname, "..", "data");
+  const dataDir = path.join(__dirname, "..", "data");
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
   // Run Prisma db push to ensure schema is up to date
-  const schemaPath = path.join(import.meta.dirname, "prisma", "schema.prisma");
+  const schemaPath = path.join(__dirname, "prisma", "schema.prisma");
   execSync(`npx prisma db push --schema ${schemaPath} --skip-generate`, {
     stdio: "inherit",
     env: { ...process.env, DATABASE_URL: `file:${path.join(dataDir, "local.db")}` },
