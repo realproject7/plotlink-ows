@@ -43,8 +43,22 @@ export interface ChatMessage {
  */
 export async function* streamChat(messages: ChatMessage[]): AsyncGenerator<string> {
   const config = readLLMConfig();
-  const provider = config.activeProvider;
-  const model = config.activeModel;
+  let provider = config.activeProvider;
+  let model = config.activeModel;
+
+  // Auto-detect provider from available credentials if not configured
+  if (!provider || !model) {
+    if (getCredential("anthropic")) {
+      provider = "anthropic";
+      model = "claude-sonnet-4-6";
+    } else if (getCredential("openai")) {
+      provider = "openai";
+      model = "gpt-4.1-mini";
+    } else if (getCredential("gemini")) {
+      provider = "gemini";
+      model = "gemini-2.5-flash";
+    }
+  }
 
   if (!provider || !model) {
     yield "Error: No LLM provider configured. Go to Settings → LLM to set up.";
