@@ -1,18 +1,60 @@
 import { Hono } from "hono";
 import { createHmac, randomBytes } from "crypto";
+import { db } from "../db";
 
 const auth = new Hono();
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const sessions = new Map<string, { expiresAt: number }>();
 
 function hashPassphrase(passphrase: string): string {
   return createHmac("sha256", "plotlink-ows").update(passphrase).digest("hex");
 }
 
-function getStoredHash(): string | null {
-  return process.env.OWS_PASSPHRASE ? hashPassphrase(process.env.OWS_PASSPHRASE) : null;
+async function getStoredHash(): Promise<string | null> {
+  // Check env first, then DB setting
+  if (process.env.OWS_PASSPHRASE) {
+    return hashPassphrase(process.env.OWS_PASSPHRASE);
+  }
+  const setting = await db.setting.findUnique({ where: { key: "passphrase_hash" } });
+  return setting?.value ?? null;
 }
+
+/** GET /api/auth/status — check if passphrase is configured (first-run detection) */
+auth.get("/status", async (c) => {
+  const hash = await getStoredHash();
+  return c.json({ configured: !!hash });
+});
+
+/** POST /api/auth/setup — first-run passphrase setup */
+auth.post("/setup", async (c) => {
+  const existing = await getStoredHash();
+  if (existing) {
+    return c.json({ error: "Passphrase already configured" }, 409);
+  }
+
+  const body = await c.req.json<{ passphrase: string }>();
+  if (!body.passphrase || body.passphrase.length < 4) {
+    return c.json({ error: "Passphrase must be at least 4 characters" }, 400);
+  }
+
+  const hash = hashPassphrase(body.passphrase);
+  await db.setting.upsert({
+    where: { key: "passphrase_hash" },
+    update: { value: hash },
+    create: { key: "passphrase_hash", value: hash },
+  });
+
+  // Auto-login after setup
+  const token = randomBytes(32).toString("hex");
+  await db.session.create({
+    data: {
+      token,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+
+  return c.json({ token });
+});
 
 /** POST /api/auth/login — validate passphrase, return session token */
 auth.post("/login", async (c) => {
@@ -21,9 +63,9 @@ auth.post("/login", async (c) => {
     return c.json({ error: "Passphrase required" }, 400);
   }
 
-  const storedHash = getStoredHash();
+  const storedHash = await getStoredHash();
   if (!storedHash) {
-    return c.json({ error: "Passphrase not configured. Set OWS_PASSPHRASE in .env" }, 500);
+    return c.json({ error: "Passphrase not configured. Complete first-run setup." }, 500);
   }
 
   const inputHash = hashPassphrase(body.passphrase);
@@ -32,37 +74,28 @@ auth.post("/login", async (c) => {
   }
 
   const token = randomBytes(32).toString("hex");
-  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS });
+  await db.session.create({
+    data: {
+      token,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
 
   return c.json({ token });
 });
 
 /** GET /api/auth/verify — check token validity */
-auth.get("/verify", (c) => {
+auth.get("/verify", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
   if (!token) return c.json({ valid: false }, 401);
 
-  const session = sessions.get(token);
-  if (!session || session.expiresAt < Date.now()) {
-    if (session) sessions.delete(token);
+  const session = await db.session.findUnique({ where: { token } });
+  if (!session || session.expiresAt < new Date()) {
+    if (session) await db.session.delete({ where: { token } });
     return c.json({ valid: false }, 401);
   }
 
   return c.json({ valid: true });
 });
-
-/** Auth middleware for protected routes */
-export function requireAuth(c: any, next: any) {
-  const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  if (!token) return c.json({ error: "Unauthorized" }, 401);
-
-  const session = sessions.get(token);
-  if (!session || session.expiresAt < Date.now()) {
-    if (session) sessions.delete(token);
-    return c.json({ error: "Session expired" }, 401);
-  }
-
-  return next();
-}
 
 export { auth as authRoutes };

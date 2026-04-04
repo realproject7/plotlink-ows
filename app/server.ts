@@ -4,6 +4,8 @@ import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { authRoutes } from "./routes/auth";
+import { initDb } from "./db";
+import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
@@ -39,9 +41,27 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-const port = Number(process.env.APP_PORT) || 7777;
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`\n  PlotLink OWS running at http://localhost:${info.port}\n`);
-});
+async function start() {
+  // Ensure data directory exists
+  const dataDir = path.join(import.meta.dirname, "..", "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-injectWebSocket(server);
+  // Run Prisma db push to ensure schema is up to date
+  const schemaPath = path.join(import.meta.dirname, "prisma", "schema.prisma");
+  execSync(`npx prisma db push --schema ${schemaPath} --skip-generate`, {
+    stdio: "inherit",
+    env: { ...process.env, DATABASE_URL: `file:${path.join(dataDir, "local.db")}` },
+  });
+
+  // Initialize database connection
+  await initDb();
+
+  const port = Number(process.env.APP_PORT) || 7777;
+  const server = serve({ fetch: app.fetch, port }, (info) => {
+    console.log(`\n  PlotLink OWS running at http://localhost:${info.port}\n`);
+  });
+
+  injectWebSocket(server);
+}
+
+start().catch(console.error);
