@@ -28,6 +28,7 @@ export interface PublishResult {
   txHash: string;
   contentCid: string;
   storylineId?: number;
+  gasCost?: string;
 }
 
 export interface PublishProgress {
@@ -111,7 +112,7 @@ export async function getEthBalance(address: string): Promise<bigint> {
 /**
  * Wait for transaction confirmation and decode storylineId from event.
  */
-async function waitForConfirmation(txHash: string): Promise<number> {
+async function waitForConfirmation(txHash: string): Promise<{ storylineId: number; gasCost: string }> {
   const receipt = await publicClient.waitForTransactionReceipt({
     hash: txHash as `0x${string}`,
   });
@@ -119,6 +120,9 @@ async function waitForConfirmation(txHash: string): Promise<number> {
   if (receipt.status === "reverted") {
     throw new Error("Transaction reverted on-chain");
   }
+
+  // Compute actual gas cost: gasUsed * effectiveGasPrice
+  const gasCost = (receipt.gasUsed * receipt.effectiveGasPrice).toString();
 
   // Decode StorylineCreated event to get storylineId
   for (const log of receipt.logs) {
@@ -129,7 +133,7 @@ async function waitForConfirmation(txHash: string): Promise<number> {
         topics: log.topics,
       });
       if (decoded.eventName === "StorylineCreated") {
-        return Number((decoded.args as { storylineId: bigint }).storylineId);
+        return { storylineId: Number((decoded.args as { storylineId: bigint }).storylineId), gasCost };
       }
     } catch { /* not our event */ }
   }
@@ -178,15 +182,15 @@ export async function publishStoryline(
 
   // Step 5: Wait for confirmation and decode storylineId
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash: result.txHash, contentCid });
-  const storylineId = await waitForConfirmation(result.txHash);
+  const confirmation = await waitForConfirmation(result.txHash);
 
   onProgress({
     step: "done",
-    message: `Published! Storyline #${storylineId}`,
+    message: `Published! Storyline #${confirmation.storylineId}`,
     txHash: result.txHash,
     contentCid,
-    storylineId,
+    storylineId: confirmation.storylineId,
   });
 
-  return { txHash: result.txHash, contentCid, storylineId };
+  return { txHash: result.txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
 }

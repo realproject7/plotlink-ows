@@ -97,6 +97,7 @@ publish.post("/:draftId", async (c) => {
           txHash: result.txHash,
           storylineId: result.storylineId,
           contentCid: result.contentCid,
+          gasCost: result.gasCost,
         },
       });
     } catch (err: unknown) {
