@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { db } from "../db";
 import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
@@ -64,51 +63,6 @@ publish.get("/preflight", async (c) => {
   }
 });
 
-/** POST /api/publish/:draftId — publish a draft on-chain (streams progress) */
-publish.post("/:draftId", async (c) => {
-  const draftId = c.req.param("draftId");
-
-  const draft = await db.draft.findUnique({ where: { id: draftId } });
-  if (!draft) return c.json({ error: "Draft not found" }, 404);
-  if (draft.status === "published") return c.json({ error: "Already published" }, 409);
-
-  // Get wallet
-  const wallets = listAgentWallets();
-  const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-  if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
-
-  return streamSSE(c, async (stream) => {
-    try {
-      const result = await publishStoryline(
-        wallet.name,
-        draft.title,
-        draft.content,
-        draft.genre || undefined,
-        async (progress) => {
-          await stream.writeSSE({ data: JSON.stringify(progress) });
-        },
-      );
-
-      // Only mark published after tx confirmed (publishStoryline waits for confirmation)
-      await db.draft.update({
-        where: { id: draftId },
-        data: {
-          status: "published",
-          txHash: result.txHash,
-          storylineId: result.storylineId,
-          contentCid: result.contentCid,
-          gasCost: result.gasCost,
-        },
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Publish failed";
-      await stream.writeSSE({
-        data: JSON.stringify({ step: "error", message, error: message }),
-      });
-    }
-  });
-});
-
 /** POST /api/publish/file — publish a story file on-chain (streams progress) */
 publish.post("/file", async (c) => {
   const body = await c.req.json<{
@@ -125,9 +79,17 @@ publish.post("/file", async (c) => {
   }
 
   // Get wallet
-  const wallets = listAgentWallets();
+  let wallets;
+  try {
+    wallets = listAgentWallets();
+  } catch (err) {
+    console.error("[publish/file] listAgentWallets error:", err);
+    return c.json({ error: `OWS wallet error: ${err instanceof Error ? err.message : String(err)}` }, 500);
+  }
   const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
   if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+  console.log("[publish/file] Starting publish for", body.storyName, body.fileName, "wallet:", wallet.name);
 
   // Determine if this is genesis (createStoryline) or plot (chainPlot)
   const isPlot = body.fileName.match(/^plot-\d+\.md$/);
