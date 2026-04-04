@@ -78,6 +78,16 @@ publish.post("/file", async (c) => {
     return c.json({ error: "title and content required" }, 400);
   }
 
+  // Enforce character limits
+  const isGenesis = body.fileName === "genesis.md";
+  const isPlot = /^plot-\d+\.md$/.test(body.fileName);
+  const charLimit = isGenesis ? 1000 : isPlot ? 10000 : null;
+  if (charLimit && body.content.length > charLimit) {
+    return c.json({
+      error: `Content exceeds ${charLimit.toLocaleString()} character limit (${body.content.length.toLocaleString()} chars). Reduce content before publishing.`,
+    }, 400);
+  }
+
   // Get wallet
   let wallets;
   try {
@@ -92,7 +102,7 @@ publish.post("/file", async (c) => {
   console.log("[publish/file] Starting publish for", body.storyName, body.fileName, "wallet:", wallet.name);
 
   // Determine if this is genesis (createStoryline) or plot (chainPlot)
-  const isPlot = body.fileName.match(/^plot-\d+\.md$/);
+  // isPlot already defined above from validation
 
   return streamSSE(c, async (stream) => {
     try {
