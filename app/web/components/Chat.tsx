@@ -69,37 +69,32 @@ export function Chat({ token }: { token: string }) {
     } : null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat/sessions/${activeSession.id}/send`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No stream");
-      const decoder = new TextDecoder();
-      let buffer = "";
+      // Use WebSocket for streaming
+      const ws = new WebSocket(`ws://localhost:7777/ws/chat?token=${encodeURIComponent(token)}`);
       let fullContent = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const parsed = JSON.parse(line.slice(6));
-              if (parsed.type === "chunk") {
-                fullContent += parsed.content;
-                setStreamContent(fullContent);
-              }
-            } catch { /* ignore */ }
-          }
-        }
-      }
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: "message", sessionId: activeSession.id, content }));
+        };
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "chunk") {
+              fullContent += data.content;
+              setStreamContent(fullContent);
+            } else if (data.type === "done") {
+              ws.close();
+              resolve();
+            } else if (data.type === "error") {
+              ws.close();
+              reject(new Error(data.message));
+            }
+          } catch { /* ignore */ }
+        };
+        ws.onerror = () => reject(new Error("WebSocket error"));
+        ws.onclose = () => resolve();
+      });
 
       // Reload session to get persisted messages
       loadSession(activeSession.id);

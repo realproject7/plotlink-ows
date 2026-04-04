@@ -45,15 +45,26 @@ app.route("/api/chat", chatRoutes);
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
-// WebSocket chat endpoint
+// WebSocket chat endpoint (auth via query param since WS can't send headers)
 app.get(
   "/ws/chat",
-  upgradeWebSocket(() => ({
+  upgradeWebSocket((c) => {
+    const wsToken = new URL(c.req.url).searchParams.get("token");
+    let authenticated = false;
+
+    return {
+    async onOpen(_event, ws) {
+      if (!wsToken) { ws.close(4001, "Missing token"); return; }
+      const { db } = await import("./db");
+      const session = await db.session.findUnique({ where: { token: wsToken } });
+      if (!session || session.expiresAt < new Date()) { ws.close(4001, "Invalid token"); return; }
+      authenticated = true;
+    },
     async onMessage(event, ws) {
+      if (!authenticated) { ws.close(4001, "Not authenticated"); return; }
       try {
         const data = JSON.parse(String(event.data));
         if (data.type === "message" && data.sessionId && data.content) {
-          // Dynamic import to avoid circular deps
           const { db } = await import("./db");
           const { streamChat } = await import("./lib/llm-client");
           const { WRITER_SYSTEM_PROMPT } = await import("./lib/writer-prompt");
@@ -96,7 +107,8 @@ app.get(
         ws.send(JSON.stringify({ type: "error", message }));
       }
     },
-  })),
+  };
+  }),
 );
 
 // In production, serve the built frontend
