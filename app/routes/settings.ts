@@ -69,7 +69,17 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (agentId > 0n) {
-        return c.json({ linked: true, agentId: Number(agentId), owsWallet: address });
+        // Fetch NFT owner (ERC-721 ownerOf)
+        let owner: string | undefined;
+        try {
+          owner = await publicClient.readContract({
+            address: ERC_8004,
+            abi: [{ type: "function", name: "ownerOf", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] }] as const,
+            functionName: "ownerOf",
+            args: [agentId],
+          }) as string;
+        } catch { /* best effort */ }
+        return c.json({ linked: true, agentId: Number(agentId), owsWallet: address, owner });
       }
     } catch { /* contract call may fail */ }
 

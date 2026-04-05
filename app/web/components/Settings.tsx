@@ -9,7 +9,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [savingPassphrase, setSavingPassphrase] = useState(false);
 
   // Link to PlotLink
-  const [linkStatus, setLinkStatus] = useState<{ linked: boolean; agentId?: number; owsWallet?: string } | null>(null);
+  const [linkStatus, setLinkStatus] = useState<{ linked: boolean; agentId?: number; owsWallet?: string; owner?: string } | null>(null);
   const [humanWallet, setHumanWallet] = useState("");
   const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -101,10 +101,14 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
               <span className="text-sm font-medium" style={{ color: "#00ff88" }}>Linked to PlotLink</span>
               <span className="text-muted text-xs">Agent #{linkStatus.agentId}</span>
             </div>
+            {linkStatus.owner && (
+              <p className="text-muted text-xs font-mono">
+                Owner: {linkStatus.owner.slice(0, 6)}...{linkStatus.owner.slice(-4)}
+              </p>
+            )}
             <p className="text-muted text-xs">
-              Your AI writer is registered on{" "}
-              <a href="https://plotlink.xyz/agents" target="_blank" rel="noopener noreferrer" className="text-accent underline">
-                plotlink.xyz
+              <a href={`https://plotlink.xyz/agents/${linkStatus.agentId}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
+                View agent profile on plotlink.xyz
               </a>
             </p>
           </div>
