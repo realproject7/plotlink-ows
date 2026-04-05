@@ -14,7 +14,13 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"signature" | "wallet" | null>(null);
+  const [copied, setCopied] = useState<"signature" | "wallet" | "bindSig" | null>(null);
+
+  // Wallet bind (step 2 — after registration on PlotLink)
+  const [bindAgentId, setBindAgentId] = useState("");
+  const [bindResult, setBindResult] = useState<{ signature: string; owsWallet: string; deadline: number } | null>(null);
+  const [generatingBind, setGeneratingBind] = useState(false);
+  const [bindError, setBindError] = useState<string | null>(null);
 
   const authFetch = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
@@ -51,10 +57,34 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
     setGenerating(false);
   };
 
-  const copyToClipboard = async (text: string, field: "signature" | "wallet") => {
+  const copyToClipboard = async (text: string, field: "signature" | "wallet" | "bindSig") => {
     await navigator.clipboard.writeText(text);
     setCopied(field);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleGenerateWalletBind = async () => {
+    const id = parseInt(bindAgentId, 10);
+    if (!id || id <= 0) { setBindError("Enter a valid Agent ID"); return; }
+    if (!humanWallet.trim() || !/^0x[a-fA-F0-9]{40}$/.test(humanWallet)) {
+      setBindError("Enter your PlotLink wallet address above first");
+      return;
+    }
+    setGeneratingBind(true);
+    setBindError(null);
+    setBindResult(null);
+    try {
+      const res = await authFetch("/api/settings/generate-wallet-bind", {
+        method: "POST",
+        body: JSON.stringify({ agentId: id, humanWallet }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate wallet bind code");
+      setBindResult(data);
+    } catch (err: unknown) {
+      setBindError(err instanceof Error ? err.message : "Failed to generate wallet bind code");
+    }
+    setGeneratingBind(false);
   };
 
   const handleResetPassphrase = async () => {
@@ -173,6 +203,48 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                 <p className="text-xs" style={{ color: "#00ff88" }}>
                   Now go to plotlink.xyz/agents and paste both values in the &quot;Link AI Writer&quot; section.
                 </p>
+
+                {/* Step 2: Wallet Bind (after PlotLink registration gives agentId) */}
+                <div className="border-t border-border mt-4 pt-4 space-y-3">
+                  <p className="text-muted text-xs">
+                    <strong className="text-foreground">Step 2:</strong> After registering on PlotLink, enter the Agent ID below to complete on-chain wallet binding.
+                  </p>
+                  <input
+                    value={bindAgentId}
+                    onChange={(e) => setBindAgentId(e.target.value)}
+                    placeholder="Agent ID (e.g. 42)"
+                    className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent font-mono"
+                  />
+                  {bindError && <p className="text-error text-xs">{bindError}</p>}
+                  <button
+                    onClick={handleGenerateWalletBind}
+                    disabled={generatingBind || !bindAgentId.trim()}
+                    className="border-border text-muted hover:border-accent hover:text-accent disabled:opacity-40 w-full rounded border px-4 py-2 text-xs font-medium transition-colors"
+                  >
+                    {generatingBind ? "Generating..." : "Generate Wallet Bind Code"}
+                  </button>
+                  {bindResult && (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-muted text-xs block mb-1">Wallet Bind Signature</label>
+                        <div className="relative">
+                          <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
+                            {bindResult.signature}
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(bindResult.signature, "bindSig")}
+                            className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
+                          >
+                            {copied === "bindSig" ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs" style={{ color: "#00ff88" }}>
+                        Paste this signature on plotlink.xyz to complete the wallet binding.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
