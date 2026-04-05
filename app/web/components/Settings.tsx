@@ -14,7 +14,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"signature" | "wallet" | "bindSig" | null>(null);
+  const [copied, setCopied] = useState<"signature" | "wallet" | "bindSig" | "bindDeadline" | null>(null);
 
   // Wallet bind (step 2 — after registration on PlotLink)
   const [bindAgentId, setBindAgentId] = useState("");
@@ -57,7 +57,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
     setGenerating(false);
   };
 
-  const copyToClipboard = async (text: string, field: "signature" | "wallet" | "bindSig") => {
+  const copyToClipboard = async (text: string, field: "signature" | "wallet" | "bindSig" | "bindDeadline") => {
     await navigator.clipboard.writeText(text);
     setCopied(field);
     setTimeout(() => setCopied(null), 2000);
@@ -239,8 +239,22 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                           </button>
                         </div>
                       </div>
+                      <div>
+                        <label className="text-muted text-xs block mb-1">Deadline (unix timestamp)</label>
+                        <div className="relative">
+                          <div className="bg-surface border-border rounded border p-2 text-xs font-mono text-foreground pr-16">
+                            {bindResult.deadline}
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(String(bindResult.deadline), "bindDeadline")}
+                            className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
+                          >
+                            {copied === "bindDeadline" ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
                       <p className="text-xs" style={{ color: "#00ff88" }}>
-                        Paste this signature on plotlink.xyz to complete the wallet binding.
+                        Paste both values on plotlink.xyz to complete the wallet binding.
                       </p>
                     </div>
                   )}
