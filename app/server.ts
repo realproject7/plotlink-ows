@@ -85,6 +85,7 @@ async function start() {
   const { WebSocketServer } = await import("ws");
   const wss = new WebSocketServer({ noServer: true });
   // server from serve() IS an http.Server
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).on("upgrade", (req: any, socket: any, head: any) => {
     const url = new URL(req.url || "", `http://localhost:${port}`);
     if (url.pathname === "/ws/terminal") {
