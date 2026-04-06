@@ -104,6 +104,15 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
 
     ws.onclose = () => {
       term.write("\r\n\x1b[33m[Terminal disconnected]\x1b[0m\r\n");
+      // Clean up dead session so it can be recreated
+      const dead = sessions.get(name);
+      if (dead?.ws === ws) {
+        dead.observer.disconnect();
+        dead.term.dispose();
+        dead.container.remove();
+        sessions.delete(name);
+        setSessionList((prev) => prev.filter((s) => s !== name));
+      }
     };
 
     term.onData((data) => {
@@ -153,14 +162,16 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     showSession(storyName);
   }, [storyName, createSession, showSession]);
 
-  // Cleanup all sessions on unmount
+  // Cleanup all sessions on unmount — also kill server PTYs
   useEffect(() => {
     return () => {
-      for (const [, session] of sessions) {
+      for (const [name, session] of sessions) {
         session.observer.disconnect();
         session.ws.close();
         session.term.dispose();
         session.container.remove();
+        // Fire-and-forget DELETE to kill server PTY
+        fetch(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
       }
       sessions.clear();
     };
