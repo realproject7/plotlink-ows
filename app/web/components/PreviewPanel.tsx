@@ -31,28 +31,32 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [dirty, setDirty] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const prevFileRef = useRef<string | null>(null);
+
   const loadFile = useCallback(async () => {
     if (!storyName || !fileName) { setFileData(null); return; }
+    const fileKey = `${storyName}/${fileName}`;
+    const isNewFile = prevFileRef.current !== fileKey;
+    if (isNewFile) {
+      prevFileRef.current = fileKey;
+    }
     try {
       const res = await authFetch(`/api/stories/${storyName}/${fileName}`);
       if (res.ok) {
         const data: FileData = await res.json();
         setFileData(data);
-        // Only update edit content if user hasn't made unsaved changes
-        if (!dirty) {
+        // Update edit content on new file or when no unsaved changes
+        if (isNewFile || !dirty) {
           setEditContent(data.content ?? "");
+          if (isNewFile) setDirty(false);
         }
       }
     } catch { /* ignore */ }
   }, [storyName, fileName, authFetch, dirty]);
 
-  // Reset dirty state when file changes (tab persists)
-  useEffect(() => {
-    setDirty(false);
-  }, [storyName, fileName]);
-
   // Initial load
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch on mount
     setLoading(true);
     loadFile().finally(() => setLoading(false));
   }, [loadFile]);
