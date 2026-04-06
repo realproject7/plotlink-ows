@@ -179,7 +179,7 @@ dashboard.get("/", async (c) => {
         gasCost: f.gasCost,
         gasCostEth: f.gasCost ? (Number(BigInt(f.gasCost)) / 1e18).toFixed(6) : null,
         gasCostUsd: f.gasCost && ethUsdPrice ? ((Number(BigInt(f.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
-        createdAt: f.publishedAt || new Date().toISOString(),
+        createdAt: f.publishedAt || null,
       })),
       totalPublished: publishedFiles.length,
       totalStories,
