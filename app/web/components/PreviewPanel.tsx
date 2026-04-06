@@ -320,8 +320,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             </div>
             <p className="text-muted text-xs">
               {indexExpired
-                ? "Index window expired. Use Retry Publish to create a new on-chain tx."
-                : "Try Retry Index first (available for 5 min after publish). If that fails, Retry Publish creates a new on-chain tx."}
+                ? isPlot
+                  ? "Index window expired. Use Retry Publish to create a new on-chain tx."
+                  : "Index window expired. Contact support or re-publish manually."
+                : isPlot
+                  ? "Try Retry Index first (available for 5 min after publish). If that fails, Retry Publish creates a new on-chain tx."
+                  : "Retry Index is available for 5 min after publish."}
             </p>
             {fileData.indexError && (
               <p className="text-error text-xs">{fileData.indexError}</p>
