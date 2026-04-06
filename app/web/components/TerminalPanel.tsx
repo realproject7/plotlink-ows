@@ -150,8 +150,9 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     session.ws = ws;
   }, [token]);
 
-  const createSession = useCallback(async (name: string, resume: boolean = false) => {
+  const createSession = useCallback(async (name: string, opts?: { resume?: boolean; autoConnect?: boolean }) => {
     if (!wrapperRef.current || sessions.has(name)) return;
+    const { resume = false, autoConnect = true } = opts ?? {};
 
     const container = document.createElement("div");
     container.style.width = "100%";
@@ -200,15 +201,19 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       }
     } catch { /* ignore */ }
 
-    // Connect WebSocket
-    connectWs(name, session, resume);
+    if (autoConnect) {
+      connectWs(name, session, resume);
+    } else {
+      // Show as disconnected so overlay appears
+      setDisconnected((prev) => new Set(prev).add(name));
+    }
 
     requestAnimationFrame(() => {
       try { fit.fit(); } catch { /* ignore */ }
     });
   }, [connectWs]);
 
-  const reconnectSession = useCallback((name: string, resume: boolean) => {
+  const reconnectSession = useCallback(async (name: string, resume: boolean) => {
     const session = sessions.get(name);
     if (!session) return;
 
@@ -219,7 +224,8 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     }
 
     if (!resume) {
-      // Fresh session: clear terminal
+      // Kill old server PTY so a fresh one spawns on reconnect
+      await authFetchRef.current(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
       session.term.clear();
     }
 
@@ -251,9 +257,25 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
   useEffect(() => {
     if (!storyName) return;
     if (!sessions.has(storyName)) {
-      createSession(storyName); // eslint-disable-line react-hooks/set-state-in-effect -- spawn on story select
+      // Check if a previous session exists — if so, show overlay instead of auto-connecting
+      authFetchRef.current(`/api/terminal/session/${encodeURIComponent(storyName)}`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!sessions.has(storyName)) { // guard against race
+            const hasStoredSession = data?.sessionId && !data?.running;
+            createSession(storyName, { autoConnect: !hasStoredSession });
+            showSession(storyName);
+          }
+        })
+        .catch(() => {
+          if (!sessions.has(storyName)) {
+            createSession(storyName);
+            showSession(storyName);
+          }
+        });
+    } else {
+      showSession(storyName);
     }
-    showSession(storyName);
   }, [storyName, createSession, showSession]);
 
   // Periodic scrollback save (every 30s for active session)
