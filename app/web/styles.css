@@ -64,6 +64,6 @@ code, pre {
 
 /* Ensure dim/faint terminal text (SGR 2) stays readable on cream bg */
 .xterm .xterm-dim {
-  opacity: 0.7 !important;
+  opacity: 1 !important;
   color: #8B7355 !important;
 }
