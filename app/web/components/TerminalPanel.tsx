@@ -43,8 +43,8 @@ export function TerminalPanel({ token }: TerminalPanelProps) {
         white: "#3A2A1E",      // dark brown — visible on cream bg
         // ANSI 8-15 (bright)
         brightBlack: "#8B7355",  // muted brown — comments, dimmed text
-        brightRed: "#C45B5B",    // soft rose — diff removed bg-friendly
-        brightGreen: "#6B8F5B",  // soft sage — diff added bg-friendly
+        brightRed: "rgba(180, 80, 80, 0.25)",   // translucent rose — diff removed bg
+        brightGreen: "rgba(76, 140, 76, 0.25)", // translucent sage — diff added bg
         brightYellow: "#A07D1C", // warm gold
         brightBlue: "#5A82BA",   // lighter slate blue
         brightMagenta: "#8E5D9F",// lighter purple
