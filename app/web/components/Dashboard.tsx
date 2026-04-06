@@ -14,12 +14,14 @@ interface Story {
   title: string;
   genre: string | null;
   status: string;
+  storyName: string;
+  file: string;
+  plotCount: number;
   txHash?: string | null;
   storylineId?: number | null;
   gasCostEth?: string | null;
   gasCostUsd?: string | null;
   createdAt: string;
-  updatedAt?: string;
 }
 
 interface DashboardData {
@@ -50,7 +52,12 @@ export function Dashboard({ token }: { token: string }) {
   useEffect(() => { loadDashboard(); }, []);
 
   const truncate = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const formatDate = (d: string | undefined | null) => {
+    if (!d) return "Unknown date";
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return "Unknown date";
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
 
   if (!data) {
     return (
@@ -140,38 +147,62 @@ export function Dashboard({ token }: { token: string }) {
         {data.stories.published.length === 0 ? (
           <p className="text-muted text-xs">no published stories yet</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {data.stories.published.map((story) => (
-              <div key={story.id} className="bg-surface rounded p-3">
-                <div className="flex items-center justify-between">
+              <div key={story.id} className="bg-surface rounded border border-border p-4">
+                <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-foreground text-sm font-medium">{story.title}</span>
-                    {story.genre && <span className="text-accent ml-2 text-[10px]">{story.genre}</span>}
+                    {story.genre && (
+                      <span className="bg-accent/10 text-accent rounded px-2 py-0.5 text-[10px] font-medium">{story.genre}</span>
+                    )}
+                    <h4 className="text-foreground mt-1 text-sm font-serif font-medium">{story.title}</h4>
+                    <p className="text-muted mt-0.5 text-[10px] font-mono">{story.storyName}/{story.file}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-accent">published</span>
-                    {story.storylineId ? (
+                    {story.status === "published-not-indexed" ? (
+                      <span className="rounded border border-amber-600/30 px-1.5 py-0.5 text-[9px] text-amber-700">not indexed</span>
+                    ) : (
+                      <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">published</span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded bg-background p-1.5">
+                    <div className="text-foreground text-sm font-medium">{story.plotCount}</div>
+                    <div className="text-muted text-[9px]">Plots</div>
+                  </div>
+                  <div className="rounded bg-background p-1.5">
+                    <div className="text-foreground text-sm font-medium font-mono">
+                      {story.storylineId ? `#${story.storylineId}` : "—"}
+                    </div>
+                    <div className="text-muted text-[9px]">Storyline</div>
+                  </div>
+                  <div className="rounded bg-background p-1.5">
+                    <div className="text-foreground text-sm font-medium">
+                      {story.gasCostEth ? `${story.gasCostEth}` : "—"}
+                    </div>
+                    <div className="text-muted text-[9px]">Gas (ETH)</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[10px]">
+                  <span className="text-muted">{formatDate(story.createdAt)}</span>
+                  <div className="flex items-center gap-2">
+                    {story.txHash && (
+                      <a href={`https://basescan.org/tx/${story.txHash}`} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-accent font-mono">
+                        tx:{story.txHash.slice(0, 10)}...
+                      </a>
+                    )}
+                    {story.storylineId && (
                       <a
                         href={`https://plotlink.xyz/story/${story.storylineId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-accent text-[10px] underline"
+                        className="text-accent underline"
                       >
-                        view
+                        View on PlotLink
                       </a>
-                    ) : (
-                      <a href="https://plotlink.xyz" target="_blank" rel="noopener noreferrer" className="text-accent text-[10px] underline">plotlink.xyz</a>
                     )}
                   </div>
-                </div>
-                <div className="mt-1 flex items-center gap-3 text-[10px]">
-                  <span className="text-muted">{formatDate(story.createdAt)}</span>
-                  {story.txHash && (
-                    <a href={`https://basescan.org/tx/${story.txHash}`} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-accent font-mono">
-                      tx:{story.txHash.slice(0, 10)}...
-                    </a>
-                  )}
-                  {story.gasCostEth && <span className="text-muted">{story.gasCostEth} ETH{story.gasCostUsd ? ` (~$${story.gasCostUsd})` : ""}</span>}
                 </div>
               </div>
             ))}

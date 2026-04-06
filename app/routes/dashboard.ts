@@ -25,6 +25,10 @@ dashboard.get("/", async (c) => {
   interface PublishedFile {
     storyName: string;
     file: string;
+    storyTitle: string;
+    storyGenre: string | null;
+    plotCount: number;
+    status?: string;
     txHash?: string;
     storylineId?: number;
     contentCid?: string;
@@ -46,9 +50,30 @@ dashboard.get("/", async (c) => {
       const mdFiles = fs.readdirSync(storyDir).filter((f) => f.endsWith(".md"));
       totalFiles += mdFiles.length;
 
+      // Read story title and genre from structure.md or genesis.md
+      let storyTitle = dir.name;
+      let storyGenre: string | null = null;
+      try {
+        const structPath = path.join(storyDir, "structure.md");
+        const genesisPath = path.join(storyDir, "genesis.md");
+        if (fs.existsSync(structPath)) {
+          const content = fs.readFileSync(structPath, "utf-8");
+          const titleMatch = content.match(/^#\s+(.+)$/m);
+          if (titleMatch) storyTitle = titleMatch[1];
+          const genreMatch = content.match(/genre[:\s]+(.+)/i);
+          if (genreMatch) storyGenre = genreMatch[1].trim();
+        } else if (fs.existsSync(genesisPath)) {
+          const content = fs.readFileSync(genesisPath, "utf-8");
+          const titleMatch = content.match(/^#\s+(.+)$/m);
+          if (titleMatch) storyTitle = titleMatch[1];
+        }
+      } catch { /* best effort */ }
+
+      const plotCount = mdFiles.filter((f) => /^plot-\d+\.md$/.test(f)).length;
+
       for (const [file, info] of Object.entries(status)) {
-        if (info.status === "published") {
-          publishedFiles.push({ storyName: dir.name, file, ...info });
+        if (info.status === "published" || info.status === "published-not-indexed") {
+          publishedFiles.push({ storyName: dir.name, file, storyTitle, storyGenre, plotCount, ...info });
         }
       }
     }
@@ -141,15 +166,20 @@ dashboard.get("/", async (c) => {
     wallet: walletInfo,
     stories: {
       published: publishedFiles.map((f) => ({
+        id: `${f.storyName}/${f.file}`,
+        title: f.storyTitle,
+        genre: f.storyGenre,
+        status: f.status || "published",
         storyName: f.storyName,
         file: f.file,
+        plotCount: f.plotCount,
         txHash: f.txHash,
         storylineId: f.storylineId,
         contentCid: f.contentCid,
         gasCost: f.gasCost,
         gasCostEth: f.gasCost ? (Number(BigInt(f.gasCost)) / 1e18).toFixed(6) : null,
         gasCostUsd: f.gasCost && ethUsdPrice ? ((Number(BigInt(f.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
-        publishedAt: f.publishedAt,
+        createdAt: f.publishedAt || null,
       })),
       totalPublished: publishedFiles.length,
       totalStories,
