@@ -330,12 +330,14 @@ export async function publishPlot(
   });
 
   // Index on PlotLink (best-effort — plot appears on plotlink.xyz)
+  // Pass content as fallback because IPFS stores JSON metadata wrapper,
+  // but on-chain hash is keccak256 of raw content only
   try {
     const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
     await fetch(`${PLOTLINK_URL}/api/index/plot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txHash }),
+      body: JSON.stringify({ txHash, content }),
     });
   } catch { /* indexing is best-effort */ }
 
