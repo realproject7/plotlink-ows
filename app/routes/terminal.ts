@@ -76,18 +76,44 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   sessionMap[storyName] = sessionId;
   saveSessionMap(sessionMap);
 
+  const isResume = !!opts?.resume;
+  const spawnTime = Date.now();
   const session = { term, ws: null as WebSocket | null, state: "running" as const, sessionId };
   ptySessions.set(storyName, session);
 
   term.onExit(({ exitCode }) => {
     const s = ptySessions.get(storyName);
-    if (s?.term === term) {
-      s.state = "stopped";
-      if (s.ws && s.ws.readyState <= 1) {
-        s.ws.close(1000, `exited:${exitCode}`);
+    if (s?.term !== term) return;
+
+    // If a resumed session exits quickly (< 5s), auto-fallback to fresh
+    const elapsed = Date.now() - spawnTime;
+    if (isResume && elapsed < 5000 && exitCode !== 0) {
+      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), falling back to fresh session`);
+      ptySessions.delete(storyName);
+      try {
+        const fresh = spawnPty(storyName, { resume: false });
+        // Re-attach the WebSocket if one was connected
+        if (s.ws && s.ws.readyState <= 1) {
+          const dataDisposable = fresh.term.onData((data: string) => {
+            if (s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(data);
+          });
+          fresh.ws = s.ws;
+          s.ws.addEventListener("close", () => { dataDisposable.dispose(); });
+        }
+      } catch (err) {
+        console.error("Fresh fallback spawn failed:", err);
+        if (s.ws && s.ws.readyState <= 1) {
+          s.ws.close(1011, "fallback-failed");
+        }
       }
-      s.ws = null;
+      return;
     }
+
+    s.state = "stopped";
+    if (s.ws && s.ws.readyState <= 1) {
+      s.ws.close(1000, `exited:${exitCode}`);
+    }
+    s.ws = null;
   });
 
   return session;
