@@ -21,6 +21,7 @@ interface FileStatus {
   status: "published" | "published-not-indexed" | "pending" | "draft";
   txHash?: string;
   storylineId?: number;
+  plotIndex?: number;
   contentCid?: string;
   publishedAt?: string;
   gasCost?: string;
@@ -166,6 +167,7 @@ stories.post("/:name/:file/publish-status", async (c) => {
   const body = await c.req.json<{
     txHash: string;
     storylineId?: number;
+    plotIndex?: number;
     contentCid: string;
     gasCost?: string;
     indexError?: string;
@@ -178,6 +180,7 @@ stories.post("/:name/:file/publish-status", async (c) => {
     status: body.indexError ? "published-not-indexed" : "published",
     txHash: body.txHash || existing?.txHash,
     storylineId: body.storylineId ?? existing?.storylineId,
+    plotIndex: body.plotIndex ?? existing?.plotIndex,
     contentCid: body.contentCid || existing?.contentCid,
     gasCost: body.gasCost || existing?.gasCost,
     publishedAt: new Date().toISOString(),

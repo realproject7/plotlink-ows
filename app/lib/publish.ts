@@ -55,6 +55,7 @@ export interface PublishResult {
   txHash: string;
   contentCid: string;
   storylineId?: number;
+  plotIndex?: number;
   gasCost?: string;
   indexError?: string;
 }
@@ -360,5 +361,5 @@ export async function publishPlot(
     console.error(`Plot indexing error for tx ${txHash}:`, indexError);
   }
 
-  return { txHash, contentCid, storylineId, gasCost: confirmation.gasCost, indexError };
+  return { txHash, contentCid, storylineId, plotIndex: confirmation.plotIndex >= 0 ? confirmation.plotIndex : undefined, gasCost: confirmation.gasCost, indexError };
 }

@@ -196,6 +196,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                   body: JSON.stringify({
                     txHash: data.txHash,
                     storylineId: data.storylineId,
+                    plotIndex: data.plotIndex,
                     contentCid: data.contentCid,
                     gasCost: data.gasCost,
                     indexError: data.indexError,

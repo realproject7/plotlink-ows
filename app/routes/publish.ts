@@ -137,6 +137,7 @@ publish.post("/file", async (c) => {
           step: "done",
           txHash: result.txHash,
           storylineId: result.storylineId,
+          plotIndex: result.plotIndex,
           contentCid: result.contentCid,
           gasCost: result.gasCost,
           indexError: result.indexError,
