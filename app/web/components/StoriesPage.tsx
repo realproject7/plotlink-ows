@@ -65,12 +65,15 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setSelectedFile(fileName);
   }, []);
 
+  const latestStoryRef = useRef<string | null>(null);
+
   const handleSelectStory = useCallback(async (name: string) => {
+    latestStoryRef.current = name;
     setSelectedStory(name);
     // Auto-select latest file for this story
     try {
       const res = await authFetch(`/api/stories/${name}`);
-      if (res.ok) {
+      if (res.ok && latestStoryRef.current === name) {
         const data = await res.json();
         const files: { file: string }[] = data.files || [];
         // Priority: highest plot → genesis → structure → first
@@ -82,7 +85,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           ?? (files.find((f) => f.file === "genesis.md")?.file)
           ?? (files.find((f) => f.file === "structure.md")?.file)
           ?? files[0]?.file;
-        if (latest) setSelectedFile(latest);
+        if (latest && latestStoryRef.current === name) setSelectedFile(latest);
       }
     } catch { /* ignore */ }
   }, [authFetch]);
