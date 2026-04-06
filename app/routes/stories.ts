@@ -188,4 +188,28 @@ stories.post("/:name/:file/publish-status", async (c) => {
   return c.json({ ok: true });
 });
 
+/** POST /api/stories/:name/:file/mark-not-indexed — manually mark as not indexed */
+stories.post("/:name/:file/mark-not-indexed", async (c) => {
+  const name = safeName(c.req.param("name"));
+  const file = safeName(c.req.param("file"));
+  if (!name || !file) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  const status = readPublishStatus(storyDir);
+  const existing = status[file];
+  if (!existing || (existing.status !== "published" && existing.status !== "published-not-indexed")) {
+    return c.json({ error: "File is not published" }, 400);
+  }
+
+  const body = await c.req.json<{ indexError?: string }>().catch(() => ({}));
+  status[file] = {
+    ...existing,
+    status: "published-not-indexed",
+    indexError: body.indexError || "Manually marked as not indexed",
+  };
+  writePublishStatus(storyDir, status);
+
+  return c.json({ ok: true });
+});
+
 export { stories as storiesRoutes, readPublishStatus, STORIES_DIR };
