@@ -61,3 +61,9 @@ h1, h2, h3, h4 {
 code, pre {
   font-family: "Geist Mono", ui-monospace, monospace;
 }
+
+/* Ensure dim/faint terminal text (SGR 2) stays readable on cream bg */
+.xterm .xterm-dim {
+  opacity: 1 !important;
+  color: #8B7355 !important;
+}

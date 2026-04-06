@@ -186,6 +186,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       theme: THEME,
       allowTransparency: false,
       drawBoldTextInBrightColors: false,
+      minimumContrastRatio: 7, // High contrast — compensates for dim text halving
     });
 
     const fit = new FitAddon();
