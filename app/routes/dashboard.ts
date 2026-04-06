@@ -174,17 +174,17 @@ dashboard.get("/", async (c) => {
           group.push(f);
           grouped.set(key, group);
         }
-        return [...grouped.entries()].map(([storyName, files]) => {
+        return [...grouped.entries()].map(([, files]) => {
           const first = files[0];
           const totalGas = files.reduce((sum, f) => f.gasCost ? sum + BigInt(f.gasCost) : sum, BigInt(0));
           const latestDate = files.reduce((latest, f) =>
             f.publishedAt && (!latest || f.publishedAt > latest) ? f.publishedAt : latest, null as string | null);
           const hasNotIndexed = files.some((f) => f.status === "published-not-indexed");
           return {
-            id: storyName,
+            id: first.storylineId ? `sid:${first.storylineId}` : first.storyName,
             title: first.storyTitle,
             genre: first.storyGenre,
-            storyName,
+            storyName: first.storyName,
             storylineId: first.storylineId,
             plotCount: first.plotCount,
             publishedFiles: files.length,
