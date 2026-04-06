@@ -95,8 +95,9 @@ async function start() {
       import("./db").then(async ({ db }) => {
         const session = await db.session.findUnique({ where: { token: wsToken } });
         if (!session || session.expiresAt < new Date()) { socket.destroy(); return; }
+        const story = url.searchParams.get("story") || undefined;
         wss.handleUpgrade(req, socket, head, (ws) => {
-          attachTerminalWs(ws as unknown as WebSocket);
+          attachTerminalWs(ws as unknown as WebSocket, story);
         });
       }).catch(() => socket.destroy());
     }
