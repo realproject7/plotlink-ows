@@ -339,7 +339,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             <span className="text-green-700">Published</span>
             {fileData.storylineId && (
               <a
-                href={`https://plotlink.xyz/story/${fileData.storylineId}${fileData.plotIndex != null ? `/${fileData.plotIndex}` : ""}`}
+                href={(() => {
+                  const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
+                  if (!isPlot) return base;
+                  // Use stored plotIndex if valid, otherwise derive from filename
+                  const idx = fileData.plotIndex != null && fileData.plotIndex >= 0
+                    ? fileData.plotIndex
+                    : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "0");
+                  return `${base}/${idx}`;
+                })()}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent underline"
