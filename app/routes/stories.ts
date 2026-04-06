@@ -125,6 +125,27 @@ stories.get("/:name/:file", (c) => {
   return c.json({ ...status, content });
 });
 
+/** PUT /api/stories/:name/:file — update file content */
+stories.put("/:name/:file", async (c) => {
+  const name = safeName(c.req.param("name"));
+  const file = safeName(c.req.param("file"));
+  if (!name || !file) return c.json({ error: "Invalid path" }, 400);
+  if (!file.endsWith(".md")) return c.json({ error: "Only .md files can be edited" }, 400);
+
+  const filePath = path.join(STORIES_DIR, name, file);
+  if (!fs.existsSync(filePath)) {
+    return c.json({ error: "File not found" }, 404);
+  }
+
+  const body = await c.req.json<{ content: string }>();
+  if (typeof body.content !== "string") {
+    return c.json({ error: "Content must be a string" }, 400);
+  }
+
+  fs.writeFileSync(filePath, body.content, "utf-8");
+  return c.json({ ok: true });
+});
+
 /** POST /api/stories/:name/:file/publish-status — update publish status after publishing */
 stories.post("/:name/:file/publish-status", async (c) => {
   const name = safeName(c.req.param("name"));
