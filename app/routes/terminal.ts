@@ -50,14 +50,17 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
 
   // Determine session ID
   const sessionMap = loadSessionMap();
-  let sessionId = opts?.sessionId || sessionMap[storyName] || randomUUID();
+  let sessionId: string;
 
   // Build Claude CLI command with session flags
   let claudeCmd = `claude --cwd "${storyDir}"`;
   if (opts?.resume && sessionMap[storyName]) {
-    claudeCmd += ` --resume "${sessionMap[storyName]}"`;
+    // Resume: reuse stored session
     sessionId = sessionMap[storyName];
+    claudeCmd += ` --resume "${sessionId}"`;
   } else {
+    // Fresh: always generate new UUID
+    sessionId = opts?.sessionId || randomUUID();
     claudeCmd += ` --session-id "${sessionId}"`;
   }
 
