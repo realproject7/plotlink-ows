@@ -102,6 +102,17 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
 
   useEffect(() => { authFetchRef.current = authFetch; }, [authFetch]);
 
+  const safeFit = useCallback((session: TerminalSession) => {
+    const { width } = session.container.getBoundingClientRect();
+    if (width < 50) return; // Skip fit if container has no real dimensions
+    try {
+      session.fit.fit();
+      if (session.ws?.readyState === WebSocket.OPEN) {
+        session.ws.send(JSON.stringify({ type: "resize", cols: session.term.cols, rows: session.term.rows }));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const showSession = useCallback((name: string | null) => {
     for (const [key, session] of sessions) {
       session.container.style.display = key === name ? "block" : "none";
@@ -109,12 +120,11 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     if (name) {
       const active = sessions.get(name);
       if (active) {
-        requestAnimationFrame(() => {
-          try { active.fit.fit(); } catch { /* ignore */ }
-        });
+        // setTimeout gives browser time to compute layout after display change
+        setTimeout(() => safeFit(active), 50);
       }
     }
-  }, []);
+  }, [safeFit]);
 
   const connectWs = useCallback((name: string, session: TerminalSession, resume: boolean) => {
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -177,6 +187,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     wrapperRef.current.appendChild(container);
 
     const term = new Terminal({
+      cols: 80, // Fallback minimum until FitAddon computes actual size
       scrollback: 5000,
       fontSize: 13,
       fontFamily: '"Geist Mono", ui-monospace, monospace',
@@ -201,7 +212,11 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
       term.element.style.paddingLeft = "10px";
     }
 
+    const session: TerminalSession = { term, fit, serialize, ws: null, container, observer: null as unknown as ResizeObserver, connected: false };
+
     const observer = new ResizeObserver(() => {
+      const { width } = container.getBoundingClientRect();
+      if (width < 50) return; // Skip if container not yet laid out
       try {
         fit.fit();
         if (session.ws?.readyState === WebSocket.OPEN) {
@@ -210,8 +225,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
       } catch { /* ignore */ }
     });
     observer.observe(container);
-
-    const session: TerminalSession = { term, fit, serialize, ws: null, container, observer, connected: false };
+    session.observer = observer;
     sessions.set(name, session);
     setSessionList((prev) => [...prev, name]);
 
@@ -230,10 +244,9 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
       setDisconnected((prev) => new Set(prev).add(name));
     }
 
-    requestAnimationFrame(() => {
-      try { fit.fit(); } catch { /* ignore */ }
-    });
-  }, [connectWs]);
+    // Defer initial fit — container may still be display:none
+    setTimeout(() => safeFit(session), 50);
+  }, [connectWs, safeFit]);
 
   const reconnectSession = useCallback(async (name: string, resume: boolean) => {
     const session = sessions.get(name);
