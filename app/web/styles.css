@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --bg: #E8DFD0;
@@ -40,6 +41,17 @@ body {
 
 h1, h2, h3, h4 {
   font-family: "Lora", Georgia, "Times New Roman", serif;
+}
+
+.prose {
+  --tw-prose-body: var(--text);
+  --tw-prose-headings: var(--text);
+  --tw-prose-links: var(--accent);
+  --tw-prose-bold: var(--text);
+  --tw-prose-quotes: var(--text-muted);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-code: var(--text);
+  --tw-prose-hr: var(--border);
 }
 
 .prose, .prose p, .prose li, .prose blockquote {

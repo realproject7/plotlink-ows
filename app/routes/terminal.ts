@@ -54,7 +54,8 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   let sessionId: string;
 
   // Build Claude CLI command with session flags
-  let claudeCmd = `claude --cwd "${storyDir}"`;
+  // Note: no --cwd flag — Claude CLI uses process cwd, set via pty.spawn({ cwd: storyDir })
+  let claudeCmd = "claude";
   if (opts?.resume && sessionMap[storyName]) {
     // Resume: reuse stored session
     sessionId = sessionMap[storyName];

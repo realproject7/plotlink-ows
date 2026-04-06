@@ -38,6 +38,7 @@
     "@prisma/client": "^6.19.3",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@supabase/supabase-js": "^2.99.1",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.90.21",
     "@types/ws": "^8.18.1",
