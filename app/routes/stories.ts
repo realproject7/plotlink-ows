@@ -144,6 +144,16 @@ stories.put("/:name/:file", async (c) => {
   }
 
   fs.writeFileSync(filePath, body.content, "utf-8");
+
+  // Reset publish status to pending if file was previously published
+  // (edited content differs from on-chain content)
+  const storyDir = path.join(STORIES_DIR, name);
+  const status = readPublishStatus(storyDir);
+  if (status[file] && (status[file].status === "published" || status[file].status === "published-not-indexed")) {
+    status[file].status = "pending";
+    writePublishStatus(storyDir, status);
+  }
+
   return c.json({ ok: true });
 });
 
