@@ -1,18 +1,21 @@
 import { Hono } from "hono";
 import * as pty from "node-pty";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORIES_DIR = path.join(__dirname, "..", "..", "stories");
 const MAX_SESSIONS = 5;
+const SESSION_FILE = path.join(__dirname, "..", "..", "data", "terminal-sessions.json");
 
 const terminal = new Hono();
 
 // Active PTY sessions keyed by story name
 const ptySessions = new Map<
   string,
-  { term: pty.IPty; ws: WebSocket | null; state: "running" | "stopped" }
+  { term: pty.IPty; ws: WebSocket | null; state: "running" | "stopped"; sessionId: string }
 >();
 
 function safeName(name: string): string | null {
@@ -22,10 +25,46 @@ function safeName(name: string): string | null {
   return name;
 }
 
-function spawnPty(storyName: string) {
+/** Load stored session UUIDs from disk */
+function loadSessionMap(): Record<string, string> {
+  try {
+    if (fs.existsSync(SESSION_FILE)) {
+      return JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+/** Save session UUIDs to disk */
+function saveSessionMap(map: Record<string, string>) {
+  try {
+    const dir = path.dirname(SESSION_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(map, null, 2) + "\n");
+  } catch { /* ignore */ }
+}
+
+function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean }) {
   const storyDir = path.join(STORIES_DIR, storyName);
   const shell = process.env.SHELL || "/bin/zsh";
-  const term = pty.spawn(shell, ["-l", "-c", `claude --cwd "${storyDir}"`], {
+
+  // Determine session ID
+  const sessionMap = loadSessionMap();
+  let sessionId: string;
+
+  // Build Claude CLI command with session flags
+  let claudeCmd = `claude --cwd "${storyDir}"`;
+  if (opts?.resume && sessionMap[storyName]) {
+    // Resume: reuse stored session
+    sessionId = sessionMap[storyName];
+    claudeCmd += ` --resume "${sessionId}"`;
+  } else {
+    // Fresh: always generate new UUID
+    sessionId = opts?.sessionId || randomUUID();
+    claudeCmd += ` --session-id "${sessionId}"`;
+  }
+
+  const term = pty.spawn(shell, ["-l", "-c", claudeCmd], {
     name: "xterm-256color",
     cols: 120,
     rows: 30,
@@ -33,18 +72,37 @@ function spawnPty(storyName: string) {
     env: process.env as Record<string, string>,
   });
 
-  const session = { term, ws: null as WebSocket | null, state: "running" as const };
+  // Persist session ID
+  sessionMap[storyName] = sessionId;
+  saveSessionMap(sessionMap);
+
+  const isResume = !!opts?.resume;
+  const spawnTime = Date.now();
+  const session = { term, ws: null as WebSocket | null, state: "running" as const, sessionId };
   ptySessions.set(storyName, session);
 
   term.onExit(({ exitCode }) => {
     const s = ptySessions.get(storyName);
-    if (s?.term === term) {
-      s.state = "stopped";
+    if (s?.term !== term) return;
+
+    // If a resumed session exits quickly (< 5s), signal client to auto-reconnect fresh
+    const elapsed = Date.now() - spawnTime;
+    if (isResume && elapsed < 5000 && exitCode !== 0) {
+      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
+      ptySessions.delete(storyName);
       if (s.ws && s.ws.readyState <= 1) {
-        s.ws.close(1000, `exited:${exitCode}`);
+        // Close code 4000 = resume-failed, client should auto-reconnect fresh
+        s.ws.close(4000, "resume-failed");
       }
       s.ws = null;
+      return;
     }
+
+    s.state = "stopped";
+    if (s.ws && s.ws.readyState <= 1) {
+      s.ws.close(1000, `exited:${exitCode}`);
+    }
+    s.ws = null;
   });
 
   return session;
@@ -52,13 +110,13 @@ function spawnPty(storyName: string) {
 
 /** POST /api/terminal/spawn — spawn Claude CLI for a story */
 terminal.post("/spawn", async (c) => {
-  const body = await c.req.json<{ storyName?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ storyName?: string; resume?: boolean }>().catch(() => ({}));
   const storyName = safeName(body.storyName || "default");
   if (!storyName) return c.json({ error: "Invalid story name" }, 400);
 
   const existing = ptySessions.get(storyName);
   if (existing?.term && existing.state === "running") {
-    return c.json({ ok: true, pid: existing.term.pid, storyName, reused: true });
+    return c.json({ ok: true, pid: existing.term.pid, storyName, sessionId: existing.sessionId, reused: true });
   }
 
   // Enforce max concurrent sessions
@@ -68,12 +126,27 @@ terminal.post("/spawn", async (c) => {
   }
 
   try {
-    const session = spawnPty(storyName);
-    return c.json({ ok: true, pid: session.term.pid, storyName });
+    const session = spawnPty(storyName, { resume: body.resume });
+    return c.json({ ok: true, pid: session.term.pid, storyName, sessionId: session.sessionId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to spawn PTY";
     return c.json({ ok: false, error: message }, 500);
   }
+});
+
+/** GET /api/terminal/session/:storyName — get stored session ID for a story */
+terminal.get("/session/:storyName", (c) => {
+  const storyName = safeName(c.req.param("storyName"));
+  if (!storyName) return c.json({ error: "Invalid story name" }, 400);
+
+  const sessionMap = loadSessionMap();
+  const sessionId = sessionMap[storyName] || null;
+  const active = ptySessions.get(storyName);
+
+  return c.json({
+    sessionId,
+    running: active?.state === "running" ?? false,
+  });
 });
 
 /** DELETE /api/terminal/:storyName — kill a story's PTY */
@@ -105,11 +178,12 @@ terminal.post("/stop", (c) => {
 
 /** GET /api/terminal/status — list all sessions */
 terminal.get("/status", (c) => {
-  const sessions: Record<string, { running: boolean; pid: number | null }> = {};
+  const sessions: Record<string, { running: boolean; pid: number | null; sessionId: string }> = {};
   for (const [name, session] of ptySessions) {
     sessions[name] = {
       running: session.state === "running",
       pid: session.term?.pid ?? null,
+      sessionId: session.sessionId,
     };
   }
   return c.json({ sessions });
@@ -119,7 +193,7 @@ terminal.get("/status", (c) => {
  * Attach a raw WebSocket to a story's PTY session.
  * Called from server.ts WebSocket upgrade handler.
  */
-export function attachTerminalWs(ws: WebSocket, storyName?: string) {
+export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boolean) {
   const name = storyName && safeName(storyName) ? storyName : "default";
   let session = ptySessions.get(name);
 
@@ -133,7 +207,7 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string) {
     }
 
     try {
-      session = spawnPty(name);
+      session = spawnPty(name, { resume });
     } catch (err) {
       console.error("PTY spawn failed:", err);
       ws.close(1011, "pty-spawn-failed");
