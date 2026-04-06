@@ -173,7 +173,6 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     container.style.width = "100%";
     container.style.height = "100%";
     container.style.display = "none";
-    container.style.paddingLeft = "10px";
     wrapperRef.current.appendChild(container);
 
     const term = new Terminal({
@@ -194,6 +193,11 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     term.loadAddon(fit);
     term.loadAddon(serialize);
     term.open(container);
+
+    // Apply padding to term.element so FitAddon measures correctly
+    if (term.element) {
+      term.element.style.paddingLeft = "10px";
+    }
 
     const observer = new ResizeObserver(() => {
       try {
