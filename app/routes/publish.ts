@@ -151,4 +151,43 @@ publish.post("/file", async (c) => {
   });
 });
 
+/** POST /api/publish/retry-index — retry indexing for a published file */
+publish.post("/retry-index", async (c) => {
+  const body = await c.req.json<{
+    storyName: string;
+    fileName: string;
+    txHash: string;
+    content: string;
+    storylineId?: number;
+  }>();
+
+  if (!body.txHash || !body.content) {
+    return c.json({ error: "txHash and content required" }, 400);
+  }
+
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const isPlot = /^plot-\d+\.md$/.test(body.fileName);
+  const endpoint = isPlot ? "plot" : "storyline";
+  const indexBody = isPlot
+    ? { txHash: body.txHash, content: body.content }
+    : { txHash: body.txHash, content: body.content, genre: undefined };
+
+  try {
+    const indexRes = await fetch(`${PLOTLINK_URL}/api/index/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(indexBody),
+    });
+    const indexData = await indexRes.json().catch(() => ({})) as Record<string, string>;
+    if (!indexRes.ok || indexData.error) {
+      const error = indexData.error || `Indexing failed: HTTP ${indexRes.status}`;
+      return c.json({ ok: false, error });
+    }
+    return c.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Indexing request failed";
+    return c.json({ ok: false, error: message });
+  }
+});
+
 export { publish as publishRoutes };
