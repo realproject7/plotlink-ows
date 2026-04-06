@@ -70,6 +70,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handleSelectStory = useCallback(async (name: string) => {
     latestStoryRef.current = name;
     setSelectedStory(name);
+    setSelectedFile(null);
     // Auto-select latest file for this story
     try {
       const res = await authFetch(`/api/stories/${name}`);
