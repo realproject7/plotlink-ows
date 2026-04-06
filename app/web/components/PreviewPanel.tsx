@@ -30,6 +30,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -231,13 +232,66 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       <div className="px-3 py-2 border-t border-border flex items-center justify-between">
         {fileName === "structure.md" ? (
           <p className="text-muted text-xs italic">This is your story outline — not publishable. Ask AI to write the genesis next.</p>
-        ) : fileData?.status === "published" || fileData?.status === "published-not-indexed" ? (
-          <div className="flex items-center gap-2 text-xs">
-            {fileData.status === "published-not-indexed" ? (
-              <span className="text-amber-700" title={fileData.indexError}>Not indexed</span>
-            ) : (
-              <span className="text-green-700">Published</span>
+        ) : fileData?.status === "published-not-indexed" ? (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-amber-700">Published on-chain but not indexed on PlotLink</span>
+              <button
+                onClick={async () => {
+                  if (!storyName || !fileName || !fileData.txHash) return;
+                  setRetrying(true);
+                  try {
+                    const res = await authFetch("/api/publish/retry-index", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        storyName, fileName,
+                        txHash: fileData.txHash,
+                        content: fileData.content,
+                        storylineId: fileData.storylineId,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                      // Update local status to published
+                      await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          txHash: fileData.txHash,
+                          storylineId: fileData.storylineId,
+                          contentCid: "",
+                          gasCost: "",
+                        }),
+                      });
+                      loadFile();
+                    }
+                  } catch { /* ignore */ }
+                  setRetrying(false);
+                }}
+                disabled={retrying}
+                className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
+              >
+                {retrying ? "Retrying..." : "Retry Index"}
+              </button>
+              {fileData.txHash && (
+                <a
+                  href={`https://basescan.org/tx/${fileData.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted underline"
+                >
+                  BaseScan
+                </a>
+              )}
+            </div>
+            {fileData.indexError && (
+              <p className="text-error text-xs">{fileData.indexError}</p>
             )}
+          </div>
+        ) : fileData?.status === "published" ? (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-green-700">Published</span>
             {fileData.storylineId && (
               <a
                 href={`https://plotlink.xyz/story/${fileData.storylineId}`}
@@ -258,15 +312,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 BaseScan
               </a>
             )}
-            {fileData.indexError && (
-              <span className="text-error text-xs">{fileData.indexError}</span>
-            )}
           </div>
         ) : (
           <div className="flex items-center gap-2">
             <button
               onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
-              disabled={!!publishingFile || fileData?.status === "published" || fileData?.status === "published-not-indexed" || overLimit}
+              disabled={!!publishingFile || overLimit}
               className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
