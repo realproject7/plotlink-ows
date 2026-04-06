@@ -19,6 +19,7 @@ interface FileData {
   txHash?: string;
   storylineId?: number;
   indexError?: string;
+  publishedAt?: string;
 }
 
 type Tab = "preview" | "edit";
@@ -31,6 +32,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -101,6 +103,27 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab, handleSave]);
+
+  // 5-minute countdown for Retry Index button
+  useEffect(() => {
+    if (fileData?.status !== "published-not-indexed" || !fileData.publishedAt) {
+      return;
+    }
+    const publishedAt = new Date(fileData.publishedAt).getTime();
+    const windowMs = 5 * 60 * 1000;
+    const update = () => {
+      const remaining = Math.max(0, windowMs - (Date.now() - publishedAt));
+      setIndexTimeLeft(remaining);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [fileData?.status, fileData?.publishedAt]);
+
+  const indexExpired = indexTimeLeft !== null && indexTimeLeft <= 0;
+  const indexCountdown = indexTimeLeft !== null && indexTimeLeft > 0
+    ? `${Math.floor(indexTimeLeft / 60000)}:${String(Math.floor((indexTimeLeft % 60000) / 1000)).padStart(2, "0")}`
+    : null;
 
   if (!storyName || !fileName) {
     return (
@@ -236,44 +259,45 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-xs">
               <span className="text-amber-700">Published on-chain but not indexed on PlotLink</span>
-              <button
-                onClick={async () => {
-                  if (!storyName || !fileName || !fileData.txHash) return;
-                  setRetrying(true);
-                  try {
-                    const res = await authFetch("/api/publish/retry-index", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        storyName, fileName,
-                        txHash: fileData.txHash,
-                        content: fileData.content,
-                        storylineId: fileData.storylineId,
-                      }),
-                    });
-                    const data = await res.json();
-                    if (data.ok) {
-                      // Update local status to published
-                      await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
+              {!indexExpired && (
+                <button
+                  onClick={async () => {
+                    if (!storyName || !fileName || !fileData.txHash) return;
+                    setRetrying(true);
+                    try {
+                      const res = await authFetch("/api/publish/retry-index", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
+                          storyName, fileName,
                           txHash: fileData.txHash,
+                          content: fileData.content,
                           storylineId: fileData.storylineId,
-                          contentCid: "",
-                          gasCost: "",
                         }),
                       });
-                      loadFile();
-                    }
-                  } catch { /* ignore */ }
-                  setRetrying(false);
-                }}
-                disabled={retrying}
-                className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
-              >
-                {retrying ? "Retrying..." : "Retry Index"}
-              </button>
+                      const data = await res.json();
+                      if (data.ok) {
+                        await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            txHash: fileData.txHash,
+                            storylineId: fileData.storylineId,
+                            contentCid: "",
+                            gasCost: "",
+                          }),
+                        });
+                        loadFile();
+                      }
+                    } catch { /* ignore */ }
+                    setRetrying(false);
+                  }}
+                  disabled={retrying}
+                  className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
+                >
+                  {retrying ? "Retrying..." : `Retry Index${indexCountdown ? ` (${indexCountdown})` : ""}`}
+                </button>
+              )}
               {isPlot && (
                 <button
                   onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
@@ -294,7 +318,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </a>
               )}
             </div>
-            <p className="text-muted text-xs">Try Retry Index first. If that fails, Retry Publish creates a new on-chain tx.</p>
+            <p className="text-muted text-xs">
+              {indexExpired
+                ? "Index window expired. Use Retry Publish to create a new on-chain tx."
+                : "Try Retry Index first (available for 5 min after publish). If that fails, Retry Publish creates a new on-chain tx."}
+            </p>
             {fileData.indexError && (
               <p className="text-error text-xs">{fileData.indexError}</p>
             )}
