@@ -18,6 +18,7 @@ interface FileData {
   content: string;
   txHash?: string;
   storylineId?: number;
+  plotIndex?: number;
   indexError?: string;
   publishedAt?: string;
 }
@@ -338,7 +339,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             <span className="text-green-700">Published</span>
             {fileData.storylineId && (
               <a
-                href={`https://plotlink.xyz/story/${fileData.storylineId}`}
+                href={`https://plotlink.xyz/story/${fileData.storylineId}${fileData.plotIndex != null ? `/${fileData.plotIndex}` : ""}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent underline"
