@@ -274,6 +274,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               >
                 {retrying ? "Retrying..." : "Retry Index"}
               </button>
+              <button
+                onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
+                disabled={!!publishingFile}
+                className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
+              >
+                {publishingFile === fileName ? "Publishing..." : "Retry Publish"}
+              </button>
               {fileData.txHash && (
                 <a
                   href={`https://basescan.org/tx/${fileData.txHash}`}
@@ -285,6 +292,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </a>
               )}
             </div>
+            <p className="text-muted text-xs">Try Retry Index first. If that fails, Retry Publish creates a new on-chain tx.</p>
             {fileData.indexError && (
               <p className="text-error text-xs">{fileData.indexError}</p>
             )}
