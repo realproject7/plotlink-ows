@@ -64,6 +64,19 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     }
   }, [selectedStory]);
 
+  const getLatestFile = (files: FileStatus[]): string | null => {
+    // Latest plot by highest number
+    const plots = files
+      .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
+      .filter((p) => p.num != null)
+      .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
+    if (plots.length > 0) return plots[0].file;
+    // Fallback: genesis, then structure
+    if (files.some((f) => f.file === "genesis.md")) return "genesis.md";
+    if (files.some((f) => f.file === "structure.md")) return "structure.md";
+    return files[0]?.file ?? null;
+  };
+
   const toggleExpand = (name: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -71,6 +84,15 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
       else next.add(name);
       return next;
     });
+  };
+
+  const handleStoryClick = (story: StoryInfo) => {
+    toggleExpand(story.name);
+    // Auto-select latest file when expanding (not when collapsing)
+    if (!expanded.has(story.name)) {
+      const latest = getLatestFile(story.files);
+      if (latest) onSelectFile(story.name, latest);
+    }
   };
 
   // Sort files: structure first, genesis, then plots in order
@@ -100,7 +122,7 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
           stories.filter((s) => s.name !== "_example").map((story) => (
             <div key={story.name}>
               <button
-                onClick={() => toggleExpand(story.name)}
+                onClick={() => handleStoryClick(story)}
                 className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-surface text-sm"
               >
                 <span className="text-xs text-muted">{expanded.has(story.name) ? "\u25BC" : "\u25B6"}</span>
