@@ -179,7 +179,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       scrollback: 5000,
       fontSize: 13,
       fontFamily: '"Geist Mono", ui-monospace, monospace',
-      lineHeight: 1.4,
+      lineHeight: 1.2,
       letterSpacing: 0.5,
       cursorBlink: true,
       cursorStyle: "block",
