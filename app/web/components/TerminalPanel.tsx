@@ -52,7 +52,7 @@ export function TerminalPanel({ token }: TerminalPanelProps) {
         brightWhite: "#4A3728",  // medium brown — always visible on cream
       },
       allowTransparency: true,
-      drawBoldTextInBrightColors: true,
+      drawBoldTextInBrightColors: false, // keep bold text on opaque normal colors
     });
 
     const fitAddon = new FitAddon();
