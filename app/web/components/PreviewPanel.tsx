@@ -14,10 +14,11 @@ interface PreviewPanelProps {
 
 interface FileData {
   file: string;
-  status: "published" | "pending" | "draft";
+  status: "published" | "published-not-indexed" | "pending" | "draft";
   content: string;
   txHash?: string;
   storylineId?: number;
+  indexError?: string;
 }
 
 type Tab = "preview" | "edit";
@@ -136,6 +137,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             {fileData?.status === "published" && (
               <span className="text-green-700 font-medium">Published</span>
             )}
+            {fileData?.status === "published-not-indexed" && (
+              <span className="text-amber-700 font-medium" title={fileData.indexError}>Published (not indexed)</span>
+            )}
             {fileData?.status === "pending" && (
               <span className="text-amber-700 font-medium">Pending</span>
             )}
@@ -227,9 +231,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       <div className="px-3 py-2 border-t border-border flex items-center justify-between">
         {fileName === "structure.md" ? (
           <p className="text-muted text-xs italic">This is your story outline — not publishable. Ask AI to write the genesis next.</p>
-        ) : fileData?.status === "published" ? (
+        ) : fileData?.status === "published" || fileData?.status === "published-not-indexed" ? (
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-green-700">Published</span>
+            {fileData.status === "published-not-indexed" ? (
+              <span className="text-amber-700" title={fileData.indexError}>Not indexed</span>
+            ) : (
+              <span className="text-green-700">Published</span>
+            )}
             {fileData.storylineId && (
               <a
                 href={`https://plotlink.xyz/story/${fileData.storylineId}`}
@@ -250,12 +258,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 BaseScan
               </a>
             )}
+            {fileData.indexError && (
+              <span className="text-error text-xs">{fileData.indexError}</span>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2">
             <button
               onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
-              disabled={!!publishingFile || fileData?.status === "published" || overLimit}
+              disabled={!!publishingFile || fileData?.status === "published" || fileData?.status === "published-not-indexed" || overLimit}
               className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}

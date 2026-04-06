@@ -275,9 +275,9 @@ export async function publishStoryline(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ txHash, content, genre }),
     });
-    if (!indexRes.ok) {
-      const errBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
-      indexError = errBody.error || `Indexing failed: HTTP ${indexRes.status}`;
+    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
+    if (!indexRes.ok || indexBody.error) {
+      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
       console.error(`Storyline indexing failed for tx ${txHash}:`, indexError);
     }
   } catch (err) {
@@ -350,9 +350,9 @@ export async function publishPlot(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ txHash, content }),
     });
-    if (!indexRes.ok) {
-      const errBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
-      indexError = errBody.error || `Indexing failed: HTTP ${indexRes.status}`;
+    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
+    if (!indexRes.ok || indexBody.error) {
+      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
       console.error(`Plot indexing failed for tx ${txHash}:`, indexError);
     }
   } catch (err) {

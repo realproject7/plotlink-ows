@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 
 interface FileStatus {
   file: string;
-  status: "published" | "pending" | "draft";
+  status: "published" | "published-not-indexed" | "pending" | "draft";
   txHash?: string;
   storylineId?: number;
 }
@@ -24,15 +24,17 @@ interface StoryBrowserProps {
 }
 
 const STATUS_ICON: Record<string, string> = {
-  published: "\u2713",
-  pending: "\u23F3",
-  draft: "\uD83D\uDCDD",
+  "published": "\u2713",
+  "published-not-indexed": "\u26A0",
+  "pending": "\u23F3",
+  "draft": "\uD83D\uDCDD",
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  published: "text-green-700",
-  pending: "text-amber-700",
-  draft: "text-muted",
+  "published": "text-green-700",
+  "published-not-indexed": "text-amber-700",
+  "pending": "text-amber-700",
+  "draft": "text-muted",
 };
 
 export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectFile }: StoryBrowserProps) {
