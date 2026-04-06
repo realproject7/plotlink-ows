@@ -47,7 +47,10 @@ const sessions = new Map<string, TerminalSession>();
 
 export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
+
+  useEffect(() => { authFetchRef.current = authFetch; }, [authFetch]);
 
   const showSession = useCallback((name: string | null) => {
     for (const [key, session] of sessions) {
@@ -156,8 +159,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
   useEffect(() => {
     if (!storyName) return;
     if (!sessions.has(storyName)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- spawn session on story select
-      createSession(storyName);
+      createSession(storyName); // eslint-disable-line react-hooks/set-state-in-effect -- spawn on story select
     }
     showSession(storyName);
   }, [storyName, createSession, showSession]);
@@ -170,8 +172,8 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
         session.ws.close();
         session.term.dispose();
         session.container.remove();
-        // Fire-and-forget DELETE to kill server PTY
-        fetch(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
+        // Fire-and-forget authenticated DELETE to kill server PTY
+        authFetchRef.current(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
       }
       sessions.clear();
     };
