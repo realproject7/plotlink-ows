@@ -56,6 +56,7 @@ export interface PublishResult {
   contentCid: string;
   storylineId?: number;
   gasCost?: string;
+  indexError?: string;
 }
 
 export interface PublishProgress {
@@ -266,16 +267,25 @@ export async function publishStoryline(
   });
 
   // Index on PlotLink (best-effort — story appears on plotlink.xyz)
+  let indexError: string | undefined;
   try {
     const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
-    await fetch(`${PLOTLINK_URL}/api/index/storyline`, {
+    const indexRes = await fetch(`${PLOTLINK_URL}/api/index/storyline`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ txHash, content, genre }),
     });
-  } catch { /* indexing is best-effort */ }
+    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
+    if (!indexRes.ok || indexBody.error) {
+      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
+      console.error(`Storyline indexing failed for tx ${txHash}:`, indexError);
+    }
+  } catch (err) {
+    indexError = err instanceof Error ? err.message : "Indexing request failed";
+    console.error(`Storyline indexing error for tx ${txHash}:`, indexError);
+  }
 
-  return { txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost };
+  return { txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost, indexError };
 }
 
 /**
@@ -332,14 +342,23 @@ export async function publishPlot(
   // Index on PlotLink (best-effort — plot appears on plotlink.xyz)
   // Pass content as fallback because IPFS stores JSON metadata wrapper,
   // but on-chain hash is keccak256 of raw content only
+  let indexError: string | undefined;
   try {
     const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
-    await fetch(`${PLOTLINK_URL}/api/index/plot`, {
+    const indexRes = await fetch(`${PLOTLINK_URL}/api/index/plot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ txHash, content }),
     });
-  } catch { /* indexing is best-effort */ }
+    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
+    if (!indexRes.ok || indexBody.error) {
+      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
+      console.error(`Plot indexing failed for tx ${txHash}:`, indexError);
+    }
+  } catch (err) {
+    indexError = err instanceof Error ? err.message : "Indexing request failed";
+    console.error(`Plot indexing error for tx ${txHash}:`, indexError);
+  }
 
-  return { txHash, contentCid, storylineId, gasCost: confirmation.gasCost };
+  return { txHash, contentCid, storylineId, gasCost: confirmation.gasCost, indexError };
 }

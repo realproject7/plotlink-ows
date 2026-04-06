@@ -139,6 +139,7 @@ publish.post("/file", async (c) => {
           storylineId: result.storylineId,
           contentCid: result.contentCid,
           gasCost: result.gasCost,
+          indexError: result.indexError,
         }),
       });
     } catch (err: unknown) {
