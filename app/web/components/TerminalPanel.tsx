@@ -18,6 +18,7 @@ interface TerminalSession {
   container: HTMLDivElement;
   observer: ResizeObserver;
   connected: boolean;
+  _retried?: boolean;
 }
 
 const THEME = {
@@ -122,6 +123,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
 
     ws.onopen = () => {
       session.connected = true;
+      session._retried = false;
       setDisconnected((prev) => { const next = new Set(prev); next.delete(name); return next; });
       ws.send(JSON.stringify({ type: "resize", cols: session.term.cols, rows: session.term.rows }));
     };
@@ -140,8 +142,9 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
           saveScrollback(name, data).catch(() => {});
         } catch { /* ignore */ }
 
-        // Code 4000 = resume failed, auto-reconnect fresh
-        if (event.code === 4000) {
+        // Code 4000 = resume failed, auto-reconnect fresh (once only)
+        if (event.code === 4000 && !session._retried) {
+          session._retried = true;
           session.term.write("\r\n\x1b[33m[Resume failed — starting fresh session...]\x1b[0m\r\n");
           connectWsRef.current(name, session, false);
           return;
