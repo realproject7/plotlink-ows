@@ -144,10 +144,15 @@ stories.put("/:name/:file", async (c) => {
     return c.json({ error: "Content must be a string" }, 400);
   }
 
+  // Only write and reset status if content actually changed
+  const existingContent = fs.readFileSync(filePath, "utf-8");
+  if (body.content === existingContent) {
+    return c.json({ ok: true, unchanged: true });
+  }
+
   fs.writeFileSync(filePath, body.content, "utf-8");
 
   // Reset publish status to pending if file was previously published
-  // (edited content differs from on-chain content)
   const storyDir = path.join(STORIES_DIR, name);
   const status = readPublishStatus(storyDir);
   if (status[file] && (status[file].status === "published" || status[file].status === "published-not-indexed")) {
