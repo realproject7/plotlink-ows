@@ -24,12 +24,33 @@ interface FileStatus {
   indexError?: string;
 }
 
-async function checkIndexed(storylineId: number): Promise<boolean> {
+async function checkFileIndexed(storylineId: number, fileName: string): Promise<boolean> {
   try {
     const res = await fetch(`${PLOTLINK_URL}/api/storylines/${storylineId}`);
     if (!res.ok) return false;
-    const data = await res.json() as { id?: number };
-    return !!data.id;
+    const data = await res.json() as { id?: number; plotCount?: number; plots?: { plotIndex: number }[] };
+    if (!data.id) return false;
+
+    if (fileName === "genesis.md") {
+      // Genesis is indexed if storyline exists
+      return true;
+    }
+
+    // For plot files, check if the expected plot index exists
+    const plotMatch = fileName.match(/^plot-(\d+)\.md$/);
+    if (!plotMatch) return false;
+    const plotNum = parseInt(plotMatch[1]);
+
+    // If we have plot details, check for this specific plot index
+    if (data.plots) {
+      return data.plots.some((p) => p.plotIndex === plotNum || p.plotIndex === plotNum - 1);
+    }
+    // Fallback: check plot count covers this plot number
+    if (data.plotCount !== undefined) {
+      return plotNum <= data.plotCount;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -58,7 +79,7 @@ async function main() {
       if (!entry.storylineId) continue;
 
       console.log(`Checking ${dir.name}/${file} (storyline #${entry.storylineId})...`);
-      const indexed = await checkIndexed(entry.storylineId);
+      const indexed = await checkFileIndexed(entry.storylineId, file);
 
       if (!indexed) {
         console.log(`  → NOT INDEXED. Marking as published-not-indexed.`);
