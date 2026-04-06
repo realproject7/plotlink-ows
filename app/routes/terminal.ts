@@ -85,27 +85,16 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
     const s = ptySessions.get(storyName);
     if (s?.term !== term) return;
 
-    // If a resumed session exits quickly (< 5s), auto-fallback to fresh
+    // If a resumed session exits quickly (< 5s), signal client to auto-reconnect fresh
     const elapsed = Date.now() - spawnTime;
     if (isResume && elapsed < 5000 && exitCode !== 0) {
-      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), falling back to fresh session`);
+      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
       ptySessions.delete(storyName);
-      try {
-        const fresh = spawnPty(storyName, { resume: false });
-        // Re-attach the WebSocket if one was connected
-        if (s.ws && s.ws.readyState <= 1) {
-          const dataDisposable = fresh.term.onData((data: string) => {
-            if (s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(data);
-          });
-          fresh.ws = s.ws;
-          s.ws.addEventListener("close", () => { dataDisposable.dispose(); });
-        }
-      } catch (err) {
-        console.error("Fresh fallback spawn failed:", err);
-        if (s.ws && s.ws.readyState <= 1) {
-          s.ws.close(1011, "fallback-failed");
-        }
+      if (s.ws && s.ws.readyState <= 1) {
+        // Close code 4000 = resume-failed, client should auto-reconnect fresh
+        s.ws.close(4000, "resume-failed");
       }
+      s.ws = null;
       return;
     }
 

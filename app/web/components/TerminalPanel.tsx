@@ -96,6 +96,8 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
   const [sessionList, setSessionList] = useState<string[]>([]);
   const [disconnected, setDisconnected] = useState<Set<string>>(new Set());
 
+  const connectWsRef = useRef<(name: string, session: TerminalSession, resume: boolean) => void>(() => {});
+
   useEffect(() => { authFetchRef.current = authFetch; }, [authFetch]);
 
   const showSession = useCallback((name: string | null) => {
@@ -128,7 +130,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       session.term.write(e.data);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       session.connected = false;
       if (session.ws === ws) {
         session.ws = null;
@@ -137,6 +139,14 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
           const data = session.serialize.serialize();
           saveScrollback(name, data).catch(() => {});
         } catch { /* ignore */ }
+
+        // Code 4000 = resume failed, auto-reconnect fresh
+        if (event.code === 4000) {
+          session.term.write("\r\n\x1b[33m[Resume failed — starting fresh session...]\x1b[0m\r\n");
+          connectWsRef.current(name, session, false);
+          return;
+        }
+
         setDisconnected((prev) => new Set(prev).add(name));
       }
     };
@@ -149,6 +159,8 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
 
     session.ws = ws;
   }, [token]);
+
+  useEffect(() => { connectWsRef.current = connectWs; }, [connectWs]);
 
   const createSession = useCallback(async (name: string, opts?: { resume?: boolean; autoConnect?: boolean }) => {
     if (!wrapperRef.current || sessions.has(name)) return;
