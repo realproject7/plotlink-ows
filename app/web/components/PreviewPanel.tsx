@@ -30,6 +30,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dirtyRef = useRef(false);
 
   const prevFileRef = useRef<string | null>(null);
 
@@ -46,13 +47,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         const data: FileData = await res.json();
         setFileData(data);
         // Update edit content on new file or when no unsaved changes
-        if (isNewFile || !dirty) {
+        if (isNewFile || !dirtyRef.current) {
           setEditContent(data.content ?? "");
-          if (isNewFile) setDirty(false);
+          if (isNewFile) { setDirty(false); dirtyRef.current = false; }
         }
       }
     } catch { /* ignore */ }
-  }, [storyName, fileName, authFetch, dirty]);
+  }, [storyName, fileName, authFetch]);
 
   // Initial load
   useEffect(() => {
@@ -79,7 +80,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         body: JSON.stringify({ content: editContent }),
       });
       if (res.ok) {
-        setDirty(false);
+        setDirty(false); dirtyRef.current = false;
         setFileData((prev) => prev ? { ...prev, content: editContent } : prev);
       }
     } catch { /* ignore */ }
@@ -198,7 +199,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           <textarea
             ref={textareaRef}
             value={editContent}
-            onChange={(e) => { setEditContent(e.target.value); setDirty(true); }}
+            onChange={(e) => { setEditContent(e.target.value); setDirty(true); dirtyRef.current = true; }}
             className="flex-1 min-h-0 w-full resize-none px-4 py-3 text-sm leading-relaxed focus:outline-none"
             style={{
               fontFamily: '"Geist Mono", ui-monospace, monospace',
