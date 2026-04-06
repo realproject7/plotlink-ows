@@ -148,8 +148,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const charCount = content.length;
   const isGenesis = fileName === "genesis.md";
   const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
+  const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
   const charLimit = isGenesis ? 1000 : isPlot ? 10000 : null;
-  const overLimit = charLimit !== null && charCount > charLimit;
+  // Don't show over-limit warning for already-published files
+  const overLimit = !isPublished && charLimit !== null && charCount > charLimit;
 
   return (
     <div className="h-full flex flex-col">
