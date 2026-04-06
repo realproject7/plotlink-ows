@@ -165,22 +165,42 @@ dashboard.get("/", async (c) => {
   return c.json({
     wallet: walletInfo,
     stories: {
-      published: publishedFiles.map((f) => ({
-        id: `${f.storyName}/${f.file}`,
-        title: f.storyTitle,
-        genre: f.storyGenre,
-        status: f.status || "published",
-        storyName: f.storyName,
-        file: f.file,
-        plotCount: f.plotCount,
-        txHash: f.txHash,
-        storylineId: f.storylineId,
-        contentCid: f.contentCid,
-        gasCost: f.gasCost,
-        gasCostEth: f.gasCost ? (Number(BigInt(f.gasCost)) / 1e18).toFixed(6) : null,
-        gasCostUsd: f.gasCost && ethUsdPrice ? ((Number(BigInt(f.gasCost)) / 1e18) * ethUsdPrice).toFixed(2) : null,
-        createdAt: f.publishedAt || null,
-      })),
+      published: (() => {
+        // Group by storyName
+        const grouped = new Map<string, typeof publishedFiles>();
+        for (const f of publishedFiles) {
+          const group = grouped.get(f.storyName) || [];
+          group.push(f);
+          grouped.set(f.storyName, group);
+        }
+        return [...grouped.entries()].map(([storyName, files]) => {
+          const first = files[0];
+          const totalGas = files.reduce((sum, f) => f.gasCost ? sum + BigInt(f.gasCost) : sum, BigInt(0));
+          const latestDate = files.reduce((latest, f) =>
+            f.publishedAt && (!latest || f.publishedAt > latest) ? f.publishedAt : latest, null as string | null);
+          const hasNotIndexed = files.some((f) => f.status === "published-not-indexed");
+          return {
+            id: storyName,
+            title: first.storyTitle,
+            genre: first.storyGenre,
+            storyName,
+            storylineId: first.storylineId,
+            plotCount: first.plotCount,
+            publishedFiles: files.length,
+            hasNotIndexed,
+            totalGasCostEth: totalGas > 0 ? (Number(totalGas) / 1e18).toFixed(6) : null,
+            totalGasCostUsd: totalGas > 0 && ethUsdPrice ? ((Number(totalGas) / 1e18) * ethUsdPrice).toFixed(2) : null,
+            latestPublishedAt: latestDate,
+            files: files.map((f) => ({
+              file: f.file,
+              status: f.status || "published",
+              txHash: f.txHash,
+              gasCostEth: f.gasCost ? (Number(BigInt(f.gasCost)) / 1e18).toFixed(6) : null,
+              publishedAt: f.publishedAt || null,
+            })),
+          };
+        });
+      })(),
       totalPublished: publishedFiles.length,
       totalStories,
       totalFiles,

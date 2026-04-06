@@ -9,19 +9,27 @@ interface WalletInfo {
   usdcBalance: string;
 }
 
-interface Story {
+interface StoryFile {
+  file: string;
+  status: string;
+  txHash?: string | null;
+  gasCostEth?: string | null;
+  publishedAt?: string | null;
+}
+
+interface StoryGroup {
   id: string;
   title: string;
   genre: string | null;
-  status: string;
   storyName: string;
-  file: string;
-  plotCount: number;
-  txHash?: string | null;
   storylineId?: number | null;
-  gasCostEth?: string | null;
-  gasCostUsd?: string | null;
-  createdAt: string;
+  plotCount: number;
+  publishedFiles: number;
+  hasNotIndexed: boolean;
+  totalGasCostEth?: string | null;
+  totalGasCostUsd?: string | null;
+  latestPublishedAt?: string | null;
+  files: StoryFile[];
 }
 
 interface DashboardData {
@@ -30,7 +38,7 @@ interface DashboardData {
   royalties: { earned: string; claimed: string; unclaimed: string; token: string };
   pnl: { totalCostsEth: string; totalCostsUsd: string; totalRoyaltiesPlot: string; totalRoyaltiesUsd: string; netPnlUsd: string; plotUsdPrice: string };
   stories: {
-    published: Story[];
+    published: StoryGroup[];
     totalPublished: number;
     totalStories: number;
     totalFiles: number;
@@ -156,14 +164,15 @@ export function Dashboard({ token }: { token: string }) {
                       <span className="bg-accent/10 text-accent rounded px-2 py-0.5 text-[10px] font-medium">{story.genre}</span>
                     )}
                     <h4 className="text-foreground mt-1 text-sm font-serif font-medium">{story.title}</h4>
-                    <p className="text-muted mt-0.5 text-[10px] font-mono">{story.storyName}/{story.file}</p>
+                    <p className="text-muted mt-0.5 text-[10px] font-mono">{story.storyName}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {story.status === "published-not-indexed" ? (
+                    {story.hasNotIndexed && (
                       <span className="rounded border border-amber-600/30 px-1.5 py-0.5 text-[9px] text-amber-700">not indexed</span>
-                    ) : (
-                      <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">published</span>
                     )}
+                    <span className="rounded border border-green-700/30 px-1.5 py-0.5 text-[9px] text-green-700">
+                      {story.publishedFiles} published
+                    </span>
                   </div>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">
@@ -179,30 +188,41 @@ export function Dashboard({ token }: { token: string }) {
                   </div>
                   <div className="rounded bg-background p-1.5">
                     <div className="text-foreground text-sm font-medium">
-                      {story.gasCostEth ? `${story.gasCostEth}` : "—"}
+                      {story.totalGasCostEth ?? "—"}
                     </div>
                     <div className="text-muted text-[9px]">Gas (ETH)</div>
                   </div>
                 </div>
+                {/* Individual files */}
+                <div className="mt-2 space-y-1">
+                  {story.files.map((f) => (
+                    <div key={f.file} className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className={f.status === "published-not-indexed" ? "text-amber-700" : "text-green-700"}>
+                          {f.status === "published-not-indexed" ? "\u26A0" : "\u2713"}
+                        </span>
+                        <span className="text-muted font-mono">{f.file}</span>
+                      </div>
+                      {f.txHash && (
+                        <a href={`https://basescan.org/tx/${f.txHash}`} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-accent font-mono">
+                          tx:{f.txHash.slice(0, 8)}...
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
                 <div className="mt-2 flex items-center justify-between text-[10px]">
-                  <span className="text-muted">{formatDate(story.createdAt)}</span>
-                  <div className="flex items-center gap-2">
-                    {story.txHash && (
-                      <a href={`https://basescan.org/tx/${story.txHash}`} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-accent font-mono">
-                        tx:{story.txHash.slice(0, 10)}...
-                      </a>
-                    )}
-                    {story.storylineId && (
-                      <a
-                        href={`https://plotlink.xyz/story/${story.storylineId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-accent underline"
-                      >
-                        View on PlotLink
-                      </a>
-                    )}
-                  </div>
+                  <span className="text-muted">{formatDate(story.latestPublishedAt)}</span>
+                  {story.storylineId && (
+                    <a
+                      href={`https://plotlink.xyz/story/${story.storylineId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline"
+                    >
+                      View on PlotLink
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
