@@ -109,17 +109,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     if (name) {
       const active = sessions.get(name);
       if (active) {
-        // Double rAF ensures the browser has painted the container at full size
-        // before FitAddon measures dimensions. Single rAF can fire before layout.
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            try {
-              active.fit.fit();
-              if (active.ws?.readyState === WebSocket.OPEN) {
-                active.ws.send(JSON.stringify({ type: "resize", cols: active.term.cols, rows: active.term.rows }));
-              }
-            } catch { /* ignore */ }
-          });
+          try { active.fit.fit(); } catch { /* ignore */ }
         });
       }
     }
@@ -238,8 +229,10 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
       // Show as disconnected so overlay appears
       setDisconnected((prev) => new Set(prev).add(name));
     }
-    // Don't fit here — container is still display:none.
-    // showSession() will fit after making the container visible.
+
+    requestAnimationFrame(() => {
+      try { fit.fit(); } catch { /* ignore */ }
+    });
   }, [connectWs]);
 
   const reconnectSession = useCallback(async (name: string, resume: boolean) => {
