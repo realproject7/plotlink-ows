@@ -166,12 +166,13 @@ dashboard.get("/", async (c) => {
     wallet: walletInfo,
     stories: {
       published: (() => {
-        // Group by storyName
+        // Group by storylineId when present, fall back to storyName
         const grouped = new Map<string, typeof publishedFiles>();
         for (const f of publishedFiles) {
-          const group = grouped.get(f.storyName) || [];
+          const key = f.storylineId ? `sid:${f.storylineId}` : `name:${f.storyName}`;
+          const group = grouped.get(key) || [];
           group.push(f);
-          grouped.set(f.storyName, group);
+          grouped.set(key, group);
         }
         return [...grouped.entries()].map(([storyName, files]) => {
           const first = files[0];
