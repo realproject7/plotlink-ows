@@ -342,10 +342,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 href={(() => {
                   const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
                   if (!isPlot) return base;
-                  // Use stored plotIndex if valid, otherwise derive from filename
-                  const idx = fileData.plotIndex != null && fileData.plotIndex >= 0
+                  // plotIndex convention: contract emits 0-based (genesis=0, plot-01=1)
+                  // plotlink.xyz URLs use the same 0-based index
+                  // Filename fallback: plot-01.md → parseInt("01") = 1 (matches contract)
+                  const idx = fileData.plotIndex != null && fileData.plotIndex > 0
                     ? fileData.plotIndex
-                    : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "0");
+                    : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "1");
                   return `${base}/${idx}`;
                 })()}
                 target="_blank"
