@@ -18,12 +18,13 @@ function safeName(name: string): string | null {
 
 interface FileStatus {
   file: string;
-  status: "published" | "pending" | "draft";
+  status: "published" | "published-not-indexed" | "pending" | "draft";
   txHash?: string;
   storylineId?: number;
   contentCid?: string;
   publishedAt?: string;
   gasCost?: string;
+  indexError?: string;
 }
 
 interface StoryInfo {
@@ -56,7 +57,7 @@ function scanStory(storyDir: string, name: string): StoryInfo {
 
   const files: FileStatus[] = entries.map((file) => {
     const existing = publishStatus[file];
-    if (existing?.status === "published") {
+    if (existing?.status === "published" || existing?.status === "published-not-indexed") {
       return existing;
     }
     return { file, status: "pending" as const };
@@ -65,7 +66,7 @@ function scanStory(storyDir: string, name: string): StoryInfo {
   const hasStructure = entries.includes("structure.md");
   const hasGenesis = entries.includes("genesis.md");
   const plotCount = entries.filter((f) => f.match(/^plot-\d+\.md$/)).length;
-  const publishedCount = files.filter((f) => f.status === "published").length;
+  const publishedCount = files.filter((f) => f.status === "published" || f.status === "published-not-indexed").length;
 
   return { name, files, hasStructure, hasGenesis, plotCount, publishedCount };
 }
@@ -157,17 +158,19 @@ stories.post("/:name/:file/publish-status", async (c) => {
     storylineId?: number;
     contentCid: string;
     gasCost?: string;
+    indexError?: string;
   }>();
 
   const status = readPublishStatus(storyDir);
   status[file] = {
     file,
-    status: "published",
+    status: body.indexError ? "published-not-indexed" : "published",
     txHash: body.txHash,
     storylineId: body.storylineId,
     contentCid: body.contentCid,
     gasCost: body.gasCost,
     publishedAt: new Date().toISOString(),
+    ...(body.indexError ? { indexError: body.indexError } : {}),
   };
   writePublishStatus(storyDir, status);
 
