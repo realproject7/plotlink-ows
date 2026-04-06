@@ -36,8 +36,8 @@ const THEME = {
   cyan: "#3D7A7A",
   white: "#3A2A1E",
   brightBlack: "#8B7355",
-  brightRed: "rgba(180, 80, 80, 0.25)",
-  brightGreen: "rgba(76, 140, 76, 0.25)",
+  brightRed: "#B85C5C",   // muted red — readable as text, soft as diff bg
+  brightGreen: "#5A8A5A", // muted green — readable as text, soft as diff bg
   brightYellow: "#A07D1C",
   brightBlue: "#5A82BA",
   brightMagenta: "#8E5D9F",
@@ -181,7 +181,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       cursorBlink: true,
       cursorStyle: "block",
       theme: THEME,
-      allowTransparency: true,
+      allowTransparency: false,
       drawBoldTextInBrightColors: false,
     });
 
