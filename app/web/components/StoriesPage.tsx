@@ -206,7 +206,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} />
       </div>
 
       {/* Drag Handle */}

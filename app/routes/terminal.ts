@@ -5,55 +5,94 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORIES_DIR = path.join(__dirname, "..", "..", "stories");
+const MAX_SESSIONS = 5;
 
 const terminal = new Hono();
 
-// Active PTY sessions keyed by session ID
+// Active PTY sessions keyed by story name
 const ptySessions = new Map<
   string,
   { term: pty.IPty; ws: WebSocket | null; state: "running" | "stopped" }
 >();
 
-/** POST /api/terminal/spawn — spawn Claude CLI in stories/ */
-terminal.post("/spawn", (c) => {
-  const sessionId = "default";
+function safeName(name: string): string | null {
+  if (!name || name.includes("..") || name.includes("/") || name.includes("\\") || name.startsWith(".")) {
+    return null;
+  }
+  return name;
+}
 
-  const existing = ptySessions.get(sessionId);
+function spawnPty(storyName: string) {
+  const storyDir = path.join(STORIES_DIR, storyName);
+  const shell = process.env.SHELL || "/bin/zsh";
+  const term = pty.spawn(shell, ["-l", "-c", `claude --cwd "${storyDir}"`], {
+    name: "xterm-256color",
+    cols: 120,
+    rows: 30,
+    cwd: storyDir,
+    env: process.env as Record<string, string>,
+  });
+
+  const session = { term, ws: null as WebSocket | null, state: "running" as const };
+  ptySessions.set(storyName, session);
+
+  term.onExit(({ exitCode }) => {
+    const s = ptySessions.get(storyName);
+    if (s?.term === term) {
+      s.state = "stopped";
+      if (s.ws && s.ws.readyState <= 1) {
+        s.ws.close(1000, `exited:${exitCode}`);
+      }
+      s.ws = null;
+    }
+  });
+
+  return session;
+}
+
+/** POST /api/terminal/spawn — spawn Claude CLI for a story */
+terminal.post("/spawn", async (c) => {
+  const body = await c.req.json<{ storyName?: string }>().catch(() => ({}));
+  const storyName = safeName(body.storyName || "default");
+  if (!storyName) return c.json({ error: "Invalid story name" }, 400);
+
+  const existing = ptySessions.get(storyName);
   if (existing?.term && existing.state === "running") {
-    return c.json({ ok: true, pid: existing.term.pid, reused: true });
+    return c.json({ ok: true, pid: existing.term.pid, storyName, reused: true });
+  }
+
+  // Enforce max concurrent sessions
+  const running = [...ptySessions.values()].filter((s) => s.state === "running").length;
+  if (running >= MAX_SESSIONS) {
+    return c.json({ error: `Max ${MAX_SESSIONS} concurrent sessions`, ok: false }, 429);
   }
 
   try {
-    const shell = process.env.SHELL || "/bin/zsh";
-    const term = pty.spawn(shell, ["-l", "-c", "claude"], {
-      name: "xterm-256color",
-      cols: 120,
-      rows: 30,
-      cwd: STORIES_DIR,
-      env: process.env as Record<string, string>,
-    });
-
-    ptySessions.set(sessionId, { term, ws: null, state: "running" });
-
-    term.onExit(({ exitCode }) => {
-      const session = ptySessions.get(sessionId);
-      if (session?.term === term) {
-        session.state = "stopped";
-        if (session.ws && session.ws.readyState <= 1) {
-          session.ws.close(1000, `exited:${exitCode}`);
-        }
-        session.ws = null;
-      }
-    });
-
-    return c.json({ ok: true, pid: term.pid });
+    const session = spawnPty(storyName);
+    return c.json({ ok: true, pid: session.term.pid, storyName });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to spawn PTY";
     return c.json({ ok: false, error: message }, 500);
   }
 });
 
-/** POST /api/terminal/stop — kill PTY */
+/** DELETE /api/terminal/:storyName — kill a story's PTY */
+terminal.delete("/:storyName", (c) => {
+  const storyName = safeName(c.req.param("storyName"));
+  if (!storyName) return c.json({ error: "Invalid story name" }, 400);
+
+  const session = ptySessions.get(storyName);
+  if (session?.term && session.state === "running") {
+    session.term.kill();
+    session.state = "stopped";
+    ptySessions.delete(storyName);
+    return c.json({ ok: true });
+  }
+  ptySessions.delete(storyName);
+  return c.json({ ok: true, message: "not running" });
+});
+
+/** POST /api/terminal/stop — kill PTY (legacy, kills default) */
 terminal.post("/stop", (c) => {
   const session = ptySessions.get("default");
   if (session?.term && session.state === "running") {
@@ -64,48 +103,37 @@ terminal.post("/stop", (c) => {
   return c.json({ ok: true, message: "not running" });
 });
 
-/** GET /api/terminal/status */
+/** GET /api/terminal/status — list all sessions */
 terminal.get("/status", (c) => {
-  const session = ptySessions.get("default");
-  return c.json({
-    running: session?.state === "running",
-    pid: session?.term?.pid ?? null,
-  });
+  const sessions: Record<string, { running: boolean; pid: number | null }> = {};
+  for (const [name, session] of ptySessions) {
+    sessions[name] = {
+      running: session.state === "running",
+      pid: session.term?.pid ?? null,
+    };
+  }
+  return c.json({ sessions });
 });
 
 /**
- * Attach a raw WebSocket to the PTY session.
+ * Attach a raw WebSocket to a story's PTY session.
  * Called from server.ts WebSocket upgrade handler.
  */
-export function attachTerminalWs(ws: WebSocket) {
-  const sessionId = "default";
-  let session = ptySessions.get(sessionId);
+export function attachTerminalWs(ws: WebSocket, storyName?: string) {
+  const name = storyName && safeName(storyName) ? storyName : "default";
+  let session = ptySessions.get(name);
 
   // Lazy spawn if no PTY exists
   if (!session || session.state !== "running") {
+    // Enforce max concurrent sessions
+    const running = [...ptySessions.values()].filter((s) => s.state === "running").length;
+    if (running >= MAX_SESSIONS) {
+      ws.close(1013, "max-sessions");
+      return;
+    }
+
     try {
-      const shell = process.env.SHELL || "/bin/zsh";
-    const term = pty.spawn(shell, ["-l", "-c", "claude"], {
-        name: "xterm-256color",
-        cols: 120,
-        rows: 30,
-        cwd: STORIES_DIR,
-        env: process.env as Record<string, string>,
-      });
-
-      session = { term, ws: null, state: "running" };
-      ptySessions.set(sessionId, session);
-
-      term.onExit(({ exitCode }) => {
-        const s = ptySessions.get(sessionId);
-        if (s?.term === term) {
-          s.state = "stopped";
-          if (s.ws && s.ws.readyState <= 1) {
-            s.ws.close(1000, `exited:${exitCode}`);
-          }
-          s.ws = null;
-        }
-      });
+      session = spawnPty(name);
     } catch (err) {
       console.error("PTY spawn failed:", err);
       ws.close(1011, "pty-spawn-failed");
