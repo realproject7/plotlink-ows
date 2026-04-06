@@ -146,7 +146,7 @@ terminal.get("/session/:storyName", (c) => {
 
   return c.json({
     sessionId,
-    running: active?.state === "running" ?? false,
+    running: !!active && active.state === "running",
   });
 });
 
