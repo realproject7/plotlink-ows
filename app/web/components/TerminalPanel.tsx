@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalPanelProps {
@@ -12,9 +13,11 @@ interface TerminalPanelProps {
 interface TerminalSession {
   term: Terminal;
   fit: FitAddon;
-  ws: WebSocket;
+  serialize: SerializeAddon;
+  ws: WebSocket | null;
   container: HTMLDivElement;
   observer: ResizeObserver;
+  connected: boolean;
 }
 
 const THEME = {
@@ -42,6 +45,48 @@ const THEME = {
   brightWhite: "#4A3728",
 };
 
+const DB_NAME = "plotlink-terminal";
+const DB_VERSION = 1;
+const STORE_NAME = "scrollback";
+const MAX_SCROLLBACK_BYTES = 10 * 1024 * 1024; // 10MB per story
+
+// ---- IndexedDB helpers ----
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveScrollback(storyName: string, data: string): Promise<void> {
+  // Enforce size limit
+  const trimmed = data.length > MAX_SCROLLBACK_BYTES ? data.slice(-MAX_SCROLLBACK_BYTES) : data;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).put(trimmed, storyName);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function loadScrollback(storyName: string): Promise<string | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const req = tx.objectStore(STORE_NAME).get(storyName);
+    req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  });
+}
+
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
@@ -49,6 +94,7 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
+  const [disconnected, setDisconnected] = useState<Set<string>>(new Set());
 
   useEffect(() => { authFetchRef.current = authFetch; }, [authFetch]);
 
@@ -66,7 +112,45 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     }
   }, []);
 
-  const createSession = useCallback((name: string) => {
+  const connectWs = useCallback((name: string, session: TerminalSession, resume: boolean) => {
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(
+      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}&resume=${resume}`
+    );
+
+    ws.onopen = () => {
+      session.connected = true;
+      setDisconnected((prev) => { const next = new Set(prev); next.delete(name); return next; });
+      ws.send(JSON.stringify({ type: "resize", cols: session.term.cols, rows: session.term.rows }));
+    };
+
+    ws.onmessage = (e) => {
+      session.term.write(e.data);
+    };
+
+    ws.onclose = () => {
+      session.connected = false;
+      if (session.ws === ws) {
+        session.ws = null;
+        // Save scrollback before marking disconnected
+        try {
+          const data = session.serialize.serialize();
+          saveScrollback(name, data).catch(() => {});
+        } catch { /* ignore */ }
+        setDisconnected((prev) => new Set(prev).add(name));
+      }
+    };
+
+    session.term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    });
+
+    session.ws = ws;
+  }, [token]);
+
+  const createSession = useCallback(async (name: string, resume: boolean = false) => {
     if (!wrapperRef.current || sessions.has(name)) return;
 
     const container = document.createElement("div");
@@ -89,68 +173,76 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     });
 
     const fit = new FitAddon();
+    const serialize = new SerializeAddon();
     term.loadAddon(fit);
+    term.loadAddon(serialize);
     term.open(container);
-
-    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(
-      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}`
-    );
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-    };
-
-    ws.onmessage = (e) => {
-      term.write(e.data);
-    };
-
-    ws.onclose = () => {
-      term.write("\r\n\x1b[33m[Terminal disconnected]\x1b[0m\r\n");
-      // Clean up dead session so it can be recreated
-      const dead = sessions.get(name);
-      if (dead?.ws === ws) {
-        dead.observer.disconnect();
-        dead.term.dispose();
-        dead.container.remove();
-        sessions.delete(name);
-        setSessionList((prev) => prev.filter((s) => s !== name));
-      }
-    };
-
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    });
 
     const observer = new ResizeObserver(() => {
       try {
         fit.fit();
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        if (session.ws?.readyState === WebSocket.OPEN) {
+          session.ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
         }
       } catch { /* ignore */ }
     });
     observer.observe(container);
 
-    sessions.set(name, { term, fit, ws, container, observer });
+    const session: TerminalSession = { term, fit, serialize, ws: null, container, observer, connected: false };
+    sessions.set(name, session);
     setSessionList((prev) => [...prev, name]);
+
+    // Restore scrollback from IndexedDB
+    try {
+      const saved = await loadScrollback(name);
+      if (saved) {
+        term.write(saved);
+      }
+    } catch { /* ignore */ }
+
+    // Connect WebSocket
+    connectWs(name, session, resume);
 
     requestAnimationFrame(() => {
       try { fit.fit(); } catch { /* ignore */ }
     });
-  }, [token]);
+  }, [connectWs]);
+
+  const reconnectSession = useCallback((name: string, resume: boolean) => {
+    const session = sessions.get(name);
+    if (!session) return;
+
+    // Close existing WS if any
+    if (session.ws) {
+      session.ws.close();
+      session.ws = null;
+    }
+
+    if (!resume) {
+      // Fresh session: clear terminal
+      session.term.clear();
+    }
+
+    connectWs(name, session, resume);
+  }, [connectWs]);
 
   const destroySession = useCallback((name: string) => {
     const session = sessions.get(name);
     if (!session) return;
+
+    // Save scrollback before destroying
+    try {
+      const data = session.serialize.serialize();
+      saveScrollback(name, data).catch(() => {});
+    } catch { /* ignore */ }
+
     session.observer.disconnect();
-    session.ws.close();
+    if (session.ws) session.ws.close();
     session.term.dispose();
     session.container.remove();
     sessions.delete(name);
     setSessionList((prev) => prev.filter((s) => s !== name));
+    setDisconnected((prev) => { const next = new Set(prev); next.delete(name); return next; });
 
     authFetch(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
   }, [authFetch]);
@@ -164,20 +256,41 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     showSession(storyName);
   }, [storyName, createSession, showSession]);
 
-  // Cleanup all sessions on unmount — also kill server PTYs
+  // Periodic scrollback save (every 30s for active session)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      for (const [name, session] of sessions) {
+        if (session.connected) {
+          try {
+            const data = session.serialize.serialize();
+            saveScrollback(name, data).catch(() => {});
+          } catch { /* ignore */ }
+        }
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cleanup all sessions on unmount
   useEffect(() => {
     return () => {
       for (const [name, session] of sessions) {
+        // Save scrollback before cleanup
+        try {
+          const data = session.serialize.serialize();
+          saveScrollback(name, data).catch(() => {});
+        } catch { /* ignore */ }
         session.observer.disconnect();
-        session.ws.close();
+        if (session.ws) session.ws.close();
         session.term.dispose();
         session.container.remove();
-        // Fire-and-forget authenticated DELETE to kill server PTY
         authFetchRef.current(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
       }
       sessions.clear();
     };
   }, []);
+
+  const isDisconnected = storyName ? disconnected.has(storyName) : false;
 
   return (
     <div className="h-full flex flex-col">
@@ -195,7 +308,9 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
                   : "text-muted hover:text-foreground"
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${name === storyName ? "bg-green-600" : "bg-muted/50"}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                disconnected.has(name) ? "bg-amber-500" : name === storyName ? "bg-green-600" : "bg-muted/50"
+              }`} />
               <span className="truncate max-w-[120px]">{name}</span>
               <button
                 onClick={(e) => {
@@ -213,7 +328,33 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
       </div>
 
       {/* Terminal containers */}
-      <div ref={wrapperRef} className="flex-1 min-h-0" />
+      <div className="relative flex-1 min-h-0">
+        <div ref={wrapperRef} className="h-full" />
+
+        {/* Reconnect overlay */}
+        {isDisconnected && storyName && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(240, 235, 225, 0.9)" }}>
+            <div className="text-center space-y-3">
+              <p className="text-sm font-serif text-foreground">Terminal disconnected</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => reconnectSession(storyName, true)}
+                  className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim"
+                >
+                  Resume Session
+                </button>
+                <button
+                  onClick={() => reconnectSession(storyName, false)}
+                  className="px-4 py-1.5 border border-border text-sm rounded hover:bg-surface"
+                >
+                  Start Fresh
+                </button>
+              </div>
+              <p className="text-xs text-muted">Resume continues your previous Claude conversation</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
