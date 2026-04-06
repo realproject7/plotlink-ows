@@ -8,6 +8,7 @@ interface TerminalPanelProps {
   token: string;
   storyName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
+  onSelectStory?: (storyName: string) => void;
 }
 
 interface TerminalSession {
@@ -91,7 +92,7 @@ async function loadScrollback(storyName: string): Promise<string | null> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -345,7 +346,8 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
           sessionList.map((name) => (
             <div
               key={name}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${
+              onClick={() => onSelectStory?.(name)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono cursor-pointer ${
                 name === storyName
                   ? "bg-accent/10 text-accent"
                   : "text-muted hover:text-foreground"
