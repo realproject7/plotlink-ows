@@ -32,25 +32,27 @@ export function TerminalPanel({ token }: TerminalPanelProps) {
         cursorAccent: "#F0EBE1",
         selectionBackground: "#D4C5B0",
         selectionForeground: "#2C1810",
+        // ANSI 0-7 (normal)
         black: "#2C1810",
-        red: "#CC3333",
-        green: "#5B7A2E",
-        yellow: "#8B6914",
-        blue: "#4A6FA5",
-        magenta: "#7B4B8A",
-        cyan: "#4A8B8B",
-        white: "#2C1810",
-        brightBlack: "#8B7355",
-        brightRed: "#E04040",
-        brightGreen: "#6B8F38",
-        brightYellow: "#A07D1C",
-        brightBlue: "#5A82BA",
-        brightMagenta: "#8E5D9F",
-        brightCyan: "#5A9F9F",
-        brightWhite: "#4A3728",
+        red: "#A63D40",        // muted brick red — errors, diff removed fg
+        green: "#4A7A4A",      // muted sage green — diff added fg
+        yellow: "#8B6914",     // warm amber — warnings
+        blue: "#4A6FA5",       // slate blue — info, links
+        magenta: "#7B4B8A",    // dusty purple — decorative
+        cyan: "#3D7A7A",       // muted teal — status, paths
+        white: "#3A2A1E",      // dark brown — visible on cream bg
+        // ANSI 8-15 (bright)
+        brightBlack: "#8B7355",  // muted brown — comments, dimmed text
+        brightRed: "rgba(180, 80, 80, 0.25)",   // translucent rose — diff removed bg
+        brightGreen: "rgba(76, 140, 76, 0.25)", // translucent sage — diff added bg
+        brightYellow: "#A07D1C", // warm gold
+        brightBlue: "#5A82BA",   // lighter slate blue
+        brightMagenta: "#8E5D9F",// lighter purple
+        brightCyan: "#5A8F8F",   // lighter teal
+        brightWhite: "#4A3728",  // medium brown — always visible on cream
       },
-      allowTransparency: false,
-      drawBoldTextInBrightColors: true,
+      allowTransparency: true,
+      drawBoldTextInBrightColors: false, // keep bold text on opaque normal colors
     });
 
     const fitAddon = new FitAddon();
