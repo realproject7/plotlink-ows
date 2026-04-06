@@ -65,6 +65,32 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setSelectedFile(fileName);
   }, []);
 
+  const latestStoryRef = useRef<string | null>(null);
+
+  const handleSelectStory = useCallback(async (name: string) => {
+    latestStoryRef.current = name;
+    setSelectedStory(name);
+    setSelectedFile(null);
+    // Auto-select latest file for this story
+    try {
+      const res = await authFetch(`/api/stories/${name}`);
+      if (res.ok && latestStoryRef.current === name) {
+        const data = await res.json();
+        const files: { file: string }[] = data.files || [];
+        // Priority: highest plot → genesis → structure → first
+        const plots = files
+          .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
+          .filter((p) => p.num != null)
+          .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
+        const latest = plots[0]?.file
+          ?? (files.find((f) => f.file === "genesis.md")?.file)
+          ?? (files.find((f) => f.file === "structure.md")?.file)
+          ?? files[0]?.file;
+        if (latest && latestStoryRef.current === name) setSelectedFile(latest);
+      }
+    } catch { /* ignore */ }
+  }, [authFetch]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragging.current = true;
@@ -206,7 +232,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} />
       </div>
 
       {/* Drag Handle */}
