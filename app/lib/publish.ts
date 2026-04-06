@@ -205,6 +205,8 @@ async function waitForPlotConfirmation(txHash: string): Promise<{ plotIndex: num
         topics: log.topics,
       });
       if (decoded.eventName === "PlotChained") {
+        // plotIndex is 0-based: genesis=0, plot-01=1, plot-02=2, etc.
+        // This matches plotlink.xyz URL convention: /story/{id}/{plotIndex}
         return { plotIndex: Number((decoded.args as { plotIndex: bigint }).plotIndex), gasCost };
       }
     } catch { /* not our event */ }
