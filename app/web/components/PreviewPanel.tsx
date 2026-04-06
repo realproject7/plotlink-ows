@@ -46,9 +46,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     } catch { /* ignore */ }
   }, [storyName, fileName, authFetch, dirty]);
 
-  // Reset tab and dirty state when file changes
+  // Reset dirty state when file changes (tab persists)
   useEffect(() => {
-    setActiveTab("preview");
     setDirty(false);
   }, [storyName, fileName]);
 
@@ -161,13 +160,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             Preview
           </button>
           <button
-            onClick={() => {
-              if (activeTab !== "edit") {
-                setEditContent(fileData?.content ?? "");
-                setDirty(false);
-              }
-              setActiveTab("edit");
-            }}
+            onClick={() => setActiveTab("edit")}
             className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
               activeTab === "edit"
                 ? "border-accent text-accent"
