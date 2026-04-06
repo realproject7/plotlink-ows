@@ -336,14 +336,22 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
 
   const isDisconnected = storyName ? disconnected.has(storyName) : false;
 
+  if (sessionList.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted">
+        <div className="text-center">
+          <p className="text-lg font-serif">Select a story on the left menu</p>
+          <p className="text-sm mt-1">to start an AI Writer session</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Session tabs */}
       <div className="px-2 py-1 border-b border-border flex items-center gap-1 overflow-x-auto">
-        {sessionList.length === 0 ? (
-          <span className="text-xs text-muted font-mono px-1">Select a story to start a terminal</span>
-        ) : (
-          sessionList.map((name) => (
+        {sessionList.map((name) => (
             <div
               key={name}
               onClick={() => onSelectStory?.(name)}
@@ -369,7 +377,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
               </button>
             </div>
           ))
-        )}
+        }
       </div>
 
       {/* Terminal containers */}
