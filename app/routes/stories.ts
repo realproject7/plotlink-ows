@@ -162,13 +162,14 @@ stories.post("/:name/:file/publish-status", async (c) => {
   }>();
 
   const status = readPublishStatus(storyDir);
+  const existing = status[file];
   status[file] = {
     file,
     status: body.indexError ? "published-not-indexed" : "published",
-    txHash: body.txHash,
-    storylineId: body.storylineId,
-    contentCid: body.contentCid,
-    gasCost: body.gasCost,
+    txHash: body.txHash || existing?.txHash,
+    storylineId: body.storylineId ?? existing?.storylineId,
+    contentCid: body.contentCid || existing?.contentCid,
+    gasCost: body.gasCost || existing?.gasCost,
     publishedAt: new Date().toISOString(),
     ...(body.indexError ? { indexError: body.indexError } : {}),
   };
