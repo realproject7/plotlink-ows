@@ -194,6 +194,11 @@ export function TerminalPanel({ token, storyName, authFetch }: TerminalPanelProp
     term.loadAddon(serialize);
     term.open(container);
 
+    // Apply padding to term.element so FitAddon measures correctly
+    if (term.element) {
+      term.element.style.paddingLeft = "10px";
+    }
+
     const observer = new ResizeObserver(() => {
       try {
         fit.fit();
