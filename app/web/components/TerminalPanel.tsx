@@ -348,21 +348,12 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
   }, []);
 
   const isDisconnected = storyName ? disconnected.has(storyName) : false;
-
-  if (sessionList.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted">
-        <div className="text-center">
-          <p className="text-lg font-serif">Select a story on the left menu</p>
-          <p className="text-sm mt-1">to start an AI Writer session</p>
-        </div>
-      </div>
-    );
-  }
+  const isEmpty = sessionList.length === 0;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Session tabs */}
+      {/* Session tabs — hidden when no sessions */}
+      {!isEmpty && (
       <div className="px-2 py-1 border-b border-border flex items-center gap-1 overflow-x-auto">
         {sessionList.map((name) => (
             <div
@@ -392,10 +383,21 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
           ))
         }
       </div>
+      )}
 
-      {/* Terminal containers */}
+      {/* Terminal containers — always rendered so wrapperRef is available */}
       <div className="relative flex-1 min-h-0">
         <div ref={wrapperRef} className="h-full" />
+
+        {/* Empty state overlay */}
+        {isEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center text-muted">
+            <div className="text-center">
+              <p className="text-lg font-serif">Select a story on the left menu</p>
+              <p className="text-sm mt-1">to start an AI Writer session</p>
+            </div>
+          </div>
+        )}
 
         {/* Reconnect overlay */}
         {isDisconnected && storyName && (
