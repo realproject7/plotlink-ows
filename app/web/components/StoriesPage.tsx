@@ -187,7 +187,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           for (const line of lines) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.step) setPublishProgress(data.step);
+              if (data.step) setPublishProgress(data.message || data.step);
               if (data.step === "done" && data.txHash) {
                 // Update publish status with gasCost
                 await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
