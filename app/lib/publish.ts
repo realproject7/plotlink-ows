@@ -61,12 +61,81 @@ export interface PublishResult {
 }
 
 export interface PublishProgress {
-  step: "uploading" | "estimating" | "signing" | "broadcasting" | "confirming" | "done" | "error";
+  step: "uploading" | "estimating" | "signing" | "broadcasting" | "confirming" | "indexing" | "done" | "error";
   message: string;
   txHash?: string;
   contentCid?: string;
   storylineId?: number;
   error?: string;
+}
+
+// Indexing retry tuning (per #103 RCA — combo A+B):
+// - 8s initial delay lets the on-chain tx propagate to plotlink.xyz's RPC
+//   and gives Filebase → public IPFS gateway propagation a head start.
+// - 10 attempts × 30s interval ≈ 4.5 min total, fitting inside plotlink.xyz's
+//   5-min indexable window so users don't escalate to a full Retry Publish
+//   (which would mint another chainPlot tx and inflate the on-chain index).
+const INDEX_INITIAL_DELAY_MS = 8_000;
+const INDEX_RETRY_ATTEMPTS = 10;
+const INDEX_RETRY_INTERVAL_MS = 30_000;
+
+/**
+ * POST to plotlink.xyz's indexer with an initial delay and a retry loop.
+ * Streams "Indexing… (attempt N/M)" progress so the publish flow surfaces
+ * the in-progress state instead of an immediate failure.
+ *
+ * Returns undefined on success, or the final error message after all
+ * attempts have failed.
+ */
+async function indexWithDelayAndRetry(
+  endpoint: "plot" | "storyline",
+  body: Record<string, unknown>,
+  onProgress: (progress: PublishProgress) => void,
+  txHash: string,
+  contentCid: string,
+): Promise<string | undefined> {
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const url = `${PLOTLINK_URL}/api/index/${endpoint}`;
+
+  onProgress({
+    step: "indexing",
+    message: `Indexing… waiting ${INDEX_INITIAL_DELAY_MS / 1000}s for on-chain propagation`,
+    txHash,
+    contentCid,
+  });
+  await new Promise((r) => setTimeout(r, INDEX_INITIAL_DELAY_MS));
+
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= INDEX_RETRY_ATTEMPTS; attempt++) {
+    onProgress({
+      step: "indexing",
+      message: `Indexing… (attempt ${attempt}/${INDEX_RETRY_ATTEMPTS})`,
+      txHash,
+      contentCid,
+    });
+
+    try {
+      const indexRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
+      if (indexRes.ok && !indexBody.error) {
+        return undefined;
+      }
+      lastError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Indexing request failed";
+    }
+
+    if (attempt < INDEX_RETRY_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, INDEX_RETRY_INTERVAL_MS));
+    }
+  }
+
+  console.error(`Indexing failed for tx ${txHash} after ${INDEX_RETRY_ATTEMPTS} attempts:`, lastError);
+  return lastError;
 }
 
 /**
@@ -261,6 +330,16 @@ export async function publishStoryline(
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
   const confirmation = await waitForStorylineConfirmation(txHash);
 
+  // Index on PlotLink with delay + retry (per #103 RCA — combo A+B).
+  // Streams "Indexing…" progress so the user does not escalate to Retry Publish.
+  const indexError = await indexWithDelayAndRetry(
+    "storyline",
+    { txHash, content, genre },
+    onProgress,
+    txHash,
+    contentCid,
+  );
+
   onProgress({
     step: "done",
     message: `Published! Storyline #${confirmation.storylineId}`,
@@ -268,25 +347,6 @@ export async function publishStoryline(
     contentCid,
     storylineId: confirmation.storylineId,
   });
-
-  // Index on PlotLink (best-effort — story appears on plotlink.xyz)
-  let indexError: string | undefined;
-  try {
-    const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
-    const indexRes = await fetch(`${PLOTLINK_URL}/api/index/storyline`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txHash, content, genre }),
-    });
-    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
-    if (!indexRes.ok || indexBody.error) {
-      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
-      console.error(`Storyline indexing failed for tx ${txHash}:`, indexError);
-    }
-  } catch (err) {
-    indexError = err instanceof Error ? err.message : "Indexing request failed";
-    console.error(`Storyline indexing error for tx ${txHash}:`, indexError);
-  }
 
   return { txHash, contentCid, storylineId: confirmation.storylineId, gasCost: confirmation.gasCost, indexError };
 }
@@ -334,6 +394,17 @@ export async function publishPlot(
   onProgress({ step: "confirming", message: "Waiting for confirmation...", txHash, contentCid });
   const confirmation = await waitForPlotConfirmation(txHash);
 
+  // Index on PlotLink with delay + retry (per #103 RCA — combo A+B).
+  // Pass content as fallback because IPFS stores JSON metadata wrapper,
+  // but on-chain hash is keccak256 of raw content only.
+  const indexError = await indexWithDelayAndRetry(
+    "plot",
+    { txHash, content },
+    onProgress,
+    txHash,
+    contentCid,
+  );
+
   onProgress({
     step: "done",
     message: `Plot chained to storyline #${storylineId}`,
@@ -341,27 +412,6 @@ export async function publishPlot(
     contentCid,
     storylineId,
   });
-
-  // Index on PlotLink (best-effort — plot appears on plotlink.xyz)
-  // Pass content as fallback because IPFS stores JSON metadata wrapper,
-  // but on-chain hash is keccak256 of raw content only
-  let indexError: string | undefined;
-  try {
-    const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
-    const indexRes = await fetch(`${PLOTLINK_URL}/api/index/plot`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txHash, content }),
-    });
-    const indexBody = await indexRes.json().catch(() => ({})) as Record<string, string>;
-    if (!indexRes.ok || indexBody.error) {
-      indexError = indexBody.error || `Indexing failed: HTTP ${indexRes.status}`;
-      console.error(`Plot indexing failed for tx ${txHash}:`, indexError);
-    }
-  } catch (err) {
-    indexError = err instanceof Error ? err.message : "Indexing request failed";
-    console.error(`Plot indexing error for tx ${txHash}:`, indexError);
-  }
 
   return { txHash, contentCid, storylineId, plotIndex: confirmation.plotIndex >= 0 ? confirmation.plotIndex : undefined, gasCost: confirmation.gasCost, indexError };
 }
