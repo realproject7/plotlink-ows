@@ -94,6 +94,10 @@ PlotLink renders markdown. Use these elements tastefully:
 - Scene breaks (`---`) between location/time shifts
 - Blockquote only for the most impactful line per section
 
+## CI / Visual Regression
+
+Visual regression tests are **manual-only** — they do NOT run in PR CI. Trigger them via `gh workflow run update-snapshots.yml` or the GitHub Actions UI only when a change is likely to affect visual output (layout, styles, components).
+
 ## Publishing
 
 When the human is ready to publish, they use the PlotLink OWS app to upload stories on-chain. Each published story:
