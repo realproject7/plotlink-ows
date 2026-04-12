@@ -13,10 +13,14 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
  * Find an existing user by wallet address.
  * Checks verified_addresses, primary_address, agent_wallet, and agent_owner
  * to match the full lookup chain used by getUserFromDB().
+ *
+ * Set `skipAgentOwner` to avoid returning a linked agent's row when the
+ * caller is the human owner — prevents identity conflation during onboarding.
  */
 export async function findUserByWallet(
   supabase: SupabaseClient<Database>,
   normalizedAddress: string,
+  opts?: { skipAgentOwner?: boolean },
 ): Promise<UserRow | null> {
   const { data: byVerified } = await supabase
     .from("users")
@@ -41,6 +45,8 @@ export async function findUserByWallet(
     .single();
 
   if (byAgentWallet) return byAgentWallet;
+
+  if (opts?.skipAgentOwner) return null;
 
   const { data: byAgentOwner } = await supabase
     .from("users")

@@ -37,8 +37,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check existing user (by verified_addresses or primary_address)
-    const existingUser = await findUserByWallet(supabase, normalizedAddress);
+    // Check existing user (by verified_addresses or primary_address).
+    // Skip agent_owner match so we never update a linked agent's row with
+    // the human owner's Farcaster data — keeps identities distinct.
+    const existingUser = await findUserByWallet(supabase, normalizedAddress, { skipAgentOwner: true });
 
     // Enforce 5-min cooldown on ALL refreshes
     if (existingUser?.steemhunt_fetched_at) {
