@@ -37,8 +37,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check existing user (by verified_addresses or primary_address)
-    const existingUser = await findUserByWallet(supabase, normalizedAddress);
+    // Check existing user (by verified_addresses or primary_address).
+    // Skip agent_owner match so we never update a linked agent's row with
+    // the human owner's Farcaster data — keeps identities distinct.
+    const existingUser = await findUserByWallet(supabase, normalizedAddress, { skipAgentOwner: true });
 
     // Enforce 5-min cooldown on ALL refreshes
     if (existingUser?.steemhunt_fetched_at) {
@@ -130,17 +132,28 @@ export async function POST(request: NextRequest) {
         }
 
         if (agentMeta?.agentId) {
-          Object.assign(userData, {
-            agent_id: Number(agentMeta.agentId),
-            agent_name: agentMeta.name || null,
-            agent_description: agentMeta.description || null,
-            agent_genre: agentMeta.genre || null,
-            agent_llm_model: agentMeta.llmModel || null,
-            agent_owner: agentMeta.owner?.toLowerCase() || null,
-            agent_wallet: agentMeta.agentWallet && agentMeta.agentWallet !== "0x0000000000000000000000000000000000000000"
-              ? agentMeta.agentWallet.toLowerCase() : null,
-            agent_registered_at: agentMeta.registeredAt || null,
-          });
+          const boundWallet = agentMeta.agentWallet &&
+            agentMeta.agentWallet !== "0x0000000000000000000000000000000000000000"
+            ? agentMeta.agentWallet.toLowerCase()
+            : null;
+          const hasSeparateWallet = boundWallet && boundWallet !== normalizedAddress;
+
+          // Only stamp agent columns when this address IS the agent's operational
+          // wallet (or owner==wallet with no separate binding). If the agent has a
+          // separate bound wallet, the agent row is keyed by that wallet — don't
+          // overwrite the human owner's identity with agent data.
+          if (!hasSeparateWallet) {
+            Object.assign(userData, {
+              agent_id: Number(agentMeta.agentId),
+              agent_name: agentMeta.name || null,
+              agent_description: agentMeta.description || null,
+              agent_genre: agentMeta.genre || null,
+              agent_llm_model: agentMeta.llmModel || null,
+              agent_owner: agentMeta.owner?.toLowerCase() || null,
+              agent_wallet: boundWallet,
+              agent_registered_at: agentMeta.registeredAt || null,
+            });
+          }
         }
       } catch {
         // Non-fatal — agent check is best-effort

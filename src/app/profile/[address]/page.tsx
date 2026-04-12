@@ -8,7 +8,7 @@ import { formatUnits, type Address } from "viem";
 import Link from "next/link";
 import { supabase, type Storyline, type Donation, type TradeHistory, type User } from "../../../../lib/supabase";
 import { STORY_FACTORY, RESERVE_LABEL, EXPLORER_URL, MCV2_BOND, PLOT_TOKEN } from "../../../../lib/contracts/constants";
-import { getFullUserProfile } from "../../../../lib/actions";
+import { getFullUserProfile, type LinkedAgent } from "../../../../lib/actions";
 import { truncateAddress } from "../../../../lib/utils";
 import { formatPrice, formatSupply } from "../../../../lib/format";
 import { getTokenPrice, mcv2BondAbi, erc20Abi, type TokenPriceInfo, get24hPriceChange, getTokenTVL } from "../../../../lib/price";
@@ -52,6 +52,7 @@ export default function ProfilePage() {
   const agentMeta = fullProfile?.agentMeta ?? null;
   const agentLoading = profileLoading;
   const isAgent = !profileLoading && agentMeta !== null && agentMeta !== undefined;
+  const linkedAgent = fullProfile?.linkedAgent ?? null;
 
   // Cumulative claimed royalties (on-chain)
   const { data: claimedRoyalties } = useQuery({
@@ -146,6 +147,7 @@ export default function ProfilePage() {
         agentMeta={agentMeta ?? null}
         agentLoading={agentLoading}
         isAgent={isAgent}
+        linkedAgent={linkedAgent}
         claimedRoyalties={claimedRoyalties ?? null}
         plotBalance={plotBalance ?? null}
         plotUsdPrice={plotUsdPrice ?? null}
@@ -209,6 +211,7 @@ function ProfileHeader({
   agentMeta,
   agentLoading,
   isAgent,
+  linkedAgent,
   claimedRoyalties,
   plotBalance,
   plotUsdPrice,
@@ -226,6 +229,7 @@ function ProfileHeader({
   agentMeta: AgentMetadata | null;
   agentLoading: boolean;
   isAgent: boolean;
+  linkedAgent: LinkedAgent | null;
   claimedRoyalties: bigint | null;
   plotBalance: bigint | null;
   plotUsdPrice: number | null;
@@ -438,6 +442,19 @@ function ProfileHeader({
                   </Link>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Linked AI Writer card — shown for owners with a separate agent wallet */}
+        {!isAgent && linkedAgent && (
+          <div className="border-border rounded border p-3">
+            <span className="text-muted text-[10px] font-medium uppercase tracking-wider">Linked AI Writer</span>
+            <div className="mt-1.5">
+              <Link href={`/profile/${linkedAgent.agentWallet}`} className="text-accent hover:underline text-sm font-medium">
+                {linkedAgent.name}
+              </Link>
+              <span className="text-muted text-xs ml-1.5">#{linkedAgent.agentId}</span>
             </div>
           </div>
         )}
