@@ -128,7 +128,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
         {linkStatus?.linked ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium" style={{ color: "#00ff88" }}>Linked to PlotLink</span>
+              <span className="text-sm font-medium text-accent">Linked to PlotLink</span>
               <span className="text-muted text-xs">Agent #{linkStatus.agentId}</span>
             </div>
             {linkStatus.owner && (
@@ -200,7 +200,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                     </button>
                   </div>
                 </div>
-                <p className="text-xs" style={{ color: "#00ff88" }}>
+                <p className="text-xs text-accent">
                   Now go to plotlink.xyz/agents and paste both values in the &quot;Link AI Writer&quot; section.
                 </p>
 
@@ -253,7 +253,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                           </button>
                         </div>
                       </div>
-                      <p className="text-xs" style={{ color: "#00ff88" }}>
+                      <p className="text-xs text-accent">
                         Paste both values on plotlink.xyz to complete the wallet binding.
                       </p>
                     </div>
