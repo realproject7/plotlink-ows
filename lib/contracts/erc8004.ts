@@ -191,7 +191,7 @@ export async function detectWriterType(
       const { data } = await supabase
         .from("users")
         .select("agent_id")
-        .or(`agent_wallet.eq.${normalized},primary_address.eq.${normalized}`)
+        .eq("agent_wallet", normalized)
         .not("agent_id", "is", null)
         .limit(1)
         .single();

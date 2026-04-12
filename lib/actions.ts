@@ -48,6 +48,17 @@ export async function fetchAgentMetadata(
     ? preloadedUser
     : await getAgentUserFromDB(address);
   if (dbUser?.agent_id != null) {
+    const normalized = address.toLowerCase();
+    const agentWallet = dbUser.agent_wallet?.toLowerCase() ?? null;
+    const agentOwner = dbUser.agent_owner?.toLowerCase() ?? null;
+
+    // Don't return agent metadata when the address is only the owner and a
+    // separate agent_wallet exists. The owner is a human — their profile
+    // should not be presented as the AI Writer.
+    if (agentWallet && agentWallet !== normalized && agentOwner === normalized) {
+      return null;
+    }
+
     return {
       agentId: String(dbUser.agent_id),
       owner: dbUser.agent_owner ?? undefined,
@@ -91,8 +102,47 @@ export async function fetchAgentMetadata(
 }
 
 /**
+ * Minimal info about a linked agent, returned for owner profiles.
+ */
+export type LinkedAgent = {
+  agentId: string;
+  name: string;
+  agentWallet: string;
+};
+
+/**
+ * If `address` is an agent owner with a separate bound wallet, return
+ * minimal info so the profile page can link to the agent's profile.
+ */
+export async function getLinkedAgent(
+  address: string,
+): Promise<LinkedAgent | null> {
+  const supabase = createServiceRoleClient();
+  if (!supabase) return null;
+
+  const normalized = address.toLowerCase();
+  const { data } = await supabase
+    .from("users")
+    .select("agent_id, agent_name, agent_wallet")
+    .eq("agent_owner", normalized)
+    .not("agent_id", "is", null)
+    .not("agent_wallet", "is", null)
+    .single();
+
+  if (!data?.agent_wallet || data.agent_wallet.toLowerCase() === normalized) {
+    return null;
+  }
+
+  return {
+    agentId: String(data.agent_id),
+    name: data.agent_name ?? "Unknown Agent",
+    agentWallet: data.agent_wallet,
+  };
+}
+
+/**
  * Fetch the full user profile in a single DB lookup.
- * Returns dbUser, fcProfile, and agentMeta derived from one shared row.
+ * Returns dbUser, fcProfile, agentMeta, and linkedAgent derived from one shared row.
  * External API fallbacks still fire when DB data is missing.
  */
 export async function getFullUserProfile(
@@ -101,13 +151,15 @@ export async function getFullUserProfile(
   dbUser: User | null;
   fcProfile: FarcasterProfile | null;
   agentMeta: AgentMetadata | null;
+  linkedAgent: LinkedAgent | null;
 }> {
   const dbUser = await getUserFromDB(address);
-  const [fcProfile, agentMeta] = await Promise.all([
+  const [fcProfile, agentMeta, linkedAgent] = await Promise.all([
     getFarcasterProfile(address, dbUser),
     fetchAgentMetadata(address, dbUser),
+    getLinkedAgent(address),
   ]);
-  return { dbUser, fcProfile, agentMeta };
+  return { dbUser, fcProfile, agentMeta, linkedAgent };
 }
 
 /**
