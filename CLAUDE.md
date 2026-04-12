@@ -61,6 +61,10 @@ Version is tracked in `package.json` and displayed in the footer. All agents mus
 
 When making a PR, bump the patch version in `package.json` for bug fixes. For feature work, note in the PR that a minor version bump may be needed and let T1 decide.
 
+## CI
+
+PR CI runs `lint-and-typecheck` and `e2e` only. Visual regression is **manual-only** — trigger via `gh workflow run update-snapshots.yml` when changes may affect visual output.
+
 ## Environment Variables
 
 See [`.env.example`](.env.example) for all required environment variables.

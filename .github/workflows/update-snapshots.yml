@@ -3,9 +3,14 @@ name: Update Visual Snapshots
 on:
   workflow_dispatch:
 
+concurrency:
+  group: visual-snapshots
+  cancel-in-progress: true
+
 jobs:
   update-snapshots:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
