@@ -16,6 +16,13 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
+  // Link to PlotLink (binding proof for DB link)
+  const [humanWallet, setHumanWallet] = useState("");
+  const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [bindingError, setBindingError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"signature" | "wallet" | null>(null);
+
   const authFetch = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
   [token]);
@@ -50,6 +57,34 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
       setRegisterError(err instanceof Error ? err.message : "Registration failed");
     }
     setRegistering(false);
+  };
+
+  const handleGenerateBinding = async () => {
+    if (!humanWallet.trim() || !/^0x[a-fA-F0-9]{40}$/.test(humanWallet)) {
+      setBindingError("Enter a valid wallet address (0x...)");
+      return;
+    }
+    setGenerating(true);
+    setBindingError(null);
+    setBindingResult(null);
+    try {
+      const res = await authFetch("/api/settings/generate-binding", {
+        method: "POST",
+        body: JSON.stringify({ humanWallet }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate binding code");
+      setBindingResult(data);
+    } catch (err: unknown) {
+      setBindingError(err instanceof Error ? err.message : "Failed to generate binding code");
+    }
+    setGenerating(false);
+  };
+
+  const copyToClipboard = async (text: string, field: "signature" | "wallet") => {
+    await navigator.clipboard.writeText(text);
+    setCopied(field);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   const handleResetPassphrase = async () => {
@@ -157,6 +192,80 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
             >
               {registering ? "Registering..." : "Register Agent Identity"}
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Link to PlotLink */}
+      <div className="border-border rounded border p-4">
+        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Link to PlotLink</h3>
+        {linkStatus?.owner ? (
+          <p className="text-muted text-xs">
+            Linked to owner <span className="font-mono">{linkStatus.owner.slice(0, 6)}...{linkStatus.owner.slice(-4)}</span>
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-muted text-xs">
+              Link this OWS wallet to your PlotLink account so your stories appear under your profile on plotlink.xyz.
+            </p>
+            <div className="text-muted text-xs space-y-1 pl-3">
+              <p>1. Enter your PlotLink wallet address below</p>
+              <p>2. Click &quot;Generate Binding Code&quot;</p>
+              <p>3. Copy the code and paste it on plotlink.xyz &rarr; Agents &rarr; Link AI Writer</p>
+            </div>
+
+            <input
+              value={humanWallet}
+              onChange={(e) => setHumanWallet(e.target.value)}
+              placeholder="Your PlotLink wallet address (0x...)"
+              className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent font-mono"
+            />
+
+            {bindingError && <p className="text-error text-xs">{bindingError}</p>}
+
+            <button
+              onClick={handleGenerateBinding}
+              disabled={generating || !humanWallet.trim()}
+              className="bg-accent text-white hover:bg-accent-dim disabled:opacity-50 w-full rounded px-4 py-2 text-sm font-medium transition-colors"
+            >
+              {generating ? "Generating..." : "Generate Binding Code"}
+            </button>
+
+            {bindingResult && (
+              <div className="space-y-3 mt-3">
+                <div>
+                  <label className="text-muted text-xs block mb-1">Binding Code (signature)</label>
+                  <div className="relative">
+                    <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
+                      {bindingResult.signature}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(bindingResult.signature, "signature")}
+                      className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
+                    >
+                      {copied === "signature" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-muted text-xs block mb-1">OWS Wallet Address</label>
+                  <div className="relative">
+                    <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
+                      {bindingResult.owsWallet}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(bindingResult.owsWallet, "wallet")}
+                      className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
+                    >
+                      {copied === "wallet" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-accent">
+                  Now go to plotlink.xyz/agents and paste both values in the &quot;Link AI Writer&quot; section.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
