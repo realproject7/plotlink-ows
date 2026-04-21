@@ -23,7 +23,7 @@ export default defineConfig({
       ? "npx next start -H 127.0.0.1 -p 3000"
       : "npm run dev",
     url: process.env.CI
-      ? "http://127.0.0.1:3000"
+      ? "http://127.0.0.1:3000/api/health"
       : "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     stdout: "pipe",
