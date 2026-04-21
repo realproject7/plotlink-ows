@@ -8,19 +8,13 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [passphraseSuccess, setPassphraseSuccess] = useState(false);
   const [savingPassphrase, setSavingPassphrase] = useState(false);
 
-  // Link to PlotLink
+  // Agent identity registration
   const [linkStatus, setLinkStatus] = useState<{ linked: boolean; agentId?: number; owsWallet?: string; owner?: string } | null>(null);
-  const [humanWallet, setHumanWallet] = useState("");
-  const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [bindingError, setBindingError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"signature" | "wallet" | "bindSig" | "bindDeadline" | null>(null);
-
-  // Wallet bind (step 2 — after registration on PlotLink)
-  const [bindAgentId, setBindAgentId] = useState("");
-  const [bindResult, setBindResult] = useState<{ signature: string; owsWallet: string; deadline: number } | null>(null);
-  const [generatingBind, setGeneratingBind] = useState(false);
-  const [bindError, setBindError] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState("AI Writer");
+  const [agentDescription, setAgentDescription] = useState("");
+  const [agentGenre, setAgentGenre] = useState("");
+  const [registering, setRegistering] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   const authFetch = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
@@ -35,56 +29,27 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleGenerateBinding = async () => {
-    if (!humanWallet.trim() || !/^0x[a-fA-F0-9]{40}$/.test(humanWallet)) {
-      setBindingError("Enter a valid wallet address (0x...)");
-      return;
-    }
-    setGenerating(true);
-    setBindingError(null);
-    setBindingResult(null);
+  const handleRegisterAgent = async () => {
+    if (!agentName.trim()) { setRegisterError("Agent name is required"); return; }
+    if (!agentDescription.trim()) { setRegisterError("Description is required"); return; }
+    setRegistering(true);
+    setRegisterError(null);
     try {
-      const res = await authFetch("/api/settings/generate-binding", {
+      const res = await authFetch("/api/settings/register-agent", {
         method: "POST",
-        body: JSON.stringify({ humanWallet }),
+        body: JSON.stringify({
+          name: agentName,
+          description: agentDescription,
+          ...(agentGenre.trim() && { genre: agentGenre }),
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate binding code");
-      setBindingResult(data);
+      if (!res.ok) throw new Error(data.error || "Registration failed");
+      setLinkStatus({ linked: true, agentId: data.agentId, owsWallet: data.owsWallet });
     } catch (err: unknown) {
-      setBindingError(err instanceof Error ? err.message : "Failed to generate binding code");
+      setRegisterError(err instanceof Error ? err.message : "Registration failed");
     }
-    setGenerating(false);
-  };
-
-  const copyToClipboard = async (text: string, field: "signature" | "wallet" | "bindSig" | "bindDeadline") => {
-    await navigator.clipboard.writeText(text);
-    setCopied(field);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  const handleGenerateWalletBind = async () => {
-    const id = parseInt(bindAgentId, 10);
-    if (!id || id <= 0) { setBindError("Enter a valid Agent ID"); return; }
-    if (!humanWallet.trim() || !/^0x[a-fA-F0-9]{40}$/.test(humanWallet)) {
-      setBindError("Enter your PlotLink wallet address above first");
-      return;
-    }
-    setGeneratingBind(true);
-    setBindError(null);
-    setBindResult(null);
-    try {
-      const res = await authFetch("/api/settings/generate-wallet-bind", {
-        method: "POST",
-        body: JSON.stringify({ agentId: id, humanWallet }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate wallet bind code");
-      setBindResult(data);
-    } catch (err: unknown) {
-      setBindError(err instanceof Error ? err.message : "Failed to generate wallet bind code");
-    }
-    setGeneratingBind(false);
+    setRegistering(false);
   };
 
   const handleResetPassphrase = async () => {
@@ -122,15 +87,20 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
     <div className="mx-auto max-w-lg space-y-6 p-6">
       <h2 className="text-accent text-lg font-bold">Settings</h2>
 
-      {/* Link to PlotLink */}
+      {/* Agent Identity */}
       <div className="border-border rounded border p-4">
-        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Link to PlotLink</h3>
+        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Agent Identity</h3>
         {linkStatus?.linked ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-accent">Linked to PlotLink</span>
+              <span className="text-sm font-medium text-accent">Registered</span>
               <span className="text-muted text-xs">Agent #{linkStatus.agentId}</span>
             </div>
+            {linkStatus.owsWallet && (
+              <p className="text-muted text-xs font-mono">
+                Wallet: {linkStatus.owsWallet.slice(0, 6)}...{linkStatus.owsWallet.slice(-4)}
+              </p>
+            )}
             {linkStatus.owner && (
               <p className="text-muted text-xs font-mono">
                 Owner: {linkStatus.owner.slice(0, 6)}...{linkStatus.owner.slice(-4)}
@@ -145,122 +115,48 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
         ) : (
           <div className="space-y-3">
             <p className="text-muted text-xs">
-              Connect this AI writer wallet to your PlotLink account. After linking, your stories will show as &quot;{"{your name}'s AI Writer"}&quot; on plotlink.xyz.
+              Register this AI writer on-chain via ERC-8004. Uses your OWS wallet&apos;s existing ETH balance for gas.
             </p>
-            <div className="text-muted text-xs space-y-1 pl-3">
-              <p>1. Enter your PlotLink wallet address below</p>
-              <p>2. Click &quot;Generate Binding Code&quot;</p>
-              <p>3. Copy the code and paste it on plotlink.xyz &rarr; Agents &rarr; Link AI Writer</p>
+
+            <div>
+              <label className="text-muted text-xs block mb-1">Name</label>
+              <input
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                placeholder="AI Writer"
+                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
+              />
             </div>
 
-            <input
-              value={humanWallet}
-              onChange={(e) => setHumanWallet(e.target.value)}
-              placeholder="Your PlotLink wallet address (0x...)"
-              className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent font-mono"
-            />
+            <div>
+              <label className="text-muted text-xs block mb-1">Description</label>
+              <input
+                value={agentDescription}
+                onChange={(e) => setAgentDescription(e.target.value)}
+                placeholder="An AI writing assistant for fiction stories"
+                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </div>
 
-            {bindingError && <p className="text-error text-xs">{bindingError}</p>}
+            <div>
+              <label className="text-muted text-xs block mb-1">Genre (optional)</label>
+              <input
+                value={agentGenre}
+                onChange={(e) => setAgentGenre(e.target.value)}
+                placeholder="e.g. Fiction, Sci-Fi, Fantasy"
+                className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </div>
+
+            {registerError && <p className="text-error text-xs">{registerError}</p>}
 
             <button
-              onClick={handleGenerateBinding}
-              disabled={generating || !humanWallet.trim()}
+              onClick={handleRegisterAgent}
+              disabled={registering || !agentName.trim() || !agentDescription.trim()}
               className="bg-accent text-white hover:bg-accent-dim disabled:opacity-50 w-full rounded px-4 py-2 text-sm font-medium transition-colors"
             >
-              {generating ? "Generating..." : "Generate Binding Code"}
+              {registering ? "Registering..." : "Register Agent Identity"}
             </button>
-
-            {bindingResult && (
-              <div className="space-y-3 mt-3">
-                <div>
-                  <label className="text-muted text-xs block mb-1">Binding Code (signature)</label>
-                  <div className="relative">
-                    <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
-                      {bindingResult.signature}
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(bindingResult.signature, "signature")}
-                      className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
-                    >
-                      {copied === "signature" ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-muted text-xs block mb-1">OWS Wallet Address</label>
-                  <div className="relative">
-                    <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
-                      {bindingResult.owsWallet}
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(bindingResult.owsWallet, "wallet")}
-                      className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
-                    >
-                      {copied === "wallet" ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-                <p className="text-xs text-accent">
-                  Now go to plotlink.xyz/agents and paste both values in the &quot;Link AI Writer&quot; section.
-                </p>
-
-                {/* Step 2: Wallet Bind (after PlotLink registration gives agentId) */}
-                <div className="border-t border-border mt-4 pt-4 space-y-3">
-                  <p className="text-muted text-xs">
-                    <strong className="text-foreground">Step 2:</strong> After registering on PlotLink, enter the Agent ID below to complete on-chain wallet binding.
-                  </p>
-                  <input
-                    value={bindAgentId}
-                    onChange={(e) => setBindAgentId(e.target.value)}
-                    placeholder="Agent ID (e.g. 42)"
-                    className="bg-surface border-border text-foreground placeholder:text-muted/50 w-full rounded border px-3 py-2 text-sm outline-none focus:border-accent font-mono"
-                  />
-                  {bindError && <p className="text-error text-xs">{bindError}</p>}
-                  <button
-                    onClick={handleGenerateWalletBind}
-                    disabled={generatingBind || !bindAgentId.trim()}
-                    className="border-border text-muted hover:border-accent hover:text-accent disabled:opacity-40 w-full rounded border px-4 py-2 text-xs font-medium transition-colors"
-                  >
-                    {generatingBind ? "Generating..." : "Generate Wallet Bind Code"}
-                  </button>
-                  {bindResult && (
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-muted text-xs block mb-1">Wallet Bind Signature</label>
-                        <div className="relative">
-                          <div className="bg-surface border-border rounded border p-2 text-xs font-mono break-all text-foreground pr-16">
-                            {bindResult.signature}
-                          </div>
-                          <button
-                            onClick={() => copyToClipboard(bindResult.signature, "bindSig")}
-                            className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
-                          >
-                            {copied === "bindSig" ? "Copied!" : "Copy"}
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-muted text-xs block mb-1">Deadline (unix timestamp)</label>
-                        <div className="relative">
-                          <div className="bg-surface border-border rounded border p-2 text-xs font-mono text-foreground pr-16">
-                            {bindResult.deadline}
-                          </div>
-                          <button
-                            onClick={() => copyToClipboard(String(bindResult.deadline), "bindDeadline")}
-                            className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
-                          >
-                            {copied === "bindDeadline" ? "Copied!" : "Copy"}
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-accent">
-                        Paste both values on plotlink.xyz to complete the wallet binding.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
