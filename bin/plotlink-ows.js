@@ -291,6 +291,11 @@ switch (cmd) {
   case "status":
     cmdStatus();
     break;
+  case "stop":
+    log('The "stop" command has been removed.');
+    log("The server now runs in the foreground — press Ctrl+C to stop it.");
+    process.exit(0);
+    break;
   default:
     cmdStart();
     break;
