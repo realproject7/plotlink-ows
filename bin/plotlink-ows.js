@@ -10,7 +10,6 @@ const crypto = require("crypto");
 
 const CONFIG_DIR = path.join(require("os").homedir(), ".plotlink-ows");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
-const PID_FILE = path.join(CONFIG_DIR, "server.pid");
 const PROJECT_DIR = path.dirname(__dirname);
 const ENV_FILE = path.join(CONFIG_DIR, ".env");
 const AGENT_CONFIG_FILE = path.join(CONFIG_DIR, "agent.config.json");
@@ -212,19 +211,6 @@ function cmdStart() {
     process.exit(1);
   }
 
-  // Check if already running
-  if (fs.existsSync(PID_FILE)) {
-    const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8"));
-    try {
-      process.kill(pid, 0);
-      log(`Already running (PID ${pid}).`);
-      log(`Open http://localhost:${config.port || 7777}`);
-      process.exit(0);
-    } catch {
-      fs.unlinkSync(PID_FILE);
-    }
-  }
-
   // Ensure deps installed
   if (!fs.existsSync(path.join(PROJECT_DIR, "node_modules"))) {
     log("Installing dependencies...");
@@ -239,45 +225,29 @@ function cmdStart() {
   }
 
   const port = config.port || 7777;
-  log(`Starting PlotLink OWS on port ${port}...`);
 
-  const server = spawn("npx", ["tsx", "app/server.ts"], {
-    cwd: PROJECT_DIR,
-    stdio: "ignore",
-    detached: true,
-    env: { ...process.env, APP_PORT: String(port) },
-  });
-  server.unref();
-
-  ensureConfigDir();
-  fs.writeFileSync(PID_FILE, String(server.pid));
-
-  // Auto-open browser
+  // Auto-open browser after a short delay
   setTimeout(() => {
     try {
-      const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-      execSync(`${cmd} http://localhost:${port}`, { stdio: "ignore" });
+      const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
+      execSync(`${openCmd} http://localhost:${port}`, { stdio: "ignore" });
     } catch { /* ignore */ }
   }, 2000);
 
-  success(`Server started (PID ${server.pid})`);
-  log(`Open http://localhost:${port}`);
-}
+  // Run server in foreground with visible logs
+  const server = spawn("npx", ["tsx", "app/server.ts"], {
+    cwd: PROJECT_DIR,
+    stdio: "inherit",
+    env: { ...process.env, APP_PORT: String(port) },
+  });
 
-function cmdStop() {
-  if (!fs.existsSync(PID_FILE)) {
-    log("Not running.");
-    return;
-  }
+  // Ctrl+C gracefully stops the server
+  process.on("SIGINT", () => server.kill("SIGINT"));
+  process.on("SIGTERM", () => server.kill("SIGTERM"));
 
-  const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8"));
-  try {
-    process.kill(pid, "SIGTERM");
-    success(`Stopped (PID ${pid})`);
-  } catch {
-    warn(`Process ${pid} not found.`);
-  }
-  fs.unlinkSync(PID_FILE);
+  server.on("close", (code) => {
+    process.exit(code ?? 0);
+  });
 }
 
 function cmdStatus() {
@@ -307,19 +277,7 @@ function cmdStatus() {
     log("Wallet:   OWS SDK not available");
   }
 
-  // Server status
-  if (fs.existsSync(PID_FILE)) {
-    const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8"));
-    try {
-      process.kill(pid, 0);
-      log(`Server:   \x1b[32mrunning\x1b[0m (PID ${pid})`);
-    } catch {
-      log("Server:   stopped");
-      fs.unlinkSync(PID_FILE);
-    }
-  } else {
-    log("Server:   stopped");
-  }
+  log('Run \x1b[1mnpx plotlink-ows\x1b[0m to start the server.');
   log("");
 }
 
@@ -329,9 +287,6 @@ const cmd = process.argv[2];
 switch (cmd) {
   case "init":
     cmdInit();
-    break;
-  case "stop":
-    cmdStop();
     break;
   case "status":
     cmdStatus();

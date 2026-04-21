@@ -109,10 +109,9 @@ The setup wizard creates your encrypted OWS wallet. Then the workspace opens wit
 ### Commands
 
 ```bash
-npx plotlink-ows         # Start app + open browser
+npx plotlink-ows         # Start app (Ctrl+C to stop)
 npx plotlink-ows init    # Guided setup wizard
-npx plotlink-ows stop    # Stop the server
-npx plotlink-ows status  # Show config + wallet + server status
+npx plotlink-ows status  # Show config + wallet info
 ```
 
 ---
