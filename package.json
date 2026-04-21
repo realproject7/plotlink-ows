@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "bin": {
     "plotlink-ows": "./bin/plotlink-ows.js"
   },
@@ -26,7 +26,10 @@
     "app:dev": "concurrently \"tsx watch app/server.ts\" \"vite --config app/vite.config.ts\"",
     "app:build": "vite build --config app/vite.config.ts",
     "app:start": "tsx app/server.ts",
-    "prisma:local": "prisma generate --schema app/prisma/schema.prisma && prisma db push --schema app/prisma/schema.prisma"
+    "prisma:local": "prisma generate --schema app/prisma/schema.prisma && prisma db push --schema app/prisma/schema.prisma",
+    "release:patch": "npm version patch && git push origin main --follow-tags && VERSION=$(node -p 'require(\"./package.json\").version') && gh release create \"v$VERSION\" --generate-notes --latest && npm publish",
+    "release:minor": "npm version minor && git push origin main --follow-tags && VERSION=$(node -p 'require(\"./package.json\").version') && gh release create \"v$VERSION\" --generate-notes --latest && npm publish",
+    "release:major": "npm version major && git push origin main --follow-tags && VERSION=$(node -p 'require(\"./package.json\").version') && gh release create \"v$VERSION\" --generate-notes --latest && npm publish"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",
