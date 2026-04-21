@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, decodeEventLog } from "viem";
 import { base } from "viem/chains";
 import { erc8004Abi } from "../../packages/cli/src/sdk/abi";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import { createOwsAccount } from "../lib/publish";
+import { db } from "../db";
 import {
   signMessage as owsSignMsg,
-  signTypedData as owsSignTypedData,
 } from "@open-wallet-standard/core";
 
 const ERC_8004 = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
@@ -51,70 +52,101 @@ settings.post("/generate-binding", async (c) => {
   }
 });
 
-/** POST /api/settings/generate-wallet-bind — generate EIP-712 signature for setAgentWallet */
-settings.post("/generate-wallet-bind", async (c) => {
-  const body = await c.req.json<{ agentId: number; humanWallet: string }>();
+/** POST /api/settings/register-agent — OWS wallet self-registers on ERC-8004 */
+settings.post("/register-agent", async (c) => {
+  const body = await c.req.json<{ name: string; description: string; genre?: string }>();
 
-  if (!body.agentId || body.agentId <= 0) {
-    return c.json({ error: "Valid agentId required" }, 400);
+  if (!body.name?.trim()) {
+    return c.json({ error: "Agent name is required" }, 400);
   }
-  if (!body.humanWallet || !/^0x[a-fA-F0-9]{40}$/.test(body.humanWallet)) {
-    return c.json({ error: "Valid human wallet address required (0x...)" }, 400);
+  if (!body.description?.trim()) {
+    return c.json({ error: "Agent description is required" }, 400);
   }
 
   try {
     const wallets = listAgentWallets();
     const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet found." }, 400);
+    if (!wallet) return c.json({ error: "No OWS wallet found. Create one in Wallet settings first." }, 400);
 
-    const owsWallet = getBaseAddress(wallet);
-    if (!owsWallet) return c.json({ error: "No EVM address on wallet" }, 400);
+    const owsAddress = getBaseAddress(wallet);
+    if (!owsAddress) return c.json({ error: "No EVM address on wallet" }, 400);
 
-    const deadline = Math.floor(Date.now() / 1000) + 300; // 5 min expiry
+    // Check if already registered
+    try {
+      const existingId = await publicClient.readContract({
+        address: ERC_8004,
+        abi: erc8004Abi,
+        functionName: "agentIdByWallet",
+        args: [owsAddress as `0x${string}`],
+      }) as bigint;
+      if (existingId > 0n) {
+        return c.json({ error: `Already registered as Agent #${existingId}` }, 400);
+      }
+    } catch { /* not registered — continue */ }
 
-    // EIP-712 typed data matching ERC8004IdentityRegistry.setAgentWallet
-    const typedData = {
-      types: {
-        EIP712Domain: [
-          { name: "name", type: "string" },
-          { name: "version", type: "string" },
-          { name: "chainId", type: "uint256" },
-          { name: "verifyingContract", type: "address" },
-        ],
-        AgentWalletSet: [
-          { name: "agentId", type: "uint256" },
-          { name: "newWallet", type: "address" },
-          { name: "owner", type: "address" },
-          { name: "deadline", type: "uint256" },
-        ],
-      },
-      primaryType: "AgentWalletSet",
-      domain: {
-        name: "ERC8004IdentityRegistry",
-        version: "1",
-        chainId: 8453,
-        verifyingContract: ERC_8004,
-      },
-      message: {
-        agentId: body.agentId,
-        newWallet: owsWallet,
-        owner: body.humanWallet,
-        deadline,
-      },
-    };
+    // Build agentURI as inline JSON
+    const agentURI = JSON.stringify({
+      name: body.name.trim(),
+      description: body.description.trim(),
+      ...(body.genre?.trim() && { genre: body.genre.trim() }),
+      llmModel: "Claude",
+      registeredBy: "plotlink-ows",
+      registeredAt: new Date().toISOString(),
+    });
 
-    const passphrase = process.env.OWS_PASSPHRASE;
-    const result = owsSignTypedData(wallet.name, "eip155:8453", JSON.stringify(typedData), passphrase);
-    const signature = result.signature.startsWith("0x") ? result.signature : `0x${result.signature}`;
+    // Create OWS-backed wallet client and call register()
+    const account = createOwsAccount(wallet.name, owsAddress as `0x${string}`);
+    const walletClient = createWalletClient({ account, chain: base, transport: http(rpcUrl) });
+
+    const txHash = await walletClient.writeContract({
+      address: ERC_8004,
+      abi: erc8004Abi,
+      functionName: "register",
+      args: [agentURI],
+    });
+
+    // Wait for confirmation and decode Registered event
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+    });
+
+    if (receipt.status === "reverted") {
+      return c.json({ error: "Transaction reverted on-chain" }, 500);
+    }
+
+    let agentId: number | undefined;
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({
+          abi: erc8004Abi,
+          data: log.data,
+          topics: log.topics,
+        });
+        if (decoded.eventName === "Registered") {
+          agentId = Number((decoded.args as { agentId: bigint }).agentId);
+          break;
+        }
+      } catch { /* not our event */ }
+    }
+
+    if (!agentId) {
+      return c.json({ error: "Transaction succeeded but Registered event not found" }, 500);
+    }
+
+    // Store agentId locally
+    await db.setting.upsert({
+      where: { key: "agent_id" },
+      update: { value: String(agentId) },
+      create: { key: "agent_id", value: String(agentId) },
+    });
 
     return c.json({
-      signature,
-      owsWallet,
-      agentId: body.agentId,
-      deadline,
+      agentId,
+      owsWallet: owsAddress,
+      txHash,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to generate wallet bind signature";
+    const msg = err instanceof Error ? err.message : "Registration failed";
     return c.json({ error: msg }, 500);
   }
 });
