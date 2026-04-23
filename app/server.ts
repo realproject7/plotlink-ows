@@ -70,9 +70,15 @@ function migrateOldData() {
     const oldEntries = fs.readdirSync(oldStoriesDir, { withFileTypes: true })
       .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "_example");
     for (const entry of oldEntries) {
+      const src = path.join(oldStoriesDir, entry.name);
       const dest = path.join(STORIES_DIR, entry.name);
       if (!fs.existsSync(dest)) {
-        fs.renameSync(path.join(oldStoriesDir, entry.name), dest);
+        try {
+          fs.renameSync(src, dest);
+        } catch {
+          // EXDEV: cross-device move — fall back to copy
+          fs.cpSync(src, dest, { recursive: true });
+        }
         console.log(`  Migrated story "${entry.name}" → ${STORIES_DIR}`);
       }
     }
