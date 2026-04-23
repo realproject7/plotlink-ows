@@ -1,7 +1,10 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { ENV_FILE } from "./lib/paths";
+import { ENV_FILE, DATA_DIR, STORIES_DIR, DATABASE_URL } from "./lib/paths";
+
+// Set DATABASE_URL before any Prisma imports
+process.env.DATABASE_URL = DATABASE_URL;
 
 // Load .env from ~/.plotlink-ows/ before anything else
 const __dirnamePre = path.dirname(fileURLToPath(import.meta.url));
@@ -57,24 +60,54 @@ if (fs.existsSync(distPath)) {
   });
 }
 
+/** Migrate stories/data from old package-relative paths to ~/.plotlink-ows/ */
+function migrateOldData() {
+  const oldStoriesDir = path.join(__dirname, "..", "stories");
+  const oldDataDir = path.join(__dirname, "..", "data");
+
+  // Migrate stories
+  if (fs.existsSync(oldStoriesDir) && oldStoriesDir !== STORIES_DIR) {
+    const oldEntries = fs.readdirSync(oldStoriesDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "_example");
+    for (const entry of oldEntries) {
+      const dest = path.join(STORIES_DIR, entry.name);
+      if (!fs.existsSync(dest)) {
+        fs.renameSync(path.join(oldStoriesDir, entry.name), dest);
+        console.log(`  Migrated story "${entry.name}" → ${STORIES_DIR}`);
+      }
+    }
+  }
+
+  // Migrate database
+  const oldDb = path.join(oldDataDir, "local.db");
+  const newDb = path.join(DATA_DIR, "local.db");
+  if (fs.existsSync(oldDb) && !fs.existsSync(newDb)) {
+    fs.copyFileSync(oldDb, newDb);
+    console.log(`  Migrated database → ${DATA_DIR}`);
+  }
+
+  // Migrate terminal sessions
+  const oldSessions = path.join(oldDataDir, "terminal-sessions.json");
+  const newSessions = path.join(DATA_DIR, "terminal-sessions.json");
+  if (fs.existsSync(oldSessions) && !fs.existsSync(newSessions)) {
+    fs.copyFileSync(oldSessions, newSessions);
+    console.log(`  Migrated terminal sessions → ${DATA_DIR}`);
+  }
+}
+
 async function start() {
-  // Ensure data directory exists
-  const dataDir = path.join(__dirname, "..", "data");
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  // Auto-migrate from old package-relative paths
+  migrateOldData();
 
   // Run Prisma db push to ensure schema is up to date
   const schemaPath = path.join(__dirname, "prisma", "schema.prisma");
   execSync(`npx prisma db push --schema ${schemaPath} --skip-generate`, {
     stdio: "inherit",
-    env: { ...process.env, DATABASE_URL: `file:${path.join(dataDir, "local.db")}` },
+    env: { ...process.env, DATABASE_URL },
   });
 
   // Initialize database connection
   await initDb();
-
-  // Ensure stories directory exists
-  const storiesDir = path.join(__dirname, "..", "stories");
-  if (!fs.existsSync(storiesDir)) fs.mkdirSync(storiesDir, { recursive: true });
 
   const port = Number(process.env.APP_PORT) || 7777;
   const server = serve({ fetch: app.fetch, port }, (info) => {

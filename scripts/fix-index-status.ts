@@ -10,10 +10,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORIES_DIR = path.join(__dirname, "..", "stories");
+import { STORIES_DIR } from "../app/lib/paths";
 
 interface FileStatus {
   file: string;
