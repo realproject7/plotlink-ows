@@ -92,19 +92,11 @@ function migrateOldData() {
   const npxBase = path.join(os.homedir(), ".npm", "_npx");
   if (fs.existsSync(npxBase)) {
     try {
+      // Only migrate stories from npx caches — db/sessions are singletons and
+      // picking from a random cache entry could restore stale state
       for (const hash of fs.readdirSync(npxBase)) {
         const pkgRoot = path.join(npxBase, hash, "node_modules", "plotlink-ows");
         migrateStoriesFrom(path.join(pkgRoot, "stories"), `npx cache (${hash.slice(0, 8)})`);
-        migrateFileFrom(
-          path.join(pkgRoot, "data", "local.db"),
-          path.join(DATA_DIR, "local.db"),
-          "database",
-        );
-        migrateFileFrom(
-          path.join(pkgRoot, "data", "terminal-sessions.json"),
-          path.join(DATA_DIR, "terminal-sessions.json"),
-          "terminal sessions",
-        );
       }
     } catch { /* npx cache scan best-effort */ }
   }
