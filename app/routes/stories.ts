@@ -66,7 +66,23 @@ function scanStory(storyDir: string, name: string): StoryInfo {
   const plotCount = entries.filter((f) => f.match(/^plot-\d+\.md$/)).length;
   const publishedCount = files.filter((f) => f.status === "published" || f.status === "published-not-indexed").length;
 
-  return { name, files, hasStructure, hasGenesis, plotCount, publishedCount };
+  // Extract title from structure.md or genesis.md
+  let title: string | null = null;
+  try {
+    const structPath = path.join(storyDir, "structure.md");
+    const genesisPath = path.join(storyDir, "genesis.md");
+    if (fs.existsSync(structPath)) {
+      const content = fs.readFileSync(structPath, "utf-8");
+      const match = content.match(/^#\s+(.+)$/m);
+      if (match) title = match[1];
+    } else if (fs.existsSync(genesisPath)) {
+      const content = fs.readFileSync(genesisPath, "utf-8");
+      const match = content.match(/^#\s+(.+)$/m);
+      if (match) title = match[1];
+    }
+  } catch { /* best effort */ }
+
+  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount };
 }
 
 /** GET /api/stories — list all stories */

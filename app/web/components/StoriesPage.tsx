@@ -272,6 +272,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, [authFetch]);
 
+  const handleDestroySession = useCallback((name: string) => {
+    if (name.startsWith("_new_")) {
+      setUntitledSessions((prev) => prev.filter((id) => id !== name));
+    }
+  }, []);
+
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
       {/* Story Browser Sidebar */}
@@ -288,7 +294,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} />
       </div>
 
       {/* Drag Handle */}

@@ -9,6 +9,7 @@ interface FileStatus {
 
 interface StoryInfo {
   name: string;
+  title: string | null;
   files: FileStatus[];
   hasStructure: boolean;
   hasGenesis: boolean;
@@ -144,7 +145,7 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
                 className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-surface text-sm"
               >
                 <span className="text-xs text-muted">{expanded.has(story.name) ? "\u25BC" : "\u25B6"}</span>
-                <span className="font-medium truncate">{story.name}</span>
+                <span className="font-medium truncate" title={story.name}>{story.title || story.name}</span>
                 <span className="ml-auto text-xs text-muted">
                   {story.publishedCount}/{story.files.length}
                 </span>
