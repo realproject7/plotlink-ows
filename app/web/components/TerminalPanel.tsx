@@ -11,6 +11,7 @@ interface TerminalPanelProps {
   onSelectStory?: (storyName: string) => void;
   onDestroySession?: (storyName: string) => void;
   onArchiveStory?: (storyName: string) => void;
+  confirmedStories?: Set<string>;
 }
 
 interface TerminalSession {
@@ -104,7 +105,7 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -434,7 +435,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
           >
             Cancel ×
           </button>
-        ) : storyName && onArchiveStory ? (
+        ) : storyName && onArchiveStory && confirmedStories?.has(storyName) ? (
           <button
             onClick={() => setConfirmingArchive(storyName)}
             className="ml-auto px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface rounded flex items-center gap-1 flex-shrink-0"
@@ -505,11 +506,20 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const name = confirmingArchive;
                     setConfirmingArchive(null);
-                    destroySession(name);
-                    onArchiveStory?.(name);
+                    try {
+                      const res = await authFetchRef.current("/api/stories/archive", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name }),
+                      });
+                      if (res.ok) {
+                        destroySession(name);
+                        onArchiveStory?.(name);
+                      }
+                    } catch { /* ignore */ }
                   }}
                   className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim"
                 >

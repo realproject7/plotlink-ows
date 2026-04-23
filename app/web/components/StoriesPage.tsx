@@ -278,21 +278,41 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, []);
 
-  const handleArchiveStory = useCallback(async (name: string) => {
-    try {
-      const res = await authFetch("/api/stories/archive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      if (res.ok) {
-        if (selectedStory === name) {
-          setSelectedStory(null);
-          setSelectedFile(null);
-        }
+  // Track confirmed stories (those with structure.md) for Archive gating
+  const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (data?.stories) {
+        setConfirmedStories(new Set(
+          (data.stories as { name: string; hasStructure: boolean }[])
+            .filter((s) => s.hasStructure)
+            .map((s) => s.name)
+        ));
       }
-    } catch { /* ignore */ }
-  }, [authFetch, selectedStory]);
+    }).catch(() => {});
+    const interval = setInterval(async () => {
+      try {
+        const res = await authFetch("/api/stories");
+        if (res.ok) {
+          const data = await res.json();
+          setConfirmedStories(new Set(
+            (data.stories as { name: string; hasStructure: boolean }[])
+              .filter((s) => s.hasStructure)
+              .map((s) => s.name)
+          ));
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [authFetch]);
+
+  const handleArchiveStory = useCallback((name: string) => {
+    // Archive API already called by TerminalPanel — just clear selection
+    if (selectedStory === name) {
+      setSelectedStory(null);
+      setSelectedFile(null);
+    }
+  }, [selectedStory]);
 
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
@@ -310,7 +330,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} />
       </div>
 
       {/* Drag Handle */}
