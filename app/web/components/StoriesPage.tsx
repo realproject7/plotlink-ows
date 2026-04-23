@@ -278,6 +278,22 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, []);
 
+  const handleArchiveStory = useCallback(async (name: string) => {
+    try {
+      const res = await authFetch("/api/stories/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        if (selectedStory === name) {
+          setSelectedStory(null);
+          setSelectedFile(null);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [authFetch, selectedStory]);
+
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
       {/* Story Browser Sidebar */}
@@ -294,7 +310,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} />
       </div>
 
       {/* Drag Handle */}

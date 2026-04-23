@@ -234,4 +234,57 @@ stories.post("/:name/:file/mark-not-indexed", async (c) => {
   return c.json({ ok: true });
 });
 
+const ARCHIVED_DIR = path.join(STORIES_DIR, ".archived");
+
+/** POST /api/stories/archive — move story to .archived/ */
+stories.post("/archive", async (c) => {
+  const body = await c.req.json<{ name: string }>();
+  const name = safeName(body.name);
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+
+  const src = path.join(STORIES_DIR, name);
+  if (!fs.existsSync(src)) return c.json({ error: "Story not found" }, 404);
+  if (!fs.existsSync(path.join(src, "structure.md"))) {
+    return c.json({ error: "Only stories with structure.md can be archived" }, 400);
+  }
+
+  fs.mkdirSync(ARCHIVED_DIR, { recursive: true });
+  const dest = path.join(ARCHIVED_DIR, name);
+  if (fs.existsSync(dest)) return c.json({ error: "Already archived" }, 409);
+
+  fs.renameSync(src, dest);
+  return c.json({ ok: true });
+});
+
+/** POST /api/stories/restore — move story back from .archived/ */
+stories.post("/restore", async (c) => {
+  const body = await c.req.json<{ name: string }>();
+  const name = safeName(body.name);
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+
+  const src = path.join(ARCHIVED_DIR, name);
+  if (!fs.existsSync(src)) return c.json({ error: "Archived story not found" }, 404);
+
+  const dest = path.join(STORIES_DIR, name);
+  if (fs.existsSync(dest)) return c.json({ error: "Story already exists" }, 409);
+
+  fs.renameSync(src, dest);
+  return c.json({ ok: true });
+});
+
+/** GET /api/stories/archived — list archived stories */
+stories.get("/archived", (c) => {
+  if (!fs.existsSync(ARCHIVED_DIR)) {
+    return c.json({ stories: [] });
+  }
+
+  const dirs = fs.readdirSync(ARCHIVED_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+    .map((d) => d.name)
+    .sort();
+
+  const result = dirs.map((name) => scanStory(path.join(ARCHIVED_DIR, name), name));
+  return c.json({ stories: result });
+});
+
 export { stories as storiesRoutes, readPublishStatus, STORIES_DIR };

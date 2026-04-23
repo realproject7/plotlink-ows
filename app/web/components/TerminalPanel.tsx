@@ -10,6 +10,7 @@ interface TerminalPanelProps {
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onSelectStory?: (storyName: string) => void;
   onDestroySession?: (storyName: string) => void;
+  onArchiveStory?: (storyName: string) => void;
 }
 
 interface TerminalSession {
@@ -103,12 +104,13 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
   const [disconnected, setDisconnected] = useState<Set<string>>(new Set());
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
+  const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
 
   const connectWsRef = useRef<(name: string, session: TerminalSession, resume: boolean) => void>(() => {});
 
@@ -424,15 +426,22 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
             </div>
           ))
         }
-        {/* Cancel button for active untitled session */}
-        {storyName?.startsWith("_new_") && (
+        {/* Cancel button for untitled / Archive button for confirmed stories */}
+        {storyName?.startsWith("_new_") ? (
           <button
             onClick={() => setConfirmingDiscard(storyName)}
             className="ml-auto px-2 py-0.5 text-xs text-error hover:bg-surface rounded flex items-center gap-1 flex-shrink-0"
           >
             Cancel ×
           </button>
-        )}
+        ) : storyName && onArchiveStory ? (
+          <button
+            onClick={() => setConfirmingArchive(storyName)}
+            className="ml-auto px-2 py-0.5 text-xs text-muted hover:text-foreground hover:bg-surface rounded flex items-center gap-1 flex-shrink-0"
+          >
+            Archive
+          </button>
+        ) : null}
       </div>
       )}
 
@@ -474,6 +483,37 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
                   className="px-4 py-1.5 bg-error text-white text-sm rounded hover:opacity-80"
                 >
                   Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Archive confirmation overlay */}
+        {confirmingArchive && (
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "rgba(240, 235, 225, 0.9)" }}>
+            <div className="text-center space-y-3 p-6 bg-surface border border-border rounded-lg shadow-lg max-w-sm">
+              <p className="text-sm font-serif text-foreground font-medium">Archive this story?</p>
+              <p className="text-xs text-muted">
+                You can restore it later from the Archives view.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setConfirmingArchive(null)}
+                  className="px-4 py-1.5 border border-border text-sm rounded hover:bg-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const name = confirmingArchive;
+                    setConfirmingArchive(null);
+                    destroySession(name);
+                    onArchiveStory?.(name);
+                  }}
+                  className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim"
+                >
+                  Archive
                 </button>
               </div>
             </div>
