@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+@theme inline {
+  --color-background: #E8DFD0;
+  --color-foreground: #2C1810;
+  --color-surface: #F0EBE1;
+  --color-muted: #8B7355;
+  --color-accent: #8B4513;
+  --color-accent-dim: #6B3410;
+  --color-border: #D4C5B0;
+  --color-error: #CC3333;
+  --default-font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
 :root {
   --bg: #E8DFD0;
   --bg-surface: #F0EBE1;
@@ -12,18 +24,6 @@
   --border: #D4C5B0;
   --error: #CC3333;
   --paper-bg: #F5F0E8;
-}
-
-@theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--text);
-  --color-surface: var(--bg-surface);
-  --color-muted: var(--text-muted);
-  --color-accent: var(--accent);
-  --color-accent-dim: var(--accent-dim);
-  --color-border: var(--border);
-  --color-error: var(--error);
-  --default-font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 body {
