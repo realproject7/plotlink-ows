@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "bin": {
     "plotlink-ows": "./bin/plotlink-ows.js"
   },

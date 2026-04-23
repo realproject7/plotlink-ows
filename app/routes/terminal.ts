@@ -43,7 +43,9 @@ function saveSessionMap(map: Record<string, string>) {
 }
 
 function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean }) {
-  const storyDir = path.join(STORIES_DIR, storyName);
+  // New story sessions spawn in the stories root so Claude can create any folder
+  const isNewStory = storyName.startsWith("_new_");
+  const storyDir = isNewStory ? STORIES_DIR : path.join(STORIES_DIR, storyName);
   if (!fs.existsSync(storyDir)) fs.mkdirSync(storyDir, { recursive: true });
   const shell = process.env.SHELL || "/bin/zsh";
 

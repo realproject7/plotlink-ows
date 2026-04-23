@@ -9,6 +9,7 @@ interface TerminalPanelProps {
   storyName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onSelectStory?: (storyName: string) => void;
+  onDestroySession?: (storyName: string) => void;
 }
 
 interface TerminalSession {
@@ -92,7 +93,7 @@ async function loadScrollback(storyName: string): Promise<string | null> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -283,7 +284,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     setDisconnected((prev) => { const next = new Set(prev); next.delete(name); return next; });
 
     authFetch(`/api/terminal/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
-  }, [authFetch]);
+    onDestroySession?.(name);
+  }, [authFetch, onDestroySession]);
 
   // Auto-spawn + show/hide when story changes
   useEffect(() => {
@@ -365,7 +367,9 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
               <span className={`w-1.5 h-1.5 rounded-full ${
                 disconnected.has(name) ? "bg-amber-500" : name === storyName ? "bg-green-600" : "bg-muted/50"
               }`} />
-              <span className="truncate max-w-[120px]">{name}</span>
+              <span className={`truncate max-w-[120px] ${name.startsWith("_new_") ? "italic" : ""}`}>
+                {name.startsWith("_new_") ? "Untitled" : name}
+              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

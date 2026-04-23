@@ -39,6 +39,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
   const [ratio, setRatio] = useState(loadRatio);
+  const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
+  const knownStoriesRef = useRef<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -59,6 +61,56 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     onResize();
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  const handleNewStory = useCallback(() => {
+    const id = `_new_${Date.now()}`;
+    setUntitledSessions((prev) => [...prev, id]);
+    setSelectedStory(id);
+    setSelectedFile(null);
+  }, []);
+
+  // Poll for new stories and auto-transition untitled sessions
+  useEffect(() => {
+    if (untitledSessions.length === 0) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await authFetch("/api/stories");
+        if (!res.ok) return;
+        const data = await res.json();
+        const currentNames = new Set<string>(
+          (data.stories as { name: string }[])
+            .filter((s) => s.name !== "_example")
+            .map((s) => s.name)
+        );
+        // Detect newly appeared stories
+        for (const name of currentNames) {
+          if (!knownStoriesRef.current.has(name) && untitledSessions.length > 0) {
+            // New story appeared — transition the oldest untitled session
+            setUntitledSessions((prev) => prev.slice(1));
+            setSelectedStory(name);
+            setSelectedFile(null);
+          }
+        }
+        knownStoriesRef.current = currentNames;
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [authFetch, untitledSessions]);
+
+  // Initialize known stories on mount
+  useEffect(() => {
+    authFetch("/api/stories").then((res) => {
+      if (res.ok) return res.json();
+    }).then((data) => {
+      if (data?.stories) {
+        knownStoriesRef.current = new Set(
+          (data.stories as { name: string }[])
+            .filter((s) => s.name !== "_example")
+            .map((s) => s.name)
+        );
+      }
+    }).catch(() => {});
+  }, [authFetch]);
 
   const handleSelectFile = useCallback((storyName: string, fileName: string) => {
     setSelectedStory(storyName);
@@ -220,6 +272,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, [authFetch]);
 
+  const handleDestroySession = useCallback((name: string) => {
+    if (name.startsWith("_new_")) {
+      setUntitledSessions((prev) => prev.filter((id) => id !== name));
+    }
+  }, []);
+
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
       {/* Story Browser Sidebar */}
@@ -229,12 +287,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           selectedStory={selectedStory}
           selectedFile={selectedFile}
           onSelectFile={handleSelectFile}
+          onNewStory={handleNewStory}
+          untitledSessions={untitledSessions}
         />
       </div>
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} />
       </div>
 
       {/* Drag Handle */}
