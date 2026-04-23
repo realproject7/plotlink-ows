@@ -2,13 +2,11 @@ import { Hono } from "hono";
 import * as pty from "node-pty";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { randomUUID } from "crypto";
+import { STORIES_DIR, DATA_DIR } from "../lib/paths";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORIES_DIR = path.join(__dirname, "..", "..", "stories");
 const MAX_SESSIONS = 5;
-const SESSION_FILE = path.join(__dirname, "..", "..", "data", "terminal-sessions.json");
+const SESSION_FILE = path.join(DATA_DIR, "terminal-sessions.json");
 
 const terminal = new Hono();
 
