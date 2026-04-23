@@ -167,6 +167,32 @@ terminal.delete("/:storyName", (c) => {
   return c.json({ ok: true, message: "not running" });
 });
 
+/** DELETE /api/terminal/:storyName/discard — discard session, kill PTY, clean up metadata */
+terminal.delete("/:storyName/discard", (c) => {
+  const storyName = safeName(c.req.param("storyName"));
+  if (!storyName) return c.json({ error: "Invalid story name" }, 400);
+
+  const session = ptySessions.get(storyName);
+  if (session?.term && session.state === "running") {
+    // Send exit gracefully, then kill
+    try { session.term.write("exit\n"); } catch { /* ignore */ }
+    setTimeout(() => {
+      try { session.term.kill(); } catch { /* ignore */ }
+    }, 500);
+    session.state = "stopped";
+  }
+  ptySessions.delete(storyName);
+
+  // Remove session metadata from terminal-sessions.json
+  const sessionMap = loadSessionMap();
+  if (sessionMap[storyName]) {
+    delete sessionMap[storyName];
+    saveSessionMap(sessionMap);
+  }
+
+  return c.json({ ok: true });
+});
+
 /** POST /api/terminal/stop — kill PTY (legacy, kills default) */
 terminal.post("/stop", (c) => {
   const session = ptySessions.get("default");

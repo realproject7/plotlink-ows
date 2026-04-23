@@ -90,6 +90,16 @@ async function loadScrollback(storyName: string): Promise<string | null> {
   });
 }
 
+async function deleteScrollback(storyName: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(storyName);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
@@ -288,6 +298,32 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     onDestroySession?.(name);
   }, [authFetch, onDestroySession]);
 
+  /** Discard an untitled session: send exit, kill PTY, delete scrollback & session metadata */
+  const discardSession = useCallback((name: string) => {
+    const session = sessions.get(name);
+    if (!session) return;
+
+    // Send exit command gracefully before killing
+    if (session.ws?.readyState === WebSocket.OPEN) {
+      session.ws.send("exit\n");
+    }
+
+    // Delete scrollback instead of saving
+    deleteScrollback(name).catch(() => {});
+
+    session.observer.disconnect();
+    if (session.ws) session.ws.close();
+    session.term.dispose();
+    session.container.remove();
+    sessions.delete(name);
+    setSessionList((prev) => prev.filter((s) => s !== name));
+    setDisconnected((prev) => { const next = new Set(prev); next.delete(name); return next; });
+
+    // Use discard endpoint to kill PTY and clean up session metadata
+    authFetch(`/api/terminal/${encodeURIComponent(name)}/discard`, { method: "DELETE" }).catch(() => {});
+    onDestroySession?.(name);
+  }, [authFetch, onDestroySession]);
+
   // Auto-spawn + show/hide when story changes
   useEffect(() => {
     if (!storyName) return;
@@ -433,7 +469,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
                   onClick={() => {
                     const name = confirmingDiscard;
                     setConfirmingDiscard(null);
-                    destroySession(name);
+                    discardSession(name);
                   }}
                   className="px-4 py-1.5 bg-error text-white text-sm rounded hover:opacity-80"
                 >
