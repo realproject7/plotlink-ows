@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { ENV_FILE, DATA_DIR, STORIES_DIR, DATABASE_URL } from "./lib/paths";
@@ -60,45 +61,64 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-/** Migrate stories/data from old package-relative paths to ~/.plotlink-ows/ */
+/** Copy story directories from a source dir into STORIES_DIR, skipping duplicates */
+function migrateStoriesFrom(srcDir: string, label: string) {
+  if (!fs.existsSync(srcDir) || srcDir === STORIES_DIR) return;
+  const entries = fs.readdirSync(srcDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "_example");
+  for (const entry of entries) {
+    const dest = path.join(STORIES_DIR, entry.name);
+    if (fs.existsSync(dest)) continue;
+    try {
+      fs.renameSync(path.join(srcDir, entry.name), dest);
+    } catch {
+      fs.cpSync(path.join(srcDir, entry.name), dest, { recursive: true });
+    }
+    console.log(`  Migrated story "${entry.name}" from ${label}`);
+  }
+}
+
+/** Copy a single file if source exists and destination doesn't */
+function migrateFileFrom(src: string, dest: string, label: string) {
+  if (fs.existsSync(src) && !fs.existsSync(dest)) {
+    fs.copyFileSync(src, dest);
+    console.log(`  Migrated ${label} → ${path.dirname(dest)}`);
+  }
+}
+
+/** Migrate stories/data from old locations to ~/.plotlink-ows/ */
 function migrateOldData() {
+  // 1. Scan all previous npx cache directories
+  const npxBase = path.join(os.homedir(), ".npm", "_npx");
+  if (fs.existsSync(npxBase)) {
+    try {
+      for (const hash of fs.readdirSync(npxBase)) {
+        const pkgRoot = path.join(npxBase, hash, "node_modules", "plotlink-ows");
+        migrateStoriesFrom(path.join(pkgRoot, "stories"), `npx cache (${hash.slice(0, 8)})`);
+        migrateFileFrom(
+          path.join(pkgRoot, "data", "local.db"),
+          path.join(DATA_DIR, "local.db"),
+          "database",
+        );
+        migrateFileFrom(
+          path.join(pkgRoot, "data", "terminal-sessions.json"),
+          path.join(DATA_DIR, "terminal-sessions.json"),
+          "terminal sessions",
+        );
+      }
+    } catch { /* npx cache scan best-effort */ }
+  }
+
+  // 2. Current package-relative path (dev → npx transition)
   const oldStoriesDir = path.join(__dirname, "..", "stories");
   const oldDataDir = path.join(__dirname, "..", "data");
-
-  // Migrate stories
-  if (fs.existsSync(oldStoriesDir) && oldStoriesDir !== STORIES_DIR) {
-    const oldEntries = fs.readdirSync(oldStoriesDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "_example");
-    for (const entry of oldEntries) {
-      const src = path.join(oldStoriesDir, entry.name);
-      const dest = path.join(STORIES_DIR, entry.name);
-      if (!fs.existsSync(dest)) {
-        try {
-          fs.renameSync(src, dest);
-        } catch {
-          // EXDEV: cross-device move — fall back to copy
-          fs.cpSync(src, dest, { recursive: true });
-        }
-        console.log(`  Migrated story "${entry.name}" → ${STORIES_DIR}`);
-      }
-    }
-  }
-
-  // Migrate database
-  const oldDb = path.join(oldDataDir, "local.db");
-  const newDb = path.join(DATA_DIR, "local.db");
-  if (fs.existsSync(oldDb) && !fs.existsSync(newDb)) {
-    fs.copyFileSync(oldDb, newDb);
-    console.log(`  Migrated database → ${DATA_DIR}`);
-  }
-
-  // Migrate terminal sessions
-  const oldSessions = path.join(oldDataDir, "terminal-sessions.json");
-  const newSessions = path.join(DATA_DIR, "terminal-sessions.json");
-  if (fs.existsSync(oldSessions) && !fs.existsSync(newSessions)) {
-    fs.copyFileSync(oldSessions, newSessions);
-    console.log(`  Migrated terminal sessions → ${DATA_DIR}`);
-  }
+  migrateStoriesFrom(oldStoriesDir, "package directory");
+  migrateFileFrom(path.join(oldDataDir, "local.db"), path.join(DATA_DIR, "local.db"), "database");
+  migrateFileFrom(
+    path.join(oldDataDir, "terminal-sessions.json"),
+    path.join(DATA_DIR, "terminal-sessions.json"),
+    "terminal sessions",
+  );
 }
 
 async function start() {
