@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "packages/sdk/dist/**",
     // CLI wizard — intentionally CommonJS with require()
     "bin/**",
+    // Built frontend bundle
+    "app/web/dist/**",
   ]),
 ]);
 
