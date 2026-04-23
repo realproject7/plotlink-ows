@@ -27,6 +27,7 @@ interface FileStatus {
 
 interface StoryInfo {
   name: string;
+  title: string | null;
   files: FileStatus[];
   hasStructure: boolean;
   hasGenesis: boolean;
