@@ -365,7 +365,9 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
               <span className={`w-1.5 h-1.5 rounded-full ${
                 disconnected.has(name) ? "bg-amber-500" : name === storyName ? "bg-green-600" : "bg-muted/50"
               }`} />
-              <span className="truncate max-w-[120px]">{name}</span>
+              <span className={`truncate max-w-[120px] ${name.startsWith("_new_") ? "italic" : ""}`}>
+                {name.startsWith("_new_") ? "Untitled" : name}
+              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

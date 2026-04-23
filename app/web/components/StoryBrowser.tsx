@@ -21,6 +21,8 @@ interface StoryBrowserProps {
   selectedStory: string | null;
   selectedFile: string | null;
   onSelectFile: (storyName: string, fileName: string) => void;
+  onNewStory?: () => void;
+  untitledSessions?: string[];
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -37,7 +39,7 @@ const STATUS_COLOR: Record<string, string> = {
   "draft": "text-muted",
 };
 
-export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectFile }: StoryBrowserProps) {
+export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectFile, onNewStory, untitledSessions = [] }: StoryBrowserProps) {
   const [stories, setStories] = useState<StoryInfo[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -115,10 +117,24 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
         <span className="text-xs text-muted">{stories.length}</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {stories.length === 0 ? (
+        {/* Untitled new story sessions */}
+        {untitledSessions.map((id) => (
+          <div key={id}>
+            <button
+              onClick={() => onSelectFile(id, "")}
+              className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-surface text-sm ${
+                selectedStory === id ? "bg-surface" : ""
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-600 flex-shrink-0" />
+              <span className="font-medium italic text-muted">Untitled</span>
+            </button>
+          </div>
+        ))}
+        {stories.length === 0 && untitledSessions.length === 0 ? (
           <div className="p-3 text-sm text-muted">
             <p>No stories yet.</p>
-            <p className="mt-1 text-xs">Use the terminal to start writing with Claude.</p>
+            <p className="mt-1 text-xs">Click &quot;+ New Story&quot; below to start writing.</p>
           </div>
         ) : (
           stories.filter((s) => s.name !== "_example").map((story) => (
@@ -156,6 +172,17 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
           ))
         )}
       </div>
+      {onNewStory && (
+        <div className="px-3 py-2 border-t border-border">
+          <button
+            onClick={onNewStory}
+            className="w-full px-3 py-1.5 text-sm text-accent hover:bg-surface rounded flex items-center gap-1.5"
+          >
+            <span>+</span>
+            <span>New Story</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
