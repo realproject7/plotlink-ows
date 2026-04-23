@@ -42,7 +42,9 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectFile, onNewStory, untitledSessions = [] }: StoryBrowserProps) {
   const [stories, setStories] = useState<StoryInfo[]>([]);
+  const [archivedStories, setArchivedStories] = useState<StoryInfo[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showArchives, setShowArchives] = useState(false);
 
   const loadStories = useCallback(async () => {
     try {
@@ -54,12 +56,44 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     } catch { /* ignore */ }
   }, [authFetch]);
 
+  const loadArchivedStories = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/stories/archived");
+      if (res.ok) {
+        const data = await res.json();
+        setArchivedStories(data.stories);
+      }
+    } catch { /* ignore */ }
+  }, [authFetch]);
+
+  const handleRestore = useCallback(async (name: string) => {
+    try {
+      const res = await authFetch("/api/stories/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        loadArchivedStories();
+        loadStories();
+      }
+    } catch { /* ignore */ }
+  }, [authFetch, loadArchivedStories, loadStories]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load + polling
     loadStories();
     const interval = setInterval(loadStories, 5000);
     return () => clearInterval(interval);
   }, [loadStories]);
+
+  // Load archived stories when archives view is shown
+  useEffect(() => {
+    if (showArchives) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load for archives
+      loadArchivedStories();
+    }
+  }, [showArchives, loadArchivedStories]);
 
   // Auto-expand selected story
   useEffect(() => {
@@ -110,6 +144,45 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     };
     return [...files].sort((a, b) => order(a.file) - order(b.file));
   };
+
+  if (showArchives) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-3 py-1.5 border-b border-border flex items-center justify-between">
+          <span className="text-xs font-mono text-muted">Archives</span>
+          <span className="text-xs text-muted">{archivedStories.length}</span>
+        </div>
+        <div className="px-3 py-2 border-b border-border">
+          <button
+            onClick={() => setShowArchives(false)}
+            className="w-full px-3 py-1.5 text-sm text-muted hover:text-foreground hover:bg-surface rounded flex items-center gap-1.5"
+          >
+            <span>&larr;</span>
+            <span>Back</span>
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {archivedStories.length === 0 ? (
+            <div className="p-3 text-sm text-muted">
+              <p>No archived stories.</p>
+            </div>
+          ) : (
+            archivedStories.map((story) => (
+              <div key={story.name} className="px-3 py-2 flex items-center justify-between hover:bg-surface">
+                <span className="text-sm font-medium truncate" title={story.name}>{story.title || story.name}</span>
+                <button
+                  onClick={() => handleRestore(story.name)}
+                  className="text-xs text-accent hover:text-accent-dim flex-shrink-0 ml-2"
+                >
+                  Restore
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -183,6 +256,14 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
             </div>
           ))
         )}
+      </div>
+      <div className="px-3 py-2 border-t border-border">
+        <button
+          onClick={() => setShowArchives(true)}
+          className="w-full px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-surface rounded flex items-center justify-center gap-1.5"
+        >
+          <span>Archives</span>
+        </button>
       </div>
     </div>
   );
