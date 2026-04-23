@@ -36,7 +36,7 @@ const THEME = {
   blue: "#4A6FA5",
   magenta: "#7B4B8A",
   cyan: "#3D7A7A",
-  white: "#3A2A1E",
+  white: "#E6DDD0",       // subtle cream tint for input line backgrounds
   brightBlack: "#8B7355",
   brightRed: "#B85C5C",   // muted red — readable as text, soft as diff bg
   brightGreen: "#5A8A5A", // muted green — readable as text, soft as diff bg
@@ -207,9 +207,10 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     term.loadAddon(serialize);
     term.open(container);
 
-    // Apply padding to term.element so FitAddon measures correctly
-    if (term.element) {
-      term.element.style.paddingLeft = "10px";
+    // Apply padding via the xterm screen element so FitAddon measures correctly
+    const xtermScreen = container.querySelector(".xterm-screen") as HTMLElement | null;
+    if (xtermScreen) {
+      xtermScreen.style.paddingLeft = "10px";
     }
 
     const session: TerminalSession = { term, fit, serialize, ws: null, container, observer: null as unknown as ResizeObserver, connected: false };

@@ -67,3 +67,19 @@ code, pre {
   opacity: 1 !important;
   color: #8B7355 !important;
 }
+
+/* Remove left vertical line artifact from xterm container */
+.xterm {
+  border: none !important;
+  outline: none !important;
+}
+
+.xterm-viewport {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Prevent terminal content overflow and clipping */
+.xterm-screen {
+  overflow: hidden !important;
+}
