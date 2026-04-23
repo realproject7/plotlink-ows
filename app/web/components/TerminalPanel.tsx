@@ -184,6 +184,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     container.style.width = "100%";
     container.style.height = "100%";
     container.style.display = "none";
+    container.style.paddingLeft = "10px";
+    container.style.boxSizing = "border-box";
     wrapperRef.current.appendChild(container);
 
     const term = new Terminal({
@@ -206,12 +208,6 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory }: Te
     term.loadAddon(fit);
     term.loadAddon(serialize);
     term.open(container);
-
-    // Apply padding via the xterm screen element so FitAddon measures correctly
-    const xtermScreen = container.querySelector(".xterm-screen") as HTMLElement | null;
-    if (xtermScreen) {
-      xtermScreen.style.paddingLeft = "10px";
-    }
 
     const session: TerminalSession = { term, fit, serialize, ws: null, container, observer: null as unknown as ResizeObserver, connected: false };
 

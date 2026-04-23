@@ -79,7 +79,3 @@ code, pre {
   outline: none !important;
 }
 
-/* Prevent terminal content overflow and clipping */
-.xterm-screen {
-  overflow: hidden !important;
-}
