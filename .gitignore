@@ -23,6 +23,7 @@ node_modules
 # production
 /build
 dist
+!app/web/dist
 
 # local app data (SQLite)
 data/
