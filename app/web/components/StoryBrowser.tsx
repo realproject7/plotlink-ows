@@ -117,6 +117,17 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
         <span className="text-xs font-mono text-muted">Stories</span>
         <span className="text-xs text-muted">{stories.length}</span>
       </div>
+      {onNewStory && (
+        <div className="px-3 py-2 border-b border-border">
+          <button
+            onClick={onNewStory}
+            className="w-full px-3 py-1.5 text-sm bg-accent text-white rounded hover:bg-accent-dim flex items-center justify-center gap-1.5"
+          >
+            <span>+</span>
+            <span>New Story</span>
+          </button>
+        </div>
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Untitled new story sessions */}
         {untitledSessions.map((id) => (
@@ -135,7 +146,7 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
         {stories.length === 0 && untitledSessions.length === 0 ? (
           <div className="p-3 text-sm text-muted">
             <p>No stories yet.</p>
-            <p className="mt-1 text-xs">Click &quot;+ New Story&quot; below to start writing.</p>
+            <p className="mt-1 text-xs">Click &quot;+ New Story&quot; above to start writing.</p>
           </div>
         ) : (
           stories.filter((s) => s.name !== "_example").map((story) => (
@@ -173,17 +184,6 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
           ))
         )}
       </div>
-      {onNewStory && (
-        <div className="px-3 py-2 border-t border-border">
-          <button
-            onClick={onNewStory}
-            className="w-full px-3 py-1.5 text-sm text-accent hover:bg-surface rounded flex items-center gap-1.5"
-          >
-            <span>+</span>
-            <span>New Story</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
