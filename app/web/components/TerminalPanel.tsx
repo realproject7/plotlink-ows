@@ -98,6 +98,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
   const [disconnected, setDisconnected] = useState<Set<string>>(new Set());
+  const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
 
   const connectWsRef = useRef<(name: string, session: TerminalSession, resume: boolean) => void>(() => {});
 
@@ -373,7 +374,11 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  destroySession(name);
+                  if (name.startsWith("_new_")) {
+                    setConfirmingDiscard(name);
+                  } else {
+                    destroySession(name);
+                  }
                 }}
                 className="ml-0.5 text-muted hover:text-error text-[10px] leading-none"
                 title="Close terminal"
@@ -383,6 +388,15 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
             </div>
           ))
         }
+        {/* Cancel button for active untitled session */}
+        {storyName?.startsWith("_new_") && (
+          <button
+            onClick={() => setConfirmingDiscard(storyName)}
+            className="ml-auto px-2 py-0.5 text-xs text-error hover:bg-surface rounded flex items-center gap-1 flex-shrink-0"
+          >
+            Cancel ×
+          </button>
+        )}
       </div>
       )}
 
@@ -396,6 +410,36 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
             <div className="text-center">
               <p className="text-lg font-serif">Select a story on the left menu</p>
               <p className="text-sm mt-1">to start an AI Writer session</p>
+            </div>
+          </div>
+        )}
+
+        {/* Discard confirmation overlay */}
+        {confirmingDiscard && (
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "rgba(240, 235, 225, 0.9)" }}>
+            <div className="text-center space-y-3 p-6 bg-surface border border-border rounded-lg shadow-lg max-w-sm">
+              <p className="text-sm font-serif text-foreground font-medium">Discard this session?</p>
+              <p className="text-xs text-muted">
+                This session will be lost — your AI hasn&apos;t created a story structure yet.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setConfirmingDiscard(null)}
+                  className="px-4 py-1.5 border border-border text-sm rounded hover:bg-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const name = confirmingDiscard;
+                    setConfirmingDiscard(null);
+                    destroySession(name);
+                  }}
+                  className="px-4 py-1.5 bg-error text-white text-sm rounded hover:opacity-80"
+                >
+                  Discard
+                </button>
+              </div>
             </div>
           </div>
         )}
