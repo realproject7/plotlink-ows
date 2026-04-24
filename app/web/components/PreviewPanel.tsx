@@ -324,7 +324,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
               {isPlot && (
                 <button
-                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
+                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre)}
                   disabled={!!publishingFile}
                   className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
                 >
