@@ -81,7 +81,7 @@ publish.post("/file", async (c) => {
   // Enforce character limits
   const isGenesis = body.fileName === "genesis.md";
   const isPlot = /^plot-\d+\.md$/.test(body.fileName);
-  const charLimit = isGenesis ? 1000 : isPlot ? 10000 : null;
+  const charLimit = (isGenesis || isPlot) ? 10000 : null;
   if (charLimit && body.content.length > charLimit) {
     return c.json({
       error: `Content exceeds ${charLimit.toLocaleString()} character limit (${body.content.length.toLocaleString()} chars). Reduce content before publishing.`,
