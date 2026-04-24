@@ -68,6 +68,7 @@ settings.post("/generate-binding", async (c) => {
       agentDescription: (config.agentDescription as string) || undefined,
       agentGenre: (config.agentGenre as string) || undefined,
       agentLlmModel: (config.agentLlmModel as string) || undefined,
+      agentRegisteredBy: (config.agentRegisteredBy as string) || undefined,
       agentRegisteredAt: (config.agentRegisteredAt as string) || undefined,
     });
   } catch (err: unknown) {
@@ -165,6 +166,7 @@ settings.post("/register-agent", async (c) => {
       agentDescription: body.description.trim(),
       ...(body.genre?.trim() && { agentGenre: body.genre.trim() }),
       agentLlmModel: "Claude",
+      agentRegisteredBy: "plotlink-ows",
       agentRegisteredAt: registeredAt,
     });
 
