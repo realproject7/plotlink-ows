@@ -84,14 +84,19 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   ptySessions.set(storyName, session);
 
   term.onExit(({ exitCode }) => {
-    const s = ptySessions.get(storyName);
-    if (s?.term !== term) return;
+    // Find this session by term reference — key may have changed via rename
+    let currentName: string | undefined;
+    let s: typeof session | undefined;
+    for (const [key, entry] of ptySessions) {
+      if (entry.term === term) { currentName = key; s = entry; break; }
+    }
+    if (!currentName || !s) return;
 
     // If a resumed session exits quickly (< 5s), signal client to auto-reconnect fresh
     const elapsed = Date.now() - spawnTime;
     if (isResume && elapsed < 5000 && exitCode !== 0) {
-      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
-      ptySessions.delete(storyName);
+      console.log(`Resume for "${currentName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
+      ptySessions.delete(currentName);
       if (s.ws && s.ws.readyState <= 1) {
         // Close code 4000 = resume-failed, client should auto-reconnect fresh
         s.ws.close(4000, "resume-failed");

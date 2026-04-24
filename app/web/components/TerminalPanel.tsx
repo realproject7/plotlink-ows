@@ -12,7 +12,7 @@ interface TerminalPanelProps {
   onDestroySession?: (storyName: string) => void;
   onArchiveStory?: (storyName: string) => void;
   confirmedStories?: Set<string>;
-  renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<void>) | null>;
+  renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
 }
 
 interface TerminalSession {
@@ -328,10 +328,11 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     onDestroySession?.(name);
   }, [authFetch, onDestroySession]);
 
-  /** Rename a session key (e.g. _new_123 → paper-chair) without killing the PTY */
-  const renameSession = useCallback(async (oldName: string, newName: string) => {
+  /** Rename a session key (e.g. _new_123 → paper-chair) without killing the PTY.
+   *  Returns true on success, false on failure. */
+  const renameSession = useCallback(async (oldName: string, newName: string): Promise<boolean> => {
     const session = sessions.get(oldName);
-    if (!session || sessions.has(newName)) return;
+    if (!session || sessions.has(newName)) return false;
 
     // Rename on the server first
     const res = await authFetchRef.current("/api/terminal/rename", {
@@ -339,7 +340,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ oldName, newName }),
     });
-    if (!res.ok) return;
+    if (!res.ok) return false;
 
     // Move in client-side sessions map
     sessions.delete(oldName);
@@ -361,6 +362,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
       next.add(newName);
       return next;
     });
+
+    return true;
   }, []);
 
   // Expose renameSession to parent via ref

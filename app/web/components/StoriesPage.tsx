@@ -41,7 +41,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const knownStoriesRef = useRef<Set<string>>(new Set());
-  const renameRef = useRef<((oldName: string, newName: string) => Promise<void>) | null>(null);
+  const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -88,10 +88,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           if (!knownStoriesRef.current.has(name) && untitledSessions.length > 0) {
             // New story appeared — rename the oldest untitled session to the story name
             const oldName = untitledSessions[0];
+            let renamed = false;
             if (renameRef.current) {
-              renameRef.current(oldName, name);
+              renamed = await renameRef.current(oldName, name).catch(() => false);
             }
-            setUntitledSessions((prev) => prev.slice(1));
+            if (renamed) {
+              setUntitledSessions((prev) => prev.slice(1));
+            }
             setSelectedStory(name);
             setSelectedFile(null);
           }
