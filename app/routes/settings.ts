@@ -182,7 +182,28 @@ settings.get("/link-status", async (c) => {
         } catch { /* best effort */ }
         return c.json({ linked: true, agentId: Number(agentId), owsWallet: address, owner });
       }
-    } catch { /* contract call may fail */ }
+    } catch { /* agentIdByWallet may revert if not bound */ }
+
+    // Fallback: check if wallet owns an agent NFT (register() creates NFT but doesn't bind via setAgentWallet)
+    try {
+      const balance = await publicClient.readContract({
+        address: ERC_8004,
+        abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] }] as const,
+        functionName: "balanceOf",
+        args: [address as `0x${string}`],
+      }) as bigint;
+
+      if (balance > 0n) {
+        const tokenId = await publicClient.readContract({
+          address: ERC_8004,
+          abi: [{ type: "function", name: "tokenOfOwnerByIndex", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "index", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] }] as const,
+          functionName: "tokenOfOwnerByIndex",
+          args: [address as `0x${string}`, 0n],
+        }) as bigint;
+
+        return c.json({ linked: true, agentId: Number(tokenId), owsWallet: address });
+      }
+    } catch { /* best effort */ }
 
     return c.json({ linked: false, owsWallet: address });
   } catch (err: unknown) {
