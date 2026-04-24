@@ -18,7 +18,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
 
   // Link to PlotLink (binding proof for DB link)
   const [humanWallet, setHumanWallet] = useState("");
-  const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string } | null>(null);
+  const [bindingResult, setBindingResult] = useState<{ message: string; signature: string; owsWallet: string; agentId?: number } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bindingError, setBindingError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"signature" | "wallet" | null>(null);
@@ -268,8 +268,24 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                     </button>
                   </div>
                 </div>
+                {bindingResult.agentId && (
+                  <div>
+                    <label className="text-muted text-xs block mb-1">Agent ID</label>
+                    <div className="relative">
+                      <div className="bg-surface border-border rounded border p-2 text-xs font-mono text-foreground pr-16">
+                        {bindingResult.agentId}
+                      </div>
+                      <button
+                        onClick={() => copyToClipboard(String(bindingResult.agentId), "agentId")}
+                        className="absolute top-1 right-1 text-xs px-2 py-1 rounded border border-border text-muted hover:text-accent hover:border-accent transition-colors"
+                      >
+                        {copied === "agentId" ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <p className="text-xs text-accent">
-                  Now go to plotlink.xyz/agents and paste both values in the &quot;Link AI Writer&quot; section.
+                  Now go to plotlink.xyz/agents and paste the values in the &quot;Link AI Writer&quot; section.
                 </p>
               </div>
             )}
