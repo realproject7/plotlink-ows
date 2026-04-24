@@ -12,6 +12,7 @@ interface TerminalPanelProps {
   onDestroySession?: (storyName: string) => void;
   onArchiveStory?: (storyName: string) => void;
   confirmedStories?: Set<string>;
+  renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
 }
 
 interface TerminalSession {
@@ -105,7 +106,7 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -326,6 +327,50 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     authFetch(`/api/terminal/${encodeURIComponent(name)}/discard`, { method: "DELETE" }).catch(() => {});
     onDestroySession?.(name);
   }, [authFetch, onDestroySession]);
+
+  /** Rename a session key (e.g. _new_123 → paper-chair) without killing the PTY.
+   *  Returns true on success, false on failure. */
+  const renameSession = useCallback(async (oldName: string, newName: string): Promise<boolean> => {
+    const session = sessions.get(oldName);
+    if (!session || sessions.has(newName)) return false;
+
+    // Rename on the server first
+    const res = await authFetchRef.current("/api/terminal/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldName, newName }),
+    });
+    if (!res.ok) return false;
+
+    // Move in client-side sessions map
+    sessions.delete(oldName);
+    sessions.set(newName, session);
+
+    // Migrate scrollback under the new key
+    try {
+      const data = session.serialize.serialize();
+      await deleteScrollback(oldName);
+      await saveScrollback(newName, data);
+    } catch { /* ignore */ }
+
+    // Update React state
+    setSessionList((prev) => prev.map((s) => (s === oldName ? newName : s)));
+    setDisconnected((prev) => {
+      if (!prev.has(oldName)) return prev;
+      const next = new Set(prev);
+      next.delete(oldName);
+      next.add(newName);
+      return next;
+    });
+
+    return true;
+  }, []);
+
+  // Expose renameSession to parent via ref
+  useEffect(() => {
+    if (renameRef) renameRef.current = renameSession;
+    return () => { if (renameRef) renameRef.current = null; };
+  }, [renameRef, renameSession]);
 
   // Auto-spawn + show/hide when story changes
   useEffect(() => {

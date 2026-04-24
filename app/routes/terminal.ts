@@ -84,14 +84,19 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   ptySessions.set(storyName, session);
 
   term.onExit(({ exitCode }) => {
-    const s = ptySessions.get(storyName);
-    if (s?.term !== term) return;
+    // Find this session by term reference — key may have changed via rename
+    let currentName: string | undefined;
+    let s: typeof session | undefined;
+    for (const [key, entry] of ptySessions) {
+      if (entry.term === term) { currentName = key; s = entry; break; }
+    }
+    if (!currentName || !s) return;
 
     // If a resumed session exits quickly (< 5s), signal client to auto-reconnect fresh
     const elapsed = Date.now() - spawnTime;
     if (isResume && elapsed < 5000 && exitCode !== 0) {
-      console.log(`Resume for "${storyName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
-      ptySessions.delete(storyName);
+      console.log(`Resume for "${currentName}" failed (exit ${exitCode} in ${elapsed}ms), signaling fresh fallback`);
+      ptySessions.delete(currentName);
       if (s.ws && s.ws.readyState <= 1) {
         // Close code 4000 = resume-failed, client should auto-reconnect fresh
         s.ws.close(4000, "resume-failed");
@@ -191,6 +196,32 @@ terminal.delete("/:storyName/discard", (c) => {
   }
 
   return c.json({ ok: true });
+});
+
+/** POST /api/terminal/rename — rename a session key without killing the process */
+terminal.post("/rename", async (c) => {
+  const body = await c.req.json<{ oldName?: string; newName?: string }>().catch(() => ({}));
+  const oldName = body.oldName && safeName(body.oldName);
+  const newName = body.newName && safeName(body.newName);
+  if (!oldName || !newName) return c.json({ error: "Invalid names" }, 400);
+  if (oldName === newName) return c.json({ ok: true });
+
+  const session = ptySessions.get(oldName);
+  if (!session) return c.json({ error: "Session not found" }, 404);
+
+  if (ptySessions.has(newName)) return c.json({ error: "Target session already exists" }, 409);
+
+  // Move in-memory PTY entry
+  ptySessions.delete(oldName);
+  ptySessions.set(newName, session);
+
+  // Update persisted session map: remove old key, store under new key
+  const sessionMap = loadSessionMap();
+  delete sessionMap[oldName];
+  sessionMap[newName] = session.sessionId;
+  saveSessionMap(sessionMap);
+
+  return c.json({ ok: true, sessionId: session.sessionId });
 });
 
 /** POST /api/terminal/stop — kill PTY (legacy, kills default) */
