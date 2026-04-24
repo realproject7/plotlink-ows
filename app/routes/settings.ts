@@ -161,6 +161,13 @@ settings.get("/link-status", async (c) => {
     const address = getBaseAddress(wallet);
     if (!address) return c.json({ linked: false, error: "No EVM address" });
 
+    // Check local cache first (survives RPC rate limits)
+    const cached = await db.setting.findUnique({ where: { key: "agent_id" } });
+    if (cached) {
+      return c.json({ linked: true, agentId: Number(cached.value), owsWallet: address });
+    }
+
+    // RPC: try agentIdByWallet (for bound wallets)
     try {
       const agentId = await publicClient.readContract({
         address: ERC_8004,
@@ -170,21 +177,13 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (agentId > 0n) {
-        // Fetch NFT owner (ERC-721 ownerOf)
-        let owner: string | undefined;
-        try {
-          owner = await publicClient.readContract({
-            address: ERC_8004,
-            abi: [{ type: "function", name: "ownerOf", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] }] as const,
-            functionName: "ownerOf",
-            args: [agentId],
-          }) as string;
-        } catch { /* best effort */ }
-        return c.json({ linked: true, agentId: Number(agentId), owsWallet: address, owner });
+        // Cache locally
+        await db.setting.upsert({ where: { key: "agent_id" }, update: { value: String(agentId) }, create: { key: "agent_id", value: String(agentId) } });
+        return c.json({ linked: true, agentId: Number(agentId), owsWallet: address });
       }
     } catch { /* agentIdByWallet may revert if not bound */ }
 
-    // Fallback: check if wallet owns an agent NFT (register() creates NFT but doesn't bind via setAgentWallet)
+    // RPC fallback: check balanceOf (for owned but unbound NFTs)
     try {
       const balance = await publicClient.readContract({
         address: ERC_8004,
@@ -194,7 +193,7 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (balance > 0n) {
-        // Try to get token ID (ERC-721 Enumerable — may not be supported)
+        // Try to get token ID
         let agentId: number | undefined;
         try {
           const tokenId = await publicClient.readContract({
@@ -204,11 +203,15 @@ settings.get("/link-status", async (c) => {
             args: [address as `0x${string}`, 0n],
           }) as bigint;
           agentId = Number(tokenId);
-        } catch { /* ERC-721 Enumerable not supported — agent ID unknown */ }
+        } catch { /* ERC-721 Enumerable not supported */ }
 
+        // Cache if we got the ID
+        if (agentId !== undefined) {
+          await db.setting.upsert({ where: { key: "agent_id" }, update: { value: String(agentId) }, create: { key: "agent_id", value: String(agentId) } });
+        }
         return c.json({ linked: true, agentId, owsWallet: address });
       }
-    } catch { /* balanceOf failed */ }
+    } catch { /* RPC failed — rate limited or unavailable */ }
 
     return c.json({ linked: false, owsWallet: address });
   } catch (err: unknown) {
