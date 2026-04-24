@@ -56,10 +56,15 @@ settings.post("/generate-binding", async (c) => {
     const result = owsSignMsg(wallet.name, "eip155:8453", message, passphrase);
     const signature = result.signature.startsWith("0x") ? result.signature : `0x${result.signature}`;
 
+    // Include agentId from config.json if available
+    const config = readConfig();
+    const agentId = config.agentId ? Number(config.agentId) : undefined;
+
     return c.json({
       message,
       signature,
       owsWallet,
+      agentId,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to generate binding proof";
