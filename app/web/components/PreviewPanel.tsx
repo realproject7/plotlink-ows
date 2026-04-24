@@ -3,12 +3,13 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
+import { GENRES } from "../../../lib/genres";
 
 interface PreviewPanelProps {
   storyName: string | null;
   fileName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  onPublish?: (storyName: string, fileName: string) => void;
+  onPublish?: (storyName: string, fileName: string, genre: string) => void;
   publishingFile?: string | null;
 }
 
@@ -34,6 +35,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [dirty, setDirty] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
+  const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -74,6 +76,25 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     const interval = setInterval(loadFile, 3000);
     return () => clearInterval(interval);
   }, [storyName, fileName, loadFile, activeTab, dirty]);
+
+  // Auto-detect genre from structure.md when story changes
+  useEffect(() => {
+    if (!storyName) return;
+    let cancelled = false;
+    authFetch(`/api/stories/${storyName}/structure.md`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (cancelled || !data?.content) return;
+        const match = data.content.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
+        if (match) {
+          const detected = match[1].replace(/\*+/g, "").trim();
+          const found = GENRES.find((g) => g.toLowerCase() === detected.toLowerCase());
+          if (found) setSelectedGenre(found);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [storyName, authFetch]);
 
   const handleSave = useCallback(async () => {
     if (!storyName || !fileName) return;
@@ -303,7 +324,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
               {isPlot && (
                 <button
-                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
+                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre)}
                   disabled={!!publishingFile}
                   className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
                 >
@@ -370,8 +391,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex items-center gap-2">
+            {(isGenesis) && (
+              <select
+                value={selectedGenre}
+                onChange={(e) => setSelectedGenre(e.target.value)}
+                className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+              >
+                {GENRES.map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            )}
             <button
-              onClick={() => storyName && fileName && onPublish?.(storyName, fileName)}
+              onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre)}
               disabled={!!publishingFile || overLimit}
               className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
             >

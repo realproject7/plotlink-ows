@@ -177,7 +177,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     window.addEventListener("mouseup", onMouseUp);
   }, []);
 
-  const handlePublish = useCallback(async (storyName: string, fileName: string) => {
+  const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
 
@@ -190,17 +190,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       // Extract title from first heading or filename
       const titleMatch = fileData.content.match(/^#\s+(.+)$/m);
       const title = titleMatch ? titleMatch[1].slice(0, 60) : fileName.replace(".md", "");
-
-      // Determine genre from structure.md if available
-      let genre = "Fiction";
-      try {
-        const structRes = await authFetch(`/api/stories/${storyName}/structure.md`);
-        if (structRes.ok) {
-          const structData = await structRes.json();
-          const genreMatch = structData.content.match(/genre[:\s]+(.+)/i);
-          if (genreMatch) genre = genreMatch[1].trim().slice(0, 30);
-        }
-      } catch { /* ignore */ }
 
       // For plot files, find the storylineId from the genesis publish status
       let storylineId: number | undefined;
