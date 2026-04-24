@@ -56,15 +56,17 @@ settings.post("/generate-binding", async (c) => {
     const result = owsSignMsg(wallet.name, "eip155:8453", message, passphrase);
     const signature = result.signature.startsWith("0x") ? result.signature : `0x${result.signature}`;
 
-    // Include agentId from config.json if available
+    // Include agent data from config.json if available
     const config = readConfig();
-    const agentId = config.agentId ? Number(config.agentId) : undefined;
 
     return c.json({
       message,
       signature,
       owsWallet,
-      agentId,
+      agentId: config.agentId ? Number(config.agentId) : undefined,
+      agentName: (config.agentName as string) || undefined,
+      agentDescription: (config.agentDescription as string) || undefined,
+      agentGenre: (config.agentGenre as string) || undefined,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to generate binding proof";
@@ -153,8 +155,13 @@ settings.post("/register-agent", async (c) => {
       return c.json({ error: "Transaction succeeded but Registered event not found" }, 500);
     }
 
-    // Cache agentId in config.json (survives npx reinstalls, no Prisma dependency)
-    writeConfig({ agentId });
+    // Cache agent data in config.json (survives npx reinstalls, no Prisma dependency)
+    writeConfig({
+      agentId,
+      agentName: body.name,
+      agentDescription: body.description,
+      ...(body.genre && { agentGenre: body.genre }),
+    });
 
     return c.json({
       agentId,
