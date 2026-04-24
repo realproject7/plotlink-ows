@@ -8,6 +8,21 @@ import { db } from "../db";
 import {
   signMessage as owsSignMsg,
 } from "@open-wallet-standard/core";
+import { CONFIG_DIR } from "../lib/paths";
+import fs from "fs";
+import path from "path";
+
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+
+function readConfig(): Record<string, unknown> {
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8")); } catch { return {}; }
+}
+
+function writeConfig(updates: Record<string, unknown>) {
+  const config = readConfig();
+  Object.assign(config, updates);
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
 
 const ERC_8004 = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
 const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
@@ -133,12 +148,8 @@ settings.post("/register-agent", async (c) => {
       return c.json({ error: "Transaction succeeded but Registered event not found" }, 500);
     }
 
-    // Store agentId locally
-    await db.setting.upsert({
-      where: { key: "agent_id" },
-      update: { value: String(agentId) },
-      create: { key: "agent_id", value: String(agentId) },
-    });
+    // Cache agentId in config.json (survives npx reinstalls, no Prisma dependency)
+    writeConfig({ agentId });
 
     return c.json({
       agentId,
@@ -161,10 +172,10 @@ settings.get("/link-status", async (c) => {
     const address = getBaseAddress(wallet);
     if (!address) return c.json({ linked: false, error: "No EVM address" });
 
-    // Check local cache first (survives RPC rate limits)
-    const cached = await db.setting.findUnique({ where: { key: "agent_id" } });
-    if (cached) {
-      return c.json({ linked: true, agentId: Number(cached.value), owsWallet: address });
+    // Check config.json cache first (survives npx reinstalls + RPC rate limits)
+    const config = readConfig();
+    if (config.agentId) {
+      return c.json({ linked: true, agentId: Number(config.agentId), owsWallet: address });
     }
 
     // RPC: try agentIdByWallet (for bound wallets)
@@ -177,8 +188,7 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (agentId > 0n) {
-        // Cache locally
-        await db.setting.upsert({ where: { key: "agent_id" }, update: { value: String(agentId) }, create: { key: "agent_id", value: String(agentId) } });
+        writeConfig({ agentId: Number(agentId) });
         return c.json({ linked: true, agentId: Number(agentId), owsWallet: address });
       }
     } catch { /* agentIdByWallet may revert if not bound */ }
@@ -205,9 +215,8 @@ settings.get("/link-status", async (c) => {
           agentId = Number(tokenId);
         } catch { /* ERC-721 Enumerable not supported */ }
 
-        // Cache if we got the ID
         if (agentId !== undefined) {
-          await db.setting.upsert({ where: { key: "agent_id" }, update: { value: String(agentId) }, create: { key: "agent_id", value: String(agentId) } });
+          writeConfig({ agentId });
         }
         return c.json({ linked: true, agentId, owsWallet: address });
       }
