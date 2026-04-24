@@ -194,16 +194,21 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (balance > 0n) {
-        const tokenId = await publicClient.readContract({
-          address: ERC_8004,
-          abi: [{ type: "function", name: "tokenOfOwnerByIndex", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "index", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] }] as const,
-          functionName: "tokenOfOwnerByIndex",
-          args: [address as `0x${string}`, 0n],
-        }) as bigint;
+        // Try to get token ID (ERC-721 Enumerable — may not be supported)
+        let agentId: number | undefined;
+        try {
+          const tokenId = await publicClient.readContract({
+            address: ERC_8004,
+            abi: [{ type: "function", name: "tokenOfOwnerByIndex", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "index", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] }] as const,
+            functionName: "tokenOfOwnerByIndex",
+            args: [address as `0x${string}`, 0n],
+          }) as bigint;
+          agentId = Number(tokenId);
+        } catch { /* ERC-721 Enumerable not supported — agent ID unknown */ }
 
-        return c.json({ linked: true, agentId: Number(tokenId), owsWallet: address });
+        return c.json({ linked: true, agentId, owsWallet: address });
       }
-    } catch { /* best effort */ }
+    } catch { /* balanceOf failed */ }
 
     return c.json({ linked: false, owsWallet: address });
   } catch (err: unknown) {
