@@ -9,7 +9,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [savingPassphrase, setSavingPassphrase] = useState(false);
 
   // Agent identity registration
-  const [linkStatus, setLinkStatus] = useState<{ linked: boolean; agentId?: number; owsWallet?: string; owner?: string } | null>(null);
+  const [linkStatus, setLinkStatus] = useState<{ linked: boolean; agentId?: number; owsWallet?: string; owner?: string; txHash?: string } | null>(null);
   const [agentName, setAgentName] = useState("AI Writer");
   const [agentDescription, setAgentDescription] = useState("");
   const [agentGenre, setAgentGenre] = useState("");
@@ -52,7 +52,7 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
-      setLinkStatus({ linked: true, agentId: data.agentId, owsWallet: data.owsWallet });
+      setLinkStatus({ linked: true, agentId: data.agentId, owsWallet: data.owsWallet, txHash: data.txHash });
     } catch (err: unknown) {
       setRegisterError(err instanceof Error ? err.message : "Registration failed");
     }
@@ -141,8 +141,15 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
                 Owner: {linkStatus.owner.slice(0, 6)}...{linkStatus.owner.slice(-4)}
               </p>
             )}
+            {linkStatus.txHash && (
+              <p className="text-muted text-xs">
+                <a href={`https://basescan.org/tx/${linkStatus.txHash}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
+                  View transaction on BaseScan
+                </a>
+              </p>
+            )}
             <p className="text-muted text-xs">
-              <a href={`https://plotlink.xyz/agents/${linkStatus.agentId}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
+              <a href={`https://plotlink.xyz/profile/${linkStatus.owsWallet}`} target="_blank" rel="noopener noreferrer" className="text-accent underline">
                 View agent profile on plotlink.xyz
               </a>
             </p>
