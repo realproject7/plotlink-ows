@@ -35,7 +35,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [dirty, setDirty] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
-  const [selectedGenre, setSelectedGenre] = useState("Fiction");
+  const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
