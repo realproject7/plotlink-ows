@@ -209,6 +209,8 @@ terminal.post("/rename", async (c) => {
   const session = ptySessions.get(oldName);
   if (!session) return c.json({ error: "Session not found" }, 404);
 
+  if (ptySessions.has(newName)) return c.json({ error: "Target session already exists" }, 409);
+
   // Move in-memory PTY entry
   ptySessions.delete(oldName);
   ptySessions.set(newName, session);
