@@ -67,6 +67,9 @@ settings.post("/generate-binding", async (c) => {
       agentName: (config.agentName as string) || undefined,
       agentDescription: (config.agentDescription as string) || undefined,
       agentGenre: (config.agentGenre as string) || undefined,
+      agentLlmModel: (config.agentLlmModel as string) || undefined,
+      agentRegisteredBy: (config.agentRegisteredBy as string) || undefined,
+      agentRegisteredAt: (config.agentRegisteredAt as string) || undefined,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to generate binding proof";
@@ -107,13 +110,14 @@ settings.post("/register-agent", async (c) => {
     } catch { /* not registered — continue */ }
 
     // Build agentURI as inline JSON
+    const registeredAt = new Date().toISOString();
     const agentURI = JSON.stringify({
       name: body.name.trim(),
       description: body.description.trim(),
       ...(body.genre?.trim() && { genre: body.genre.trim() }),
       llmModel: "Claude",
       registeredBy: "plotlink-ows",
-      registeredAt: new Date().toISOString(),
+      registeredAt,
     });
 
     // Create OWS-backed wallet client and call register()
@@ -155,12 +159,15 @@ settings.post("/register-agent", async (c) => {
       return c.json({ error: "Transaction succeeded but Registered event not found" }, 500);
     }
 
-    // Cache agent data in config.json (survives npx reinstalls, no Prisma dependency)
+    // Cache full tokenURI data in config.json (survives npx reinstalls, no Prisma dependency)
     writeConfig({
       agentId,
-      agentName: body.name,
-      agentDescription: body.description,
-      ...(body.genre && { agentGenre: body.genre }),
+      agentName: body.name.trim(),
+      agentDescription: body.description.trim(),
+      ...(body.genre?.trim() && { agentGenre: body.genre.trim() }),
+      agentLlmModel: "Claude",
+      agentRegisteredBy: "plotlink-ows",
+      agentRegisteredAt: registeredAt,
     });
 
     return c.json({
