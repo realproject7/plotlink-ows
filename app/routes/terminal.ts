@@ -193,6 +193,30 @@ terminal.delete("/:storyName/discard", (c) => {
   return c.json({ ok: true });
 });
 
+/** POST /api/terminal/rename — rename a session key without killing the process */
+terminal.post("/rename", async (c) => {
+  const body = await c.req.json<{ oldName?: string; newName?: string }>().catch(() => ({}));
+  const oldName = body.oldName && safeName(body.oldName);
+  const newName = body.newName && safeName(body.newName);
+  if (!oldName || !newName) return c.json({ error: "Invalid names" }, 400);
+  if (oldName === newName) return c.json({ ok: true });
+
+  const session = ptySessions.get(oldName);
+  if (!session) return c.json({ error: "Session not found" }, 404);
+
+  // Move in-memory PTY entry
+  ptySessions.delete(oldName);
+  ptySessions.set(newName, session);
+
+  // Update persisted session map: remove old key, store under new key
+  const sessionMap = loadSessionMap();
+  delete sessionMap[oldName];
+  sessionMap[newName] = session.sessionId;
+  saveSessionMap(sessionMap);
+
+  return c.json({ ok: true, sessionId: session.sessionId });
+});
+
 /** POST /api/terminal/stop — kill PTY (legacy, kills default) */
 terminal.post("/stop", (c) => {
   const session = ptySessions.get("default");

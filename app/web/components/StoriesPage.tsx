@@ -41,6 +41,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const knownStoriesRef = useRef<Set<string>>(new Set());
+  const renameRef = useRef<((oldName: string, newName: string) => Promise<void>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -85,7 +86,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         // Detect newly appeared stories
         for (const name of currentNames) {
           if (!knownStoriesRef.current.has(name) && untitledSessions.length > 0) {
-            // New story appeared — transition the oldest untitled session
+            // New story appeared — rename the oldest untitled session to the story name
+            const oldName = untitledSessions[0];
+            if (renameRef.current) {
+              renameRef.current(oldName, name);
+            }
             setUntitledSessions((prev) => prev.slice(1));
             setSelectedStory(name);
             setSelectedFile(null);
@@ -330,7 +335,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} />
       </div>
 
       {/* Drag Handle */}
