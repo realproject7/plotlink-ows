@@ -340,7 +340,7 @@ export async function publishStoryline(
   // Streams "Indexing…" progress so the user does not escalate to Retry Publish.
   const indexError = await indexWithDelayAndRetry(
     "storyline",
-    { txHash, content, genre, language: normalizedLanguage, isNsfw: String(normalizedIsNsfw) },
+    { txHash, content, genre, language: normalizedLanguage, isNsfw: normalizedIsNsfw },
     onProgress,
     txHash,
     contentCid,
