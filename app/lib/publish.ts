@@ -296,9 +296,13 @@ export async function publishStoryline(
   language?: string,
   isNsfw?: boolean,
 ): Promise<PublishResult> {
+  // Normalize optional fields to backwards-compatible defaults
+  const normalizedLanguage = language || "English";
+  const normalizedIsNsfw = isNsfw ?? false;
+
   // Step 1: Upload to IPFS
   onProgress({ step: "uploading", message: "Uploading story to IPFS..." });
-  const contentCid = await uploadToIPFS(content, title, genre, language);
+  const contentCid = await uploadToIPFS(content, title, genre, normalizedLanguage);
 
   // Step 2: Compute content hash + get creation fee
   const contentHash = keccak256(toBytes(content));
@@ -336,7 +340,7 @@ export async function publishStoryline(
   // Streams "Indexing…" progress so the user does not escalate to Retry Publish.
   const indexError = await indexWithDelayAndRetry(
     "storyline",
-    { txHash, content, genre, language, isNsfw: isNsfw != null ? String(isNsfw) : undefined },
+    { txHash, content, genre, language: normalizedLanguage, isNsfw: String(normalizedIsNsfw) },
     onProgress,
     txHash,
     contentCid,
@@ -365,9 +369,11 @@ export async function publishPlot(
   onProgress: (progress: PublishProgress) => void,
   language?: string,
 ): Promise<PublishResult> {
+  const normalizedLanguage = language || "English";
+
   // Step 1: Upload to IPFS
   onProgress({ step: "uploading", message: "Uploading plot to IPFS..." });
-  const contentCid = await uploadToIPFS(content, title, genre, language);
+  const contentCid = await uploadToIPFS(content, title, genre, normalizedLanguage);
 
   // Step 2: Compute content hash
   const contentHash = keccak256(toBytes(content));
