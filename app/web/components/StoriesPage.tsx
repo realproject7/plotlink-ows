@@ -177,7 +177,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     window.addEventListener("mouseup", onMouseUp);
   }, []);
 
-  const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string) => {
+  const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
 
@@ -215,7 +215,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       const publishRes = await authFetch("/api/publish/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, storylineId }),
+        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId }),
       });
 
       if (!publishRes.ok) {

@@ -3,13 +3,13 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import { GENRES } from "../../../lib/genres";
+import { GENRES, LANGUAGES } from "../../../lib/genres";
 
 interface PreviewPanelProps {
   storyName: string | null;
   fileName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  onPublish?: (storyName: string, fileName: string, genre: string) => void;
+  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => void;
   publishingFile?: string | null;
 }
 
@@ -36,6 +36,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [retrying, setRetrying] = useState(false);
   const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
   const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
+  const [isNsfw, setIsNsfw] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -90,6 +92,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           const detected = match[1].replace(/\*+/g, "").trim();
           const found = GENRES.find((g) => g.toLowerCase() === detected.toLowerCase());
           if (found) setSelectedGenre(found);
+        }
+        const langMatch = data.content.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
+        if (langMatch) {
+          const detected = langMatch[1].replace(/\*+/g, "").trim();
+          const found = LANGUAGES.find((l) => l.toLowerCase() === detected.toLowerCase());
+          if (found) setSelectedLanguage(found);
         }
       })
       .catch(() => {});
@@ -324,7 +332,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
               {isPlot && (
                 <button
-                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre)}
+                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw)}
                   disabled={!!publishingFile}
                   className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
                 >
@@ -390,27 +398,56 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            {(isGenesis) && (
-              <select
-                value={selectedGenre}
-                onChange={(e) => setSelectedGenre(e.target.value)}
-                className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              {(isGenesis) && (
+                <>
+                  <select
+                    value={selectedGenre}
+                    onChange={(e) => setSelectedGenre(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                  >
+                    {GENRES.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <button
+                onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw)}
+                disabled={!!publishingFile || overLimit}
+                className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {GENRES.map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
-            )}
-            <button
-              onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre)}
-              disabled={!!publishingFile || overLimit}
-              className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
-            </button>
-            {overLimit && (
-              <span className="text-error text-xs">Reduce content to publish</span>
+                {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
+              </button>
+              {overLimit && (
+                <span className="text-error text-xs">Reduce content to publish</span>
+              )}
+            </div>
+            {(isGenesis) && (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isNsfw}
+                    onChange={(e) => setIsNsfw(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  This story contains adult content (18+)
+                </label>
+                {isNsfw && (
+                  <span className="text-xs text-amber-600">Adult content will be hidden from the default browse view.</span>
+                )}
+              </div>
             )}
           </div>
         )}

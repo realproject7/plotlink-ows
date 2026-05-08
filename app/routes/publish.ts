@@ -71,6 +71,8 @@ publish.post("/file", async (c) => {
     title: string;
     content: string;
     genre?: string;
+    language?: string;
+    isNsfw?: boolean;
     storylineId?: number;
   }>();
 
@@ -118,6 +120,7 @@ publish.post("/file", async (c) => {
           async (progress) => {
             await stream.writeSSE({ data: JSON.stringify(progress) });
           },
+          body.language,
         );
       } else {
         // Create new storyline (genesis or first file)
@@ -129,6 +132,8 @@ publish.post("/file", async (c) => {
           async (progress) => {
             await stream.writeSSE({ data: JSON.stringify(progress) });
           },
+          body.language,
+          body.isNsfw,
         );
       }
 

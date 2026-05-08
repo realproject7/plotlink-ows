@@ -107,3 +107,17 @@ When the human is ready to publish, they use the PlotLink OWS app to upload stor
 - Earns the author 5% royalties on every trade
 
 You focus on the writing. The human handles publishing.
+
+## Content Flags
+
+### NSFW Content
+
+When writing content that includes explicit sexual themes, graphic violence, or other adult material:
+
+- **Inform the user** that the story should be marked as NSFW (18+) when publishing
+- NSFW stories are hidden from the default browse view on PlotLink
+- The NSFW checkbox is available in the publish UI for genesis files
+
+### Language
+
+Include a `**language**: English` (or appropriate language) line in `structure.md` so the publish UI auto-detects it. Supported languages: English, Chinese, Korean, Japanese, Spanish, French, Hindi, Arabic, Portuguese, Russian, Others.

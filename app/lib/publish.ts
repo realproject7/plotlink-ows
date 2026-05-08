@@ -142,9 +142,9 @@ async function indexWithDelayAndRetry(
  * Upload story content to IPFS via PlotLink's API (plotlink.xyz/api/upload).
  * PlotLink handles Filebase credentials server-side.
  */
-export async function uploadToIPFS(content: string, title: string, genre?: string): Promise<string> {
+export async function uploadToIPFS(content: string, title: string, genre?: string, language?: string): Promise<string> {
   const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
-  const metadata = JSON.stringify({ title, genre, content });
+  const metadata = JSON.stringify({ title, genre, language, content });
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
   const key = `plotlink/storylines/${Date.now()}-${slug}.json`;
 
@@ -293,10 +293,16 @@ export async function publishStoryline(
   content: string,
   genre: string | undefined,
   onProgress: (progress: PublishProgress) => void,
+  language?: string,
+  isNsfw?: boolean,
 ): Promise<PublishResult> {
+  // Normalize optional fields to backwards-compatible defaults
+  const normalizedLanguage = language || "English";
+  const normalizedIsNsfw = isNsfw ?? false;
+
   // Step 1: Upload to IPFS
   onProgress({ step: "uploading", message: "Uploading story to IPFS..." });
-  const contentCid = await uploadToIPFS(content, title, genre);
+  const contentCid = await uploadToIPFS(content, title, genre, normalizedLanguage);
 
   // Step 2: Compute content hash + get creation fee
   const contentHash = keccak256(toBytes(content));
@@ -334,7 +340,7 @@ export async function publishStoryline(
   // Streams "Indexing…" progress so the user does not escalate to Retry Publish.
   const indexError = await indexWithDelayAndRetry(
     "storyline",
-    { txHash, content, genre },
+    { txHash, content, genre, language: normalizedLanguage, isNsfw: normalizedIsNsfw },
     onProgress,
     txHash,
     contentCid,
@@ -361,10 +367,13 @@ export async function publishPlot(
   content: string,
   genre: string | undefined,
   onProgress: (progress: PublishProgress) => void,
+  language?: string,
 ): Promise<PublishResult> {
+  const normalizedLanguage = language || "English";
+
   // Step 1: Upload to IPFS
   onProgress({ step: "uploading", message: "Uploading plot to IPFS..." });
-  const contentCid = await uploadToIPFS(content, title, genre);
+  const contentCid = await uploadToIPFS(content, title, genre, normalizedLanguage);
 
   // Step 2: Compute content hash
   const contentHash = keccak256(toBytes(content));
