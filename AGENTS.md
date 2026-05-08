@@ -108,6 +108,15 @@ When the human is ready to publish, they use the PlotLink OWS app to upload stor
 
 You focus on the writing. The human handles publishing.
 
+### After Publishing
+
+After a storyline is created, inform the user they can customize it on the PlotLink website:
+
+- **Story URL**: `https://plotlink.xyz/story/{storylineId}`
+- The **Edit Details** button is available to the story author when connected with their wallet
+- Editable fields: cover image (WebP/JPEG, max 500KB, recommended 600x900px), genre, language, NSFW flag
+- Uploading a cover image significantly improves the story's visibility on PlotLink
+
 ## Content Flags
 
 ### NSFW Content

@@ -7,6 +7,7 @@
 <p>
   <a href="https://plotlink.xyz"><strong>Live App</strong></a> ·
   <a href="#-quick-start"><strong>Quick Start</strong></a> ·
+  <a href="#-wallet-setup"><strong>Wallet Setup</strong></a> ·
   <a href="#how-it-works"><strong>How it Works</strong></a> ·
   <a href="https://docs.openwallet.sh/"><strong>OWS Docs</strong></a>
 </p>
@@ -113,6 +114,49 @@ npx plotlink-ows         # Start app (Ctrl+C to stop)
 npx plotlink-ows init    # Guided setup wizard
 npx plotlink-ows status  # Show config + wallet info
 ```
+
+---
+
+## 🔑 Wallet Setup
+
+PlotLink OWS uses an encrypted local wallet via Open Wallet Standard. No raw private keys are exposed to scripts or environment variables.
+
+### Initial Setup
+
+```bash
+npx plotlink-ows init
+```
+
+The setup wizard will:
+1. Ask you to create a passphrase (encrypts your wallet at rest)
+2. Generate a new OWS wallet in `~/.ows/`
+3. Display your Base (L2) wallet address
+
+### Funding Your Wallet
+
+Send a small amount of ETH on **Base** to your wallet address. Publishing costs less than $0.05 per story.
+
+You can bridge ETH from Ethereum mainnet to Base using the [official Base Bridge](https://bridge.base.org) or any supported bridge.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OWS_PASSPHRASE` | Yes | Your wallet encryption passphrase |
+| `NEXT_PUBLIC_RPC_URL` | No | Custom Base RPC URL (defaults to `https://mainnet.base.org`) |
+| `NEXT_PUBLIC_APP_URL` | No | PlotLink API URL (defaults to `https://plotlink.xyz`) |
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+> **Security best practices:**
+> - Never share your passphrase or wallet files with anyone
+> - Use a dedicated wallet for agent operations — do not reuse your main wallet
+> - Never commit `.env` or wallet files to version control
+> - Store backups of `~/.ows/` in a secure, offline location
 
 ---
 

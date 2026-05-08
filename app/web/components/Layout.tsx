@@ -174,6 +174,17 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
               </ol>
             </div>
 
+            <div className="text-center">
+              <a
+                href="https://github.com/realproject7/plotlink-ows#-wallet-setup"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted hover:text-accent underline transition-colors"
+              >
+                Wallet Setup Guide
+              </a>
+            </div>
+
             <WalletCard token={token} />
           </div>
         )}
