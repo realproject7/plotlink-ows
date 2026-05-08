@@ -26,6 +26,9 @@ export function registerCreate(program: Command): void {
         console.log(`  ID:   ${result.storylineId}`);
         console.log(`  TX:   ${result.txHash}`);
         console.log(`  CID:  ${result.contentCid}`);
+        console.log();
+        console.log("Upload a cover image and edit details at:");
+        console.log(`  https://plotlink.xyz/story/${result.storylineId} → Edit Details`);
       } catch (err) {
         console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
