@@ -424,3 +424,74 @@ export async function publishPlot(
 
   return { txHash, contentCid, storylineId, plotIndex: confirmation.plotIndex >= 0 ? confirmation.plotIndex : undefined, gasCost: confirmation.gasCost, indexError };
 }
+
+/**
+ * Upload a cover image to PlotLink via signed API call.
+ * Uses createOwsAccount for signing (not raw owsSignMsg).
+ * Returns the IPFS CID of the uploaded image.
+ */
+export async function uploadCoverImage(
+  walletName: string,
+  walletAddress: `0x${string}`,
+  imageFile: File,
+): Promise<string> {
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const account = createOwsAccount(walletName, walletAddress);
+
+  const timestamp = Date.now();
+  const message = `PlotLink: Upload cover image\nTimestamp: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const formData = new FormData();
+  formData.append("file", imageFile);
+  formData.append("message", message);
+  formData.append("signature", signature);
+
+  const res = await fetch(`${PLOTLINK_URL}/api/upload-cover`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, string>;
+    throw new Error(err.error || `Cover upload failed: HTTP ${res.status}`);
+  }
+
+  const data = await res.json() as { cid: string };
+  return data.cid;
+}
+
+/**
+ * Update storyline metadata (cover, genre, language, NSFW) on PlotLink via signed API call.
+ * Uses createOwsAccount for signing (not raw owsSignMsg).
+ * Message format must match: /^PlotLink: Update storyline #(\d+)\nTimestamp: (\d+)$/
+ */
+export async function updateStoryline(
+  walletName: string,
+  walletAddress: `0x${string}`,
+  storylineId: number,
+  updates: { coverCid?: string | null; genre?: string; language?: string; isNsfw?: boolean },
+): Promise<void> {
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const account = createOwsAccount(walletName, walletAddress);
+
+  const timestamp = Date.now();
+  const message = `PlotLink: Update storyline #${storylineId}\nTimestamp: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const res = await fetch(`${PLOTLINK_URL}/api/storyline/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      storylineId,
+      signature,
+      message,
+      ...updates,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, string>;
+    throw new Error(err.error || `Storyline update failed: HTTP ${res.status}`);
+  }
+}

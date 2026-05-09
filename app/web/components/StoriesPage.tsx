@@ -38,12 +38,21 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const knownStoriesRef = useRef<Set<string>>(new Set());
   const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  // Fetch wallet address for edit panel authorship check
+  useEffect(() => {
+    authFetch("/api/wallet")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data?.address) setWalletAddress(data.address); })
+      .catch(() => {});
+  }, [authFetch]);
 
   // Persist ratio to localStorage
   useEffect(() => {
@@ -249,6 +258,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     contentCid: data.contentCid,
                     gasCost: data.gasCost,
                     indexError: data.indexError,
+                    authorAddress: walletAddress,
                   }),
                 });
               }
@@ -351,6 +361,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           authFetch={authFetch}
           onPublish={handlePublish}
           publishingFile={publishingFile}
+          walletAddress={walletAddress}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">

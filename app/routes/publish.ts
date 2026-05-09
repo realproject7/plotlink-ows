@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost } from "../lib/publish";
+import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost, uploadCoverImage, updateStoryline } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
@@ -193,6 +193,81 @@ publish.post("/retry-index", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Indexing request failed";
     return c.json({ ok: false, error: message });
+  }
+});
+
+/** POST /api/publish/upload-cover — upload cover image with wallet signature */
+publish.post("/upload-cover", async (c) => {
+  try {
+    const wallets = listAgentWallets();
+    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+    const address = getBaseAddress(wallet);
+    if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
+
+    const formData = await c.req.formData();
+    const file = formData.get("file");
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: "No image file provided" }, 400);
+    }
+
+    // Validate file size (500KB max)
+    if (file.size > 500 * 1024) {
+      return c.json({ error: "Image exceeds 500KB limit" }, 400);
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      return c.json({ error: "File must be an image (WebP or JPEG recommended)" }, 400);
+    }
+
+    const cid = await uploadCoverImage(wallet.name, address as `0x${string}`, file);
+    return c.json({ cid });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Cover upload failed";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/** POST /api/publish/update-storyline — update storyline metadata with wallet signature */
+publish.post("/update-storyline", async (c) => {
+  try {
+    const wallets = listAgentWallets();
+    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+    const address = getBaseAddress(wallet);
+    if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
+
+    const body = await c.req.json<{
+      storylineId: number;
+      coverCid?: string | null;
+      genre?: string;
+      language?: string;
+      isNsfw?: boolean;
+    }>();
+
+    if (!body.storylineId) {
+      return c.json({ error: "storylineId required" }, 400);
+    }
+
+    await updateStoryline(
+      wallet.name,
+      address as `0x${string}`,
+      body.storylineId,
+      {
+        coverCid: body.coverCid,
+        genre: body.genre,
+        language: body.language,
+        isNsfw: body.isNsfw,
+      },
+    );
+
+    return c.json({ ok: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Update failed";
+    return c.json({ error: message }, 500);
   }
 });
 

@@ -11,6 +11,7 @@ interface PreviewPanelProps {
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => void;
   publishingFile?: string | null;
+  walletAddress?: string | null;
 }
 
 interface FileData {
@@ -22,11 +23,12 @@ interface FileData {
   plotIndex?: number;
   indexError?: string;
   publishedAt?: string;
+  authorAddress?: string;
 }
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -40,6 +42,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [isNsfw, setIsNsfw] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
+
+  // Edit panel state for published stories
+  const [showEditPanel, setShowEditPanel] = useState(false);
+  const [editGenre, setEditGenre] = useState(GENRES[0] as string);
+  const [editLanguage, setEditLanguage] = useState(LANGUAGES[0] as string);
+  const [editNsfw, setEditNsfw] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editMetaLoaded, setEditMetaLoaded] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const prevFileRef = useRef<string | null>(null);
 
@@ -120,6 +135,118 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     } catch { /* ignore */ }
     setSaving(false);
   }, [storyName, fileName, authFetch, editContent]);
+
+  // Handle cover image selection
+  const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+      setEditError("Image exceeds 500KB limit");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setEditError("File must be an image");
+      return;
+    }
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+    setEditError(null);
+  }, []);
+
+  // Save storyline edits (cover upload + metadata update)
+  const handleEditSave = useCallback(async () => {
+    if (!fileData?.storylineId) return;
+    setEditSaving(true);
+    setEditError(null);
+    setEditSuccess(false);
+
+    try {
+      let coverCid: string | undefined;
+
+      // Upload cover image if selected
+      if (coverFile) {
+        const formData = new FormData();
+        formData.append("file", coverFile);
+        const uploadRes = await authFetch("/api/publish/upload-cover", {
+          method: "POST",
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          throw new Error(err.error || "Cover upload failed");
+        }
+        const uploadData = await uploadRes.json();
+        coverCid = uploadData.cid;
+      }
+
+      // Update storyline metadata
+      const updateRes = await authFetch("/api/publish/update-storyline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storylineId: fileData.storylineId,
+          ...(coverCid !== undefined && { coverCid }),
+          genre: editGenre,
+          language: editLanguage,
+          isNsfw: editNsfw,
+        }),
+      });
+
+      if (!updateRes.ok) {
+        const err = await updateRes.json();
+        throw new Error(err.error || "Update failed");
+      }
+
+      setEditSuccess(true);
+      setCoverFile(null);
+      setTimeout(() => setEditSuccess(false), 3000);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setEditSaving(false);
+    }
+  }, [fileData?.storylineId, coverFile, editGenre, editLanguage, editNsfw, authFetch]);
+
+  // Reset edit panel state when changing files
+  useEffect(() => {
+    setShowEditPanel(false);
+    setCoverFile(null);
+    setCoverPreview(null);
+    setEditError(null);
+    setEditSuccess(false);
+    setEditMetaLoaded(false);
+  }, [storyName, fileName]);
+
+  // Fetch current storyline metadata when edit panel opens
+  useEffect(() => {
+    if (!showEditPanel || !fileData?.storylineId) return;
+    setEditMetaLoaded(false);
+    const PLOTLINK_URL = "https://plotlink.xyz";
+    let cancelled = false;
+    fetch(`${PLOTLINK_URL}/api/storyline/${fileData.storylineId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (cancelled) return;
+        if (!data) {
+          setEditError("Could not load current story metadata");
+          return;
+        }
+        if (data.genre) {
+          const found = GENRES.find((g) => g.toLowerCase() === data.genre.toLowerCase());
+          if (found) setEditGenre(found);
+        }
+        if (data.language) {
+          const found = LANGUAGES.find((l) => l.toLowerCase() === data.language.toLowerCase());
+          if (found) setEditLanguage(found);
+        }
+        if (data.isNsfw !== undefined) setEditNsfw(!!data.isNsfw);
+        setEditMetaLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setEditError("Could not load current story metadata");
+      });
+    return () => { cancelled = true; };
+  }, [showEditPanel, fileData?.storylineId]);
 
   // Ctrl+S / Cmd+S to save
   useEffect(() => {
@@ -364,37 +491,123 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             )}
           </div>
         ) : fileData?.status === "published" ? (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-green-700">Published</span>
-            {fileData.storylineId && (
-              <a
-                href={(() => {
-                  const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
-                  if (!isPlot) return base;
-                  // plotIndex convention: contract emits 0-based (genesis=0, plot-01=1)
-                  // plotlink.xyz URLs use the same 0-based index
-                  // Filename fallback: plot-01.md → parseInt("01") = 1 (matches contract)
-                  const idx = fileData.plotIndex != null && fileData.plotIndex > 0
-                    ? fileData.plotIndex
-                    : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "1");
-                  return `${base}/${idx}`;
-                })()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent underline"
-              >
-                View on PlotLink
-              </a>
-            )}
-            {fileData.txHash && (
-              <a
-                href={`https://basescan.org/tx/${fileData.txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted underline"
-              >
-                BaseScan
-              </a>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-green-700">Published</span>
+              {fileData.storylineId && (
+                <a
+                  href={(() => {
+                    const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
+                    if (!isPlot) return base;
+                    const idx = fileData.plotIndex != null && fileData.plotIndex > 0
+                      ? fileData.plotIndex
+                      : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "1");
+                    return `${base}/${idx}`;
+                  })()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline"
+                >
+                  View on PlotLink
+                </a>
+              )}
+              {fileData.txHash && (
+                <a
+                  href={`https://basescan.org/tx/${fileData.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted underline"
+                >
+                  BaseScan
+                </a>
+              )}
+              {isGenesis && walletAddress && fileData.storylineId && (!fileData.authorAddress || fileData.authorAddress.toLowerCase() === walletAddress.toLowerCase()) && (
+                <button
+                  onClick={() => setShowEditPanel((v) => !v)}
+                  className="px-2 py-0.5 border border-border text-xs rounded hover:bg-surface"
+                >
+                  {showEditPanel ? "Close Edit" : "Edit Story"}
+                </button>
+              )}
+            </div>
+            {/* Edit panel for published genesis files */}
+            {showEditPanel && isGenesis && fileData.storylineId && (
+              <div className="border border-border rounded p-3 flex flex-col gap-3 bg-surface">
+                {/* Cover image upload */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-foreground">Cover Image</span>
+                  <div className="flex items-start gap-3">
+                    {coverPreview && (
+                      <div className="relative">
+                        <img
+                          src={coverPreview}
+                          alt="Cover preview"
+                          className="w-16 h-24 object-cover rounded border border-border"
+                        />
+                        <button
+                          onClick={() => { setCoverFile(null); setCoverPreview(null); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
+                        >
+                          x
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/webp,image/jpeg,image/png"
+                        onChange={handleCoverSelect}
+                        className="text-xs"
+                      />
+                      <span className="text-xs text-muted">WebP/JPEG, max 500KB, 600x900px recommended</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Genre & Language */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={editGenre}
+                    onChange={(e) => setEditGenre(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                  >
+                    {GENRES.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={editLanguage}
+                    onChange={(e) => setEditLanguage(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* NSFW toggle */}
+                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editNsfw}
+                    onChange={(e) => setEditNsfw(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  This story contains adult content (18+)
+                </label>
+                {/* Save / status */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleEditSave}
+                    disabled={editSaving || !editMetaLoaded}
+                    className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
+                  >
+                    {editSaving ? "Saving..." : !editMetaLoaded ? "Loading..." : "Save Changes"}
+                  </button>
+                  {editSuccess && <span className="text-green-700 text-xs">Updated!</span>}
+                  {editError && <span className="text-error text-xs">{editError}</span>}
+                </div>
+              </div>
             )}
           </div>
         ) : (
