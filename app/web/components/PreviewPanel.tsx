@@ -205,7 +205,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     }
   }, [fileData?.storylineId, coverFile, editGenre, editLanguage, editNsfw, authFetch]);
 
-  // Reset edit panel state when toggling or changing files
+  // Reset edit panel state when changing files
   useEffect(() => {
     setShowEditPanel(false);
     setCoverFile(null);
@@ -213,6 +213,29 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setEditError(null);
     setEditSuccess(false);
   }, [storyName, fileName]);
+
+  // Fetch current storyline metadata when edit panel opens
+  useEffect(() => {
+    if (!showEditPanel || !fileData?.storylineId) return;
+    const PLOTLINK_URL = "https://plotlink.xyz";
+    let cancelled = false;
+    fetch(`${PLOTLINK_URL}/api/storyline/${fileData.storylineId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (data.genre) {
+          const found = GENRES.find((g) => g.toLowerCase() === data.genre.toLowerCase());
+          if (found) setEditGenre(found);
+        }
+        if (data.language) {
+          const found = LANGUAGES.find((l) => l.toLowerCase() === data.language.toLowerCase());
+          if (found) setEditLanguage(found);
+        }
+        if (data.isNsfw !== undefined) setEditNsfw(!!data.isNsfw);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [showEditPanel, fileData?.storylineId]);
 
   // Ctrl+S / Cmd+S to save
   useEffect(() => {
