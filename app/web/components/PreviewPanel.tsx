@@ -51,6 +51,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  const [editMetaLoaded, setEditMetaLoaded] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -213,17 +214,23 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setCoverPreview(null);
     setEditError(null);
     setEditSuccess(false);
+    setEditMetaLoaded(false);
   }, [storyName, fileName]);
 
   // Fetch current storyline metadata when edit panel opens
   useEffect(() => {
     if (!showEditPanel || !fileData?.storylineId) return;
+    setEditMetaLoaded(false);
     const PLOTLINK_URL = "https://plotlink.xyz";
     let cancelled = false;
     fetch(`${PLOTLINK_URL}/api/storyline/${fileData.storylineId}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
-        if (cancelled || !data) return;
+        if (cancelled) return;
+        if (!data) {
+          setEditError("Could not load current story metadata");
+          return;
+        }
         if (data.genre) {
           const found = GENRES.find((g) => g.toLowerCase() === data.genre.toLowerCase());
           if (found) setEditGenre(found);
@@ -233,8 +240,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           if (found) setEditLanguage(found);
         }
         if (data.isNsfw !== undefined) setEditNsfw(!!data.isNsfw);
+        setEditMetaLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setEditError("Could not load current story metadata");
+      });
     return () => { cancelled = true; };
   }, [showEditPanel, fileData?.storylineId]);
 
@@ -589,10 +599,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleEditSave}
-                    disabled={editSaving}
+                    disabled={editSaving || !editMetaLoaded}
                     className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
                   >
-                    {editSaving ? "Saving..." : "Save Changes"}
+                    {editSaving ? "Saving..." : !editMetaLoaded ? "Loading..." : "Save Changes"}
                   </button>
                   {editSuccess && <span className="text-green-700 text-xs">Updated!</span>}
                   {editError && <span className="text-error text-xs">{editError}</span>}
