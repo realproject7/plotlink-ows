@@ -23,6 +23,7 @@ interface FileStatus {
   publishedAt?: string;
   gasCost?: string;
   indexError?: string;
+  authorAddress?: string;
 }
 
 interface StoryInfo {
@@ -243,6 +244,7 @@ stories.post("/:name/:file/publish-status", async (c) => {
     contentCid: string;
     gasCost?: string;
     indexError?: string;
+    authorAddress?: string;
   }>();
 
   const status = readPublishStatus(storyDir);
@@ -255,6 +257,7 @@ stories.post("/:name/:file/publish-status", async (c) => {
     plotIndex: body.plotIndex ?? existing?.plotIndex,
     contentCid: body.contentCid || existing?.contentCid,
     gasCost: body.gasCost || existing?.gasCost,
+    authorAddress: body.authorAddress || existing?.authorAddress,
     publishedAt: new Date().toISOString(),
     ...(body.indexError ? { indexError: body.indexError } : {}),
   };

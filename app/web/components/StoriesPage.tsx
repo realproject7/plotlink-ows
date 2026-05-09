@@ -258,6 +258,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     contentCid: data.contentCid,
                     gasCost: data.gasCost,
                     indexError: data.indexError,
+                    authorAddress: walletAddress,
                   }),
                 });
               }

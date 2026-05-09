@@ -23,6 +23,7 @@ interface FileData {
   plotIndex?: number;
   indexError?: string;
   publishedAt?: string;
+  authorAddress?: string;
 }
 
 type Tab = "preview" | "edit";
@@ -510,7 +511,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   BaseScan
                 </a>
               )}
-              {isGenesis && walletAddress && fileData.storylineId && (
+              {isGenesis && walletAddress && fileData.storylineId && (!fileData.authorAddress || fileData.authorAddress.toLowerCase() === walletAddress.toLowerCase()) && (
                 <button
                   onClick={() => setShowEditPanel((v) => !v)}
                   className="px-2 py-0.5 border border-border text-xs rounded hover:bg-surface"
