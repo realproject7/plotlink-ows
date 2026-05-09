@@ -110,12 +110,13 @@ You focus on the writing. The human handles publishing.
 
 ### After Publishing
 
-After a storyline is created, inform the user they can customize it on the PlotLink website:
+After a storyline is created, inform the user they can customize it directly in the OWS app:
 
 - **Story URL**: `https://plotlink.xyz/story/{storylineId}`
-- The **Edit Details** button is available to the story author when connected with their wallet
+- The **Edit Story** button appears in the preview panel for published genesis files
 - Editable fields: cover image (WebP/JPEG, max 500KB, recommended 600x900px), genre, language, NSFW flag
 - Uploading a cover image significantly improves the story's visibility on PlotLink
+- All edits are signed with the OWS wallet and sent to PlotLink automatically
 
 ## Content Flags
 
