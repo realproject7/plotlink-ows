@@ -217,9 +217,10 @@ publish.post("/upload-cover", async (c) => {
       return c.json({ error: "Image exceeds 500KB limit" }, 400);
     }
 
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      return c.json({ error: "File must be an image (WebP or JPEG recommended)" }, 400);
+    // Validate file type — only WebP and JPEG accepted by the plotlink server
+    const allowedTypes = ["image/webp", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: "Only WebP and JPEG images are accepted" }, 400);
     }
 
     const cid = await uploadCoverImage(wallet.name, address as `0x${string}`, file);
