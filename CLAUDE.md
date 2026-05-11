@@ -36,7 +36,7 @@ The local writer app runs on `http://localhost:7777` (configurable via `APP_PORT
 
 ### Authentication
 
-The OWS passphrase is stored hashed in `~/.plotlink-ows/.env` as `OWS_PASSPHRASE`. It also decrypts the OWS wallet for signing.
+The OWS passphrase is stored in plaintext in `~/.plotlink-ows/.env` as `OWS_PASSPHRASE`. It is used to decrypt and sign with the OWS wallet. For login verification, the passphrase is hashed with HMAC-SHA256 and compared against the stored hash in the database.
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
@@ -80,6 +80,19 @@ Both upload-cover and update-storyline sign messages with the OWS wallet (messag
 | `/api/stories/:name/:file` | PUT | Update file content `{ content }` |
 | `/api/stories/:name/:file/publish-status` | POST | Record publish result (txHash, storylineId, etc.) |
 | `/api/stories/:name/:file/mark-not-indexed` | POST | Mark file as not indexed `{ indexError? }` |
+
+### Terminal
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/terminal/spawn` | POST | Spawn Claude CLI session for a story `{ storyName?, resume? }` |
+| `/api/terminal/session/:storyName` | GET | Get stored session ID for a story |
+| `/api/terminal/status` | GET | List all active terminal sessions |
+| `/api/terminal/rename` | POST | Rename session `{ oldName, newName }` |
+| `/api/terminal/stop` | POST | Kill default PTY (legacy) |
+| `/api/terminal/:storyName` | DELETE | Kill a story's PTY |
+| `/api/terminal/:storyName/discard` | DELETE | Kill PTY and clean metadata |
+| `/ws/terminal` | WebSocket | Live PTY relay `?token={token}&story={name}&resume={bool}` |
 
 ### Other Endpoints
 
