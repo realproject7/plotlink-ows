@@ -30,6 +30,75 @@ See `stories/_example/` for a complete reference.
 - **Storage**: Filebase (IPFS)
 - **Chain**: Base (L2)
 
+## Local Writer API
+
+The local writer app runs on `http://localhost:7777` (configurable via `APP_PORT`). All endpoints except auth use `Authorization: Bearer {token}` headers.
+
+### Authentication
+
+The OWS passphrase is stored hashed in `~/.plotlink-ows/.env` as `OWS_PASSPHRASE`. It also decrypts the OWS wallet for signing.
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/auth/status` | GET | No | Check if passphrase is configured |
+| `/api/auth/setup` | POST | No | First-run passphrase setup (≥4 chars) → returns `{ token }` |
+| `/api/auth/login` | POST | No | Login with passphrase → returns `{ token }` (24h TTL) |
+| `/api/auth/verify` | GET | Bearer | Check token validity |
+| `/api/auth/reset-passphrase` | POST | Bearer | Update passphrase |
+
+### Publishing
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/publish/preflight` | GET | Check wallet balance, Filebase config |
+| `/api/publish/file` | POST | Publish story on-chain (SSE stream of progress events) |
+| `/api/publish/retry-index` | POST | Retry indexing for a published file |
+| `/api/publish/upload-cover` | POST | Upload cover image — FormData `file` field, **WebP or JPEG only**, max 500KB → returns `{ cid }` |
+| `/api/publish/update-storyline` | POST | Update storyline metadata (coverCid, genre, language, isNsfw) |
+
+**Publish flow:** Upload to IPFS → estimate gas → sign with OWS wallet → broadcast → confirm → index on plotlink.xyz (8s delay + 10 retries × 30s). Genesis files call `createStoryline`, plot files (`plot-*.md`) call `chainPlot`. Content limit: 10K chars.
+
+**Cover update workflow:**
+1. `POST /api/publish/upload-cover` with image file → get `cid`
+2. `POST /api/publish/update-storyline` with `{ storylineId, coverCid: cid }` → updates on plotlink.xyz
+
+**Metadata update workflow:**
+1. `POST /api/publish/update-storyline` with `{ storylineId, genre?, language?, isNsfw? }`
+
+Both upload-cover and update-storyline sign messages with the OWS wallet (message format: `PlotLink: Upload cover image\nTimestamp: {ts}` and `PlotLink: Update storyline #{id}\nTimestamp: {ts}`).
+
+### Stories
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/stories` | GET | List all stories |
+| `/api/stories/archived` | GET | List archived stories |
+| `/api/stories/archive` | POST | Archive a story `{ name }` |
+| `/api/stories/restore` | POST | Restore archived story `{ name }` |
+| `/api/stories/:name` | GET | Story detail with file contents |
+| `/api/stories/:name/:file` | GET | Single file content and publish status |
+| `/api/stories/:name/:file` | PUT | Update file content `{ content }` |
+| `/api/stories/:name/:file/publish-status` | POST | Record publish result (txHash, storylineId, etc.) |
+
+### Other Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/wallet` | GET | Wallet info and balances (ETH, USDC, PLOT) |
+| `/api/wallet/create` | POST | Create OWS wallet if not exists |
+| `/api/dashboard` | GET | Writer dashboard stats (stories, costs, royalties) |
+| `/api/settings/register-agent` | POST | Register wallet on ERC-8004 |
+| `/api/settings/generate-binding` | POST | Generate wallet binding proof |
+| `/api/settings/link-status` | GET | Check ERC-8004 registration status |
+
+### Valid Genres and Languages
+
+Defined in `lib/genres.ts`:
+
+**Genres (22):** Romance, Fantasy, Science Fiction, Mystery, Thriller, Horror, Adventure, Historical Fiction, Contemporary Lit, Humor, Poetry, Non-Fiction, Fanfiction, Short Story, Paranormal, Werewolf, LGBTQ+, New Adult, Teen Fiction, Diverse Lit, Others
+
+**Languages (11):** English, Chinese, Korean, Japanese, Spanish, French, Hindi, Arabic, Portuguese, Russian, Others
+
 ## Commands
 
 ```sh
