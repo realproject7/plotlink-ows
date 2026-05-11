@@ -79,6 +79,7 @@ Both upload-cover and update-storyline sign messages with the OWS wallet (messag
 | `/api/stories/:name/:file` | GET | Single file content and publish status |
 | `/api/stories/:name/:file` | PUT | Update file content `{ content }` |
 | `/api/stories/:name/:file/publish-status` | POST | Record publish result (txHash, storylineId, etc.) |
+| `/api/stories/:name/:file/mark-not-indexed` | POST | Mark file as not indexed `{ indexError? }` |
 
 ### Other Endpoints
 
@@ -95,7 +96,7 @@ Both upload-cover and update-storyline sign messages with the OWS wallet (messag
 
 Defined in `lib/genres.ts`:
 
-**Genres (22):** Romance, Fantasy, Science Fiction, Mystery, Thriller, Horror, Adventure, Historical Fiction, Contemporary Lit, Humor, Poetry, Non-Fiction, Fanfiction, Short Story, Paranormal, Werewolf, LGBTQ+, New Adult, Teen Fiction, Diverse Lit, Others
+**Genres (21):** Romance, Fantasy, Science Fiction, Mystery, Thriller, Horror, Adventure, Historical Fiction, Contemporary Lit, Humor, Poetry, Non-Fiction, Fanfiction, Short Story, Paranormal, Werewolf, LGBTQ+, New Adult, Teen Fiction, Diverse Lit, Others
 
 **Languages (11):** English, Chinese, Korean, Japanese, Spanish, French, Hindi, Arabic, Portuguese, Russian, Others
 
