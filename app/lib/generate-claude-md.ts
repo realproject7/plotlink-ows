@@ -107,11 +107,11 @@ stories/{story-name}/
   ...
 \`\`\`
 
-## Valid Genres (21)
+## Supported Genres (21)
 
 Romance, Fantasy, Science Fiction, Mystery, Thriller, Horror, Adventure, Historical Fiction, Contemporary Lit, Humor, Poetry, Non-Fiction, Fanfiction, Short Story, Paranormal, Werewolf, LGBTQ+, New Adult, Teen Fiction, Diverse Lit, Others
 
-## Valid Languages (11)
+## Supported Languages (11)
 
 English, Chinese, Korean, Japanese, Spanish, French, Hindi, Arabic, Portuguese, Russian, Others
 `;
