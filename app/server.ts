@@ -23,6 +23,7 @@ import { terminalRoutes, attachTerminalWs } from "./routes/terminal";
 import { storiesRoutes } from "./routes/stories";
 import { settingsRoutes } from "./routes/settings";
 import { initDb } from "./db";
+import { generateClaudeMd } from "./lib/generate-claude-md";
 import { execSync } from "child_process";
 import fs from "fs";
 
@@ -116,6 +117,9 @@ function migrateOldData() {
 async function start() {
   // Auto-migrate from old package-relative paths
   migrateOldData();
+
+  // Generate/update ~/.plotlink-ows/CLAUDE.md for agent discovery
+  generateClaudeMd();
 
   // Run Prisma db push to ensure schema is up to date
   const schemaPath = path.join(__dirname, "prisma", "schema.prisma");
