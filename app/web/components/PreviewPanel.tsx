@@ -161,10 +161,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setEditError(null);
   }, []);
 
-  // Handle illustration image upload
-  const handleIllustrationUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Handle illustration image upload from File object
+  const uploadIllustration = useCallback(async (file: File) => {
     if (file.size > 500 * 1024) {
       setIllustrationError("Image exceeds 500KB limit");
       return;
@@ -196,6 +194,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       if (illustrationInputRef.current) illustrationInputRef.current.value = "";
     }
   }, [authFetch]);
+
+  const handleIllustrationInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadIllustration(file);
+  }, [uploadIllustration]);
 
   // Save storyline edits (cover upload + metadata update)
   const handleEditSave = useCallback(async () => {
@@ -476,19 +479,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                       e.preventDefault();
                       e.stopPropagation();
                       const file = e.dataTransfer.files?.[0];
-                      if (file && illustrationInputRef.current) {
-                        const dt = new DataTransfer();
-                        dt.items.add(file);
-                        illustrationInputRef.current.files = dt.files;
-                        illustrationInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
-                      }
+                      if (file) uploadIllustration(file);
                     }}
                   >
                     <input
                       ref={illustrationInputRef}
                       type="file"
                       accept="image/webp,image/jpeg"
-                      onChange={handleIllustrationUpload}
+                      onChange={handleIllustrationInput}
                       className="hidden"
                     />
                     <span className="text-xs text-muted">
