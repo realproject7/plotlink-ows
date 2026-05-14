@@ -56,6 +56,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [editSuccess, setEditSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
+  // Inline illustration state
+  const [showIllustrations, setShowIllustrations] = useState(false);
+  const [illustrationUploading, setIllustrationUploading] = useState(false);
+  const [illustrationError, setIllustrationError] = useState<string | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<Array<{ cid: string; url: string }>>([]);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const illustrationInputRef = useRef<HTMLInputElement>(null);
+
   const prevFileRef = useRef<string | null>(null);
 
   const loadFile = useCallback(async () => {
@@ -153,6 +161,45 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setEditError(null);
   }, []);
 
+  // Handle illustration image upload from File object
+  const uploadIllustration = useCallback(async (file: File) => {
+    if (file.size > 500 * 1024) {
+      setIllustrationError("Image exceeds 500KB limit");
+      return;
+    }
+    const allowedTypes = ["image/webp", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      setIllustrationError("Only WebP and JPEG images are accepted");
+      return;
+    }
+    setIllustrationUploading(true);
+    setIllustrationError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await authFetch("/api/publish/upload-plot-image", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      const data = await res.json();
+      setUploadedImages((prev) => [...prev, { cid: data.cid, url: data.url }]);
+    } catch (err) {
+      setIllustrationError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setIllustrationUploading(false);
+      if (illustrationInputRef.current) illustrationInputRef.current.value = "";
+    }
+  }, [authFetch]);
+
+  const handleIllustrationInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadIllustration(file);
+  }, [uploadIllustration]);
+
   // Save storyline edits (cover upload + metadata update)
   const handleEditSave = useCallback(async () => {
     if (!fileData?.storylineId) return;
@@ -215,6 +262,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setEditError(null);
     setEditSuccess(false);
     setEditMetaLoaded(false);
+    setShowIllustrations(false);
+    setUploadedImages([]);
+    setIllustrationError(null);
   }, [storyName, fileName]);
 
   // Fetch current storyline metadata when edit panel opens
@@ -407,6 +457,70 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               {saving ? "Saving..." : "Save"}
             </button>
           </div>
+          {/* Inline illustration upload for plot files */}
+          {isPlot && (
+            <div className="px-3 py-1.5 border-t border-border">
+              <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showIllustrations}
+                  onChange={(e) => setShowIllustrations(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Add illustrations in the plot
+              </label>
+              {showIllustrations && (
+                <div className="mt-2 flex flex-col gap-2">
+                  <div
+                    className="border-2 border-dashed border-border rounded p-3 flex flex-col items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
+                    onClick={() => illustrationInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) uploadIllustration(file);
+                    }}
+                  >
+                    <input
+                      ref={illustrationInputRef}
+                      type="file"
+                      accept="image/webp,image/jpeg"
+                      onChange={handleIllustrationInput}
+                      className="hidden"
+                    />
+                    <span className="text-xs text-muted">
+                      {illustrationUploading ? "Uploading..." : "Drop image here or click to browse"}
+                    </span>
+                    <span className="text-xs text-muted">WebP/JPEG, max 500KB</span>
+                  </div>
+                  {illustrationError && (
+                    <span className="text-error text-xs">{illustrationError}</span>
+                  )}
+                  {uploadedImages.map((img, i) => (
+                    <div key={img.cid} className="border border-border rounded p-2 flex flex-col gap-1 bg-surface">
+                      <span className="text-xs text-green-700">Image uploaded! Copy the markdown below and paste it where you want the illustration to appear in your plot:</span>
+                      <div className="flex items-center gap-1.5">
+                        <code className="flex-1 text-xs bg-background px-2 py-1 rounded font-mono break-all">
+                          ![Scene description]({img.url})
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`![Scene description](${img.url})`);
+                            setCopiedIndex(i);
+                            setTimeout(() => setCopiedIndex(null), 2000);
+                          }}
+                          className="px-2 py-1 text-xs border border-border rounded hover:bg-surface shrink-0"
+                        >
+                          {copiedIndex === i ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
