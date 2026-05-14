@@ -57,6 +57,14 @@ For login, the passphrase is hashed with HMAC-SHA256 and compared against the st
 
 Both upload-cover and update-storyline sign messages with the OWS wallet.
 
+**Illustration workflow (for plot files):**
+1. Upload image via \`POST /api/publish/upload-plot-image\` → get \`{ cid, url }\`
+2. Insert markdown in the plot content: \`![Scene description](url)\`
+3. Verify the image renders correctly in Preview before publishing
+4. Publish the plot — content is stored on IPFS with an on-chain keccak256 hash
+
+**WARNING: Content is immutable after publish.** Once published, plot content (including image references) cannot be edited, removed, or changed. Always verify illustrations in Preview before publishing.
+
 ## Stories
 
 | Endpoint | Method | Purpose |
