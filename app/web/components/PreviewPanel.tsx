@@ -500,70 +500,6 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               {saving ? "Saving..." : "Save"}
             </button>
           </div>
-          {/* Inline illustration upload for plot files */}
-          {isPlot && (
-            <div className="px-3 py-1.5 border-t border-border">
-              <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showIllustrations}
-                  onChange={(e) => setShowIllustrations(e.target.checked)}
-                  className="rounded border-border"
-                />
-                Add illustrations in the plot
-              </label>
-              {showIllustrations && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <div
-                    className="border-2 border-dashed border-border rounded p-3 flex flex-col items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
-                    onClick={() => illustrationInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) uploadIllustration(file);
-                    }}
-                  >
-                    <input
-                      ref={illustrationInputRef}
-                      type="file"
-                      accept="image/webp,image/jpeg"
-                      onChange={handleIllustrationInput}
-                      className="hidden"
-                    />
-                    <span className="text-xs text-muted">
-                      {illustrationUploading ? "Uploading..." : "Drop image here or click to browse"}
-                    </span>
-                    <span className="text-xs text-muted">WebP/JPEG, max 500KB</span>
-                  </div>
-                  {illustrationError && (
-                    <span className="text-error text-xs">{illustrationError}</span>
-                  )}
-                  {uploadedImages.map((img, i) => (
-                    <div key={img.cid} className="border border-border rounded p-2 flex flex-col gap-1 bg-surface">
-                      <span className="text-xs text-green-700">Image uploaded! Copy the markdown below and paste it where you want the illustration to appear in your plot:</span>
-                      <div className="flex items-center gap-1.5">
-                        <code className="flex-1 text-xs bg-background px-2 py-1 rounded font-mono break-all">
-                          ![Scene description]({img.url})
-                        </code>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(`![Scene description](${img.url})`);
-                            setCopiedIndex(i);
-                            setTimeout(() => setCopiedIndex(null), 2000);
-                          }}
-                          className="px-2 py-1 text-xs border border-border rounded hover:bg-surface shrink-0"
-                        >
-                          {copiedIndex === i ? "Copied!" : "Copy"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -769,6 +705,70 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {/* Inline illustration upload for plot files (Preview tab only) */}
+            {isPlot && activeTab === "preview" && (
+              <div>
+                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showIllustrations}
+                    onChange={(e) => setShowIllustrations(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  Add illustrations in the plot
+                </label>
+                {showIllustrations && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div
+                      className="border-2 border-dashed border-border rounded p-3 flex flex-col items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
+                      onClick={() => illustrationInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) uploadIllustration(file);
+                      }}
+                    >
+                      <input
+                        ref={illustrationInputRef}
+                        type="file"
+                        accept="image/webp,image/jpeg"
+                        onChange={handleIllustrationInput}
+                        className="hidden"
+                      />
+                      <span className="text-xs text-muted">
+                        {illustrationUploading ? "Uploading..." : "Drop image here or click to browse"}
+                      </span>
+                      <span className="text-xs text-muted">WebP/JPEG, max 500KB</span>
+                    </div>
+                    {illustrationError && (
+                      <span className="text-error text-xs">{illustrationError}</span>
+                    )}
+                    {uploadedImages.map((img, i) => (
+                      <div key={img.cid} className="border border-border rounded p-2 flex flex-col gap-1 bg-surface">
+                        <span className="text-xs text-green-700">Image uploaded! Copy the markdown below and paste it where you want the illustration to appear in your plot:</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="flex-1 text-xs bg-background px-2 py-1 rounded font-mono break-all">
+                            ![Scene description]({img.url})
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(`![Scene description](${img.url})`);
+                              setCopiedIndex(i);
+                              setTimeout(() => setCopiedIndex(null), 2000);
+                            }}
+                            className="px-2 py-1 text-xs border border-border rounded hover:bg-surface shrink-0"
+                          >
+                            {copiedIndex === i ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               {(isGenesis) && (
                 <>
