@@ -33,7 +33,7 @@ function validateImageRefs(text: string): { count: number; warnings: string[] } 
   const warnings: string[] = [];
   for (const ref of refs) {
     if (!ref.url.startsWith(IPFS_GATEWAY)) {
-      warnings.push(`Non-IPFS image URL: ${ref.url.slice(0, 60)}...`);
+      warnings.push(`Non-IPFS image URL: ${ref.url.length > 60 ? ref.url.slice(0, 60) + "..." : ref.url}`);
     }
   }
   // Check for malformed image markdown (missing closing bracket/paren)
