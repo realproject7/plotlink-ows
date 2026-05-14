@@ -69,6 +69,7 @@ function WalletSetupPage({ token, onComplete }: { token: string; onComplete: () 
 export function Layout({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [page, setPage] = useState<Page>("home");
   const [storyCount, setStoryCount] = useState(0);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   const authFetch = useCallback(async (url: string, opts?: RequestInit) => {
     return fetch(url, {
@@ -79,6 +80,12 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
       },
     });
   }, [token]);
+
+  useEffect(() => {
+    fetch("/api/health").then((r) => r.json()).then((d) => {
+      if (d.version) setAppVersion(d.version);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function checkSetup() {
@@ -111,7 +118,7 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
           <button onClick={() => { if (page !== "wallet-setup") setPage("home"); }} className="flex items-center gap-2 hover:opacity-80">
             <span className="text-accent text-sm font-bold tracking-tight">PlotLink OWS</span>
           </button>
-          <span className="text-muted text-[10px] uppercase tracking-wider">writer</span>
+          <span className="text-muted text-[10px] uppercase tracking-wider">writer{appVersion ? ` v${appVersion}` : ""}</span>
         </div>
         {page !== "wallet-setup" && (
         <nav className="flex items-center gap-4">
