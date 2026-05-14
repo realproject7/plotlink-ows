@@ -2,8 +2,47 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
+
+/** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    img: ["src", "alt", "title"],
+  },
+};
+
+const IPFS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
+
+/** Find all markdown image references in content */
+function findImageRefs(text: string): Array<{ full: string; alt: string; url: string }> {
+  const results: Array<{ full: string; alt: string; url: string }> = [];
+  const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    results.push({ full: m[0], alt: m[1], url: m[2] });
+  }
+  return results;
+}
+
+/** Validate image references for publishing */
+function validateImageRefs(text: string): { count: number; warnings: string[] } {
+  const refs = findImageRefs(text);
+  const warnings: string[] = [];
+  for (const ref of refs) {
+    if (!ref.url.startsWith(IPFS_GATEWAY)) {
+      warnings.push(`Non-IPFS image URL: ${ref.url.length > 60 ? ref.url.slice(0, 60) + "..." : ref.url}`);
+    }
+  }
+  // Check for malformed image markdown (missing closing bracket/paren)
+  const malformed = text.match(/!\[[^\]]*\]\([^)]*$|!\[[^\]]*$(?!\])/gm);
+  if (malformed) {
+    warnings.push("Malformed image markdown detected — check brackets and parentheses");
+  }
+  return { count: refs.length, warnings };
+}
 
 interface PreviewPanelProps {
   storyName: string | null;
@@ -360,6 +399,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Don't show over-limit warning for already-published files
   const overLimit = !isPublished && charLimit !== null && charCount > charLimit;
 
+  // Pre-publish image validation for pending content
+  const publishContent = fileData?.content ?? "";
+  const imageValidation = !isPublished ? validateImageRefs(publishContent) : { count: 0, warnings: [] };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header with file path + tabs */}
@@ -422,7 +465,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             <div className="prose max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkBreaks, remarkGfm]}
-                rehypePlugins={[rehypeSanitize]}
+                rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
               >
                 {fileData.content}
               </ReactMarkdown>
@@ -750,7 +793,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </>
               )}
               <button
-                onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw)}
+                onClick={() => {
+                  if (!storyName || !fileName) return;
+                  if (imageValidation.count > 0) {
+                    const msg = `This plot contains ${imageValidation.count} illustration(s). Content is immutable after publishing — image references cannot be changed or removed.\n\nPlease verify illustrations appear correctly in Preview before continuing.\n\nPublish now?`;
+                    if (!window.confirm(msg)) return;
+                  }
+                  onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
+                }}
                 disabled={!!publishingFile || overLimit}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -760,6 +810,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <span className="text-error text-xs">Reduce content to publish</span>
               )}
             </div>
+            {imageValidation.warnings.length > 0 && (
+              <div className="flex flex-col gap-0.5">
+                {imageValidation.warnings.map((w, i) => (
+                  <span key={i} className="text-amber-600 text-xs">{w}</span>
+                ))}
+              </div>
+            )}
             {(isGenesis) && (
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
