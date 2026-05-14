@@ -49,8 +49,15 @@ app.route("/api/stories", storiesRoutes);
 app.use("/api/settings/*", requireAuth);
 app.route("/api/settings", settingsRoutes);
 
+// App version (read once at startup)
+const appVersion = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8")).version;
+  } catch { return "unknown"; }
+})();
+
 // Health check
-app.get("/api/health", (c) => c.json({ status: "ok" }));
+app.get("/api/health", (c) => c.json({ status: "ok", version: appVersion }));
 
 // In production, serve the built frontend
 const distPath = path.join(__dirname, "web", "dist");
