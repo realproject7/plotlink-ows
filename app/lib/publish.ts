@@ -462,6 +462,41 @@ export async function uploadCoverImage(
 }
 
 /**
+ * Upload a plot illustration image to PlotLink via signed API call.
+ * Returns the IPFS CID and URL of the uploaded image.
+ */
+export async function uploadPlotImage(
+  walletName: string,
+  walletAddress: `0x${string}`,
+  imageFile: File,
+): Promise<{ cid: string; url: string }> {
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const account = createOwsAccount(walletName, walletAddress);
+
+  const timestamp = Date.now();
+  const message = `PlotLink: Upload plot image\nTimestamp: ${timestamp}`;
+  const signature = await account.signMessage({ message });
+
+  const formData = new FormData();
+  formData.append("file", imageFile);
+  formData.append("message", message);
+  formData.append("signature", signature);
+
+  const res = await fetch(`${PLOTLINK_URL}/api/upload-plot-image`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, string>;
+    throw new Error(err.error || `Plot image upload failed: HTTP ${res.status}`);
+  }
+
+  const data = await res.json() as { cid: string; url: string };
+  return data;
+}
+
+/**
  * Update storyline metadata (cover, genre, language, NSFW) on PlotLink via signed API call.
  * Uses createOwsAccount for signing (not raw owsSignMsg).
  * Message format must match: /^PlotLink: Update storyline #(\d+)\nTimestamp: (\d+)$/

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost, uploadCoverImage, updateStoryline } from "../lib/publish";
+import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost, uploadCoverImage, uploadPlotImage, updateStoryline } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 
@@ -227,6 +227,41 @@ publish.post("/upload-cover", async (c) => {
     return c.json({ cid });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Cover upload failed";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/** POST /api/publish/upload-plot-image — upload plot illustration with wallet signature */
+publish.post("/upload-plot-image", async (c) => {
+  try {
+    const wallets = listAgentWallets();
+    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+
+    const address = getBaseAddress(wallet);
+    if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
+
+    const formData = await c.req.formData();
+    const file = formData.get("file");
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: "No image file provided" }, 400);
+    }
+
+    // Validate file size (500KB max)
+    if (file.size > 500 * 1024) {
+      return c.json({ error: "Image exceeds 500KB limit" }, 400);
+    }
+
+    // Validate file type — only WebP and JPEG accepted by the plotlink server
+    const allowedTypes = ["image/webp", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: "Only WebP and JPEG images are accepted" }, 400);
+    }
+
+    const result = await uploadPlotImage(wallet.name, address as `0x${string}`, file);
+    return c.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Plot image upload failed";
     return c.json({ error: message }, 500);
   }
 });
