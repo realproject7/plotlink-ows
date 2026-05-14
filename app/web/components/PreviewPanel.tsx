@@ -705,8 +705,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {/* Inline illustration upload for plot files */}
-            {isPlot && (
+            {/* Inline illustration upload for plot files (Preview tab only) */}
+            {isPlot && activeTab === "preview" && (
               <div>
                 <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
                   <input
