@@ -42,8 +42,8 @@ For login, the passphrase is hashed with HMAC-SHA256 and compared against the st
 | \`/api/publish/preflight\` | GET | Check wallet balance, Filebase config |
 | \`/api/publish/file\` | POST | Publish story on-chain (SSE stream of progress events) |
 | \`/api/publish/retry-index\` | POST | Retry indexing for a published file |
-| \`/api/publish/upload-cover\` | POST | Upload cover image — FormData \`file\` field, **WebP or JPEG only**, max 500KB → returns \`{ cid }\` |
-| \`/api/publish/upload-plot-image\` | POST | Upload plot illustration — FormData \`file\` field, **WebP or JPEG only**, max 500KB → returns \`{ cid, url }\` |
+| \`/api/publish/upload-cover\` | POST | Upload cover image — FormData \`file\` field, **WebP or JPEG only**, max 1MB → returns \`{ cid }\` |
+| \`/api/publish/upload-plot-image\` | POST | Upload plot illustration — FormData \`file\` field, **WebP or JPEG only**, max 1MB → returns \`{ cid, url }\` |
 | \`/api/publish/update-storyline\` | POST | Update storyline metadata (coverCid, genre, language, isNsfw) |
 
 **Publish flow:** Upload to IPFS → estimate gas → sign with OWS wallet → broadcast → confirm → index on plotlink.xyz (8s delay + 10 retries × 30s). Genesis files call \`createStoryline\`, plot files (\`plot-*.md\`) call \`chainPlot\`. Content limit: 10K chars.

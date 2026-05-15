@@ -187,8 +187,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500 * 1024) {
-      setEditError("Image exceeds 500KB limit");
+    if (file.size > 1024 * 1024) {
+      setEditError("Image exceeds 1MB limit");
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -202,8 +202,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
   // Handle illustration image upload from File object
   const uploadIllustration = useCallback(async (file: File) => {
-    if (file.size > 500 * 1024) {
-      setIllustrationError("Image exceeds 500KB limit");
+    if (file.size > 1024 * 1024) {
+      setIllustrationError("Image exceeds 1MB limit");
       return;
     }
     const allowedTypes = ["image/webp", "image/jpeg"];
@@ -653,7 +653,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                         onChange={handleCoverSelect}
                         className="text-xs"
                       />
-                      <span className="text-xs text-muted">WebP/JPEG, max 500KB, 600x900px recommended</span>
+                      <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
                     </div>
                   </div>
                 </div>
@@ -740,7 +740,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                       <span className="text-xs text-muted">
                         {illustrationUploading ? "Uploading..." : "Drop image here or click to browse"}
                       </span>
-                      <span className="text-xs text-muted">WebP/JPEG, max 500KB</span>
+                      <span className="text-xs text-muted">WebP/JPEG, max 1MB</span>
                     </div>
                     {illustrationError && (
                       <span className="text-error text-xs">{illustrationError}</span>

@@ -212,9 +212,9 @@ publish.post("/upload-cover", async (c) => {
       return c.json({ error: "No image file provided" }, 400);
     }
 
-    // Validate file size (500KB max)
-    if (file.size > 500 * 1024) {
-      return c.json({ error: "Image exceeds 500KB limit" }, 400);
+    // Validate file size (1MB max)
+    if (file.size > 1024 * 1024) {
+      return c.json({ error: "Image exceeds 1MB limit" }, 400);
     }
 
     // Validate file type — only WebP and JPEG accepted by the plotlink server
@@ -247,9 +247,9 @@ publish.post("/upload-plot-image", async (c) => {
       return c.json({ error: "No image file provided" }, 400);
     }
 
-    // Validate file size (500KB max)
-    if (file.size > 500 * 1024) {
-      return c.json({ error: "Image exceeds 500KB limit" }, 400);
+    // Validate file size (1MB max)
+    if (file.size > 1024 * 1024) {
+      return c.json({ error: "Image exceeds 1MB limit" }, 400);
     }
 
     // Validate file type — only WebP and JPEG accepted by the plotlink server
