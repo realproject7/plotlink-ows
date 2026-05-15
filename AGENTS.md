@@ -114,7 +114,7 @@ After a storyline is created, inform the user they can customize it directly in 
 
 - **Story URL**: `https://plotlink.xyz/story/{storylineId}`
 - The **Edit Story** button appears in the preview panel for published genesis files
-- Editable fields: cover image (WebP/JPEG, max 500KB, recommended 600x900px), genre, language, NSFW flag
+- Editable fields: cover image (WebP/JPEG, max 1MB, recommended 600x900px), genre, language, NSFW flag
 - Uploading a cover image significantly improves the story's visibility on PlotLink
 - All edits are signed with the OWS wallet and sent to PlotLink automatically
 
