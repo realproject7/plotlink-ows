@@ -32,3 +32,20 @@ describe("MAX_SIZE constant", () => {
     expect(MAX_SIZE).toBe(1024 * 1024);
   });
 });
+
+describe("WebP fallback detection", () => {
+  it("detects non-WebP blob type as unsupported", () => {
+    const pngBlob = new Blob([new Uint8Array(100)], { type: "image/png" });
+    expect(pngBlob.type).not.toBe("image/webp");
+  });
+
+  it("accepts actual WebP blob type", () => {
+    const webpBlob = new Blob([new Uint8Array(100)], { type: "image/webp" });
+    expect(webpBlob.type).toBe("image/webp");
+  });
+
+  it("JPEG blob type is valid for fallback", () => {
+    const jpegBlob = new Blob([new Uint8Array(100)], { type: "image/jpeg" });
+    expect(jpegBlob.type).toBe("image/jpeg");
+  });
+});

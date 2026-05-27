@@ -99,8 +99,9 @@ async function tryCompress(
   for (const q of webpQualities) {
     try {
       const blob = await canvasToBlob(canvas, "image/webp", q);
+      if (blob.type !== "image/webp") break;
       if (blob.size <= MAX_SIZE) return blob;
-    } catch { /* WebP not supported, try JPEG */ break; }
+    } catch { break; }
   }
 
   const jpegQualities = [0.85, 0.7, 0.5];

@@ -193,8 +193,8 @@ function CutRow({
             )}
           </div>
 
-          {/* Open editor button */}
-          {cut.cleanImagePath && (
+          {/* Open editor button — available for image cuts and narration cuts */}
+          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0) && (
             <button
               onClick={onOpenEditor}
               className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"

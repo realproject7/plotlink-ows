@@ -242,10 +242,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
-  if (!cut.cleanImagePath) {
+  if (!cut.cleanImagePath && overlays.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted">
-        No clean image — upload one first.
+        No clean image — upload one first, or add overlays for a narration cut.
       </div>
     );
   }
@@ -281,14 +281,20 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
           onClick={handleBackgroundClick}
           data-testid="editor-surface"
         >
-          <img
-            ref={imgRef}
-            src={assetUrl(storyName, cut.cleanImagePath)}
-            alt={`Cut ${cut.id} clean`}
-            className="w-full h-full object-contain"
-            draggable={false}
-            onLoad={updateImageBounds}
-          />
+          {cut.cleanImagePath ? (
+            <img
+              ref={imgRef}
+              src={assetUrl(storyName, cut.cleanImagePath)}
+              alt={`Cut ${cut.id} clean`}
+              className="w-full h-full object-contain"
+              draggable={false}
+              onLoad={updateImageBounds}
+            />
+          ) : (
+            <div className="w-full h-full bg-white flex items-center justify-center text-muted text-xs">
+              Narration cut
+            </div>
+          )}
 
           {imageBounds.width > 0 && overlays.map((overlay) => {
             const left = imageBounds.x + toPixel(overlay.x, imageBounds.width);
