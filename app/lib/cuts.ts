@@ -126,6 +126,11 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     if (!Array.isArray(cut.characters)) {
       return { valid: false, error: `Cut ${i} characters must be an array` };
     }
+    for (let j = 0; j < (cut.characters as unknown[]).length; j++) {
+      if (typeof (cut.characters as unknown[])[j] !== "string") {
+        return { valid: false, error: `Cut ${i} characters[${j}] must be a string` };
+      }
+    }
     if (!Array.isArray(cut.dialogue)) {
       return { valid: false, error: `Cut ${i} dialogue must be an array` };
     }

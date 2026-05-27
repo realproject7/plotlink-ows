@@ -231,6 +231,14 @@ describe("validateCutsFile", () => {
     });
   });
 
+  it("rejects cut with non-string character entry", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), characters: [123] };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 characters[0] must be a string",
+    });
+  });
+
   it("rejects cut with malformed dialogue entry", () => {
     const cut = { ...createDefaultCut(1, "plot-01"), dialogue: [{ speaker: 123, text: "hi" }] };
     expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
