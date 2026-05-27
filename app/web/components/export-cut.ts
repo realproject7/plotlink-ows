@@ -113,11 +113,47 @@ async function tryCompress(
   throw new Error("Cannot compress image under 1MB — reduce overlay count or image size");
 }
 
+interface CutTextContent {
+  narration?: string;
+  dialogue?: { speaker: string; text: string }[];
+}
+
+function renderCutText(
+  ctx: CanvasRenderingContext2D,
+  content: CutTextContent,
+  width: number,
+  height: number,
+  font: string,
+) {
+  const fontSize = Math.max(14, Math.min(height * 0.05, 28));
+  ctx.font = `${fontSize}px ${font}`;
+  ctx.fillStyle = "#1a1a1a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const lines: string[] = [];
+  if (content.dialogue) {
+    for (const d of content.dialogue) {
+      lines.push(`${d.speaker}: ${d.text}`);
+    }
+  }
+  if (content.narration) {
+    lines.push(content.narration);
+  }
+
+  const lineHeight = fontSize * 1.6;
+  const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], width / 2, startY + i * lineHeight, width - 40);
+  }
+}
+
 export async function exportCut(
   cleanImageUrl: string | null,
   overlays: Overlay[],
   bodyFontFamily: string,
   displayFontFamily: string,
+  cutText?: CutTextContent,
 ): Promise<Blob> {
   let width = 800;
   let height = 600;
@@ -142,6 +178,10 @@ export async function exportCut(
   }
 
   renderOverlays(ctx, overlays, width, height, bodyFontFamily, displayFontFamily);
+
+  if (cutText && overlays.length === 0 && !img) {
+    renderCutText(ctx, cutText, width, height, bodyFontFamily);
+  }
 
   return tryCompress(canvas);
 }

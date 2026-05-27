@@ -221,7 +221,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
     try {
       const { exportCut } = await import("./export-cut");
       const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
-      const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily);
+      const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
+        narration: cut.narration,
+        dialogue: cut.dialogue,
+      });
 
       const fd = new FormData();
       const ext = blob.type === "image/webp" ? "webp" : "jpg";

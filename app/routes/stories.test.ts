@@ -255,26 +255,38 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.language).toBe("Korean");
   });
 
-  it("export-final saves file and updates cuts.json metadata", () => {
+  it("export-final rejects missing story via route", async () => {
+    const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/export-final/1");
+    expect(res.status).toBe(404);
+  });
+
+  it("export-final rejects missing file via route", async () => {
     const storyDir = path.join(tmpDir, "test-story");
     fs.mkdirSync(storyDir, { recursive: true });
-    const cf = createCutsFile("plot-01", 1);
-    writeCutsFile(storyDir, "plot-01", cf);
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
 
-    const assetDir = path.join(storyDir, "assets", "plot-01");
-    fs.mkdirSync(assetDir, { recursive: true });
-    const finalPath = path.join(assetDir, "cut-01-final.webp");
-    fs.writeFileSync(finalPath, Buffer.from("final-image-data"));
+    const res = await postEmpty("/api/stories/test-story/cuts/plot-01/export-final/1");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("No file");
+  });
+
+  it("export-final metadata persists finalImagePath and exportedAt", () => {
+    const storyDir = path.join(tmpDir, "persist-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
 
     const loaded = readCutsFile(storyDir, "plot-01")!;
+    expect(loaded.cuts[0].finalImagePath).toBeNull();
+    expect(loaded.cuts[0].exportedAt).toBeNull();
+
     loaded.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
-    loaded.cuts[0].exportedAt = new Date().toISOString();
+    loaded.cuts[0].exportedAt = "2026-05-27T10:00:00Z";
     writeCutsFile(storyDir, "plot-01", loaded);
 
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
-    expect(reloaded.cuts[0].exportedAt).toBeTruthy();
-    expect(fs.existsSync(finalPath)).toBe(true);
+    expect(reloaded.cuts[0].exportedAt).toBe("2026-05-27T10:00:00Z");
   });
 
   it("rejects export-final for non-existent cut via route", async () => {
