@@ -16,8 +16,9 @@ function makeCut(overrides: Partial<Cut> = {}): Cut {
 describe("checkCartoonReadiness", () => {
   it("fully ready cuts pass", () => {
     const cuts = [makeCut({
-      cleanImagePath: "x.webp", finalImagePath: "x-final.webp",
+      cleanImagePath: "x.webp", finalImagePath: "x-final.webp", exportedAt: "2026-01-01",
       uploadedCid: "Qm", uploadedUrl: "https://ipfs/Qm",
+      overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }],
     })];
     const { ready, issues } = checkCartoonReadiness(cuts);
     expect(ready).toBe(true);
@@ -34,8 +35,21 @@ describe("checkCartoonReadiness", () => {
     expect(issues.some((i) => i.includes("not exported"))).toBe(true);
   });
 
+  it("reports no overlays", () => {
+    const { issues } = checkCartoonReadiness([makeCut({ cleanImagePath: "x.webp", overlays: [] })]);
+    expect(issues.some((i) => i.includes("no overlays"))).toBe(true);
+  });
+
+  it("reports missing export metadata", () => {
+    const { issues } = checkCartoonReadiness([makeCut({ cleanImagePath: "x.webp", finalImagePath: "f.webp", overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }] })]);
+    expect(issues.some((i) => i.includes("export metadata"))).toBe(true);
+  });
+
   it("reports not uploaded", () => {
-    const { issues } = checkCartoonReadiness([makeCut({ cleanImagePath: "x.webp", finalImagePath: "f.webp" })]);
+    const { issues } = checkCartoonReadiness([makeCut({
+      cleanImagePath: "x.webp", finalImagePath: "f.webp", exportedAt: "2026-01-01",
+      overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }],
+    })]);
     expect(issues.some((i) => i.includes("not uploaded"))).toBe(true);
   });
 
@@ -56,7 +70,13 @@ describe("checkMarkdownReadiness", () => {
 
   it("reports missing block", () => {
     const { issues } = checkMarkdownReadiness("", [makeCut()]);
-    expect(issues.some((i) => i.includes("missing markdown block"))).toBe(true);
+    expect(issues.some((i) => i.includes("missing or incomplete"))).toBe(true);
+  });
+
+  it("reports incomplete block (start only, no end)", () => {
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![A](https://x)";
+    const { issues } = checkMarkdownReadiness(md, [makeCut()]);
+    expect(issues.some((i) => i.includes("missing or incomplete"))).toBe(true);
   });
 
   it("reports awaiting upload placeholders", () => {

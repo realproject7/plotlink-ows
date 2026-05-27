@@ -44,11 +44,28 @@ describe("fiction regression", () => {
     expect(ct).toBeUndefined();
   });
 
-  it("preview routing: fiction plot does not use cartoon preview", () => {
-    const contentType = "fiction";
-    const fileName = "plot-01.md";
-    const isPlot = /^plot-\d+\.md$/.test(fileName);
-    const isCartoonPlot = contentType === "cartoon" && isPlot;
-    expect(isCartoonPlot).toBe(false);
+  it("readStoryMeta reads fiction contentType correctly", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
+    try {
+      fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
+      const meta = readStoryMeta(tmpDir);
+      expect(meta.contentType).toBe("fiction");
+      expect(meta.language).toBeUndefined();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fiction story with .story.json has no cartoon-specific fields", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
+    try {
+      fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
+      const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, ".story.json"), "utf-8"));
+      expect(raw.contentType).toBe("fiction");
+      expect(raw.cuts).toBeUndefined();
+      expect(raw.overlays).toBeUndefined();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

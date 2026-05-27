@@ -58,6 +58,18 @@ describe("rollback data compatibility", () => {
     expect(parsed["my-story"]).toMatch(/^[a-f0-9-]+$/);
   });
 
+  it("local DB file and .env config survive alongside new files", () => {
+    const dataDir = path.join(tmpDir, "data");
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(path.join(dataDir, "local.db"), "sqlite-data");
+    fs.writeFileSync(path.join(tmpDir, ".env"), "OWS_PASSPHRASE_HASH=abc123");
+
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), '{"contentType":"cartoon"}');
+
+    expect(fs.existsSync(path.join(dataDir, "local.db"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, ".env"), "utf-8")).toContain("OWS_PASSPHRASE_HASH");
+  });
+
   it("unknown files in story dir do not crash scanning", () => {
     fs.writeFileSync(path.join(tmpDir, "structure.md"), "# Test");
     fs.writeFileSync(path.join(tmpDir, "notes.txt"), "random");

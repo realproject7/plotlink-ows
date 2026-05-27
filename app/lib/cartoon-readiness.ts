@@ -11,8 +11,14 @@ export function checkCartoonReadiness(cuts: Cut[]): { ready: boolean; issues: st
     if (!isNarrationOnly && !cut.cleanImagePath) {
       issues.push(`${label}: missing clean image`);
     }
+    if (!isNarrationOnly && cut.cleanImagePath && cut.overlays.length === 0) {
+      issues.push(`${label}: no overlays (text not placed)`);
+    }
     if (!isNarrationOnly && cut.cleanImagePath && !cut.finalImagePath) {
       issues.push(`${label}: not exported`);
+    }
+    if (cut.finalImagePath && !cut.exportedAt) {
+      issues.push(`${label}: export metadata missing`);
     }
     if (!cut.uploadedUrl) {
       issues.push(`${label}: not uploaded`);
@@ -30,8 +36,10 @@ export function checkMarkdownReadiness(
 
   for (let i = 0; i < cuts.length; i++) {
     const id = `cut-${String(i + 1).padStart(3, "0")}`;
-    if (!markdown.includes(`<!-- ows:cartoon-cut ${id} start -->`)) {
-      issues.push(`Cut ${i + 1}: missing markdown block`);
+    const hasStart = markdown.includes(`<!-- ows:cartoon-cut ${id} start -->`);
+    const hasEnd = markdown.includes(`<!-- ows:cartoon-cut ${id} end -->`);
+    if (!hasStart || !hasEnd) {
+      issues.push(`Cut ${i + 1}: missing or incomplete markdown block`);
     }
   }
 
