@@ -201,8 +201,10 @@ export function generateStoryInstructions(contentType: "fiction" | "cartoon"): s
   return fictionInstructions();
 }
 
+const MARKER_PREFIX = "<!-- plotlink-ows:story-instructions:";
+
 function marker(contentType: string): string {
-  return `<!-- plotlink-ows:story-instructions:${contentType} -->`;
+  return `${MARKER_PREFIX}${contentType} -->`;
 }
 
 export function writeStoryInstructions(storyDir: string, contentType: "fiction" | "cartoon"): void {
@@ -213,6 +215,7 @@ export function writeStoryInstructions(storyDir: string, contentType: "fiction" 
     try {
       const firstLine = fs.readFileSync(claudeMdPath, "utf-8").split("\n")[0];
       if (firstLine === expectedMarker) return;
+      if (!firstLine.startsWith(MARKER_PREFIX)) return;
     } catch { /* regenerate on error */ }
   }
 

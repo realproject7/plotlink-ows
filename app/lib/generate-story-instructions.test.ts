@@ -91,6 +91,16 @@ describe("writeStoryInstructions", () => {
     expect(cartoonContent).toContain("cuts.json");
   });
 
+  it("preserves user-owned unmarked CLAUDE.md", () => {
+    const userContent = "# My custom writing notes\n\nDo not overwrite this.\n";
+    fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), userContent);
+
+    writeStoryInstructions(tmpDir, "cartoon");
+
+    const after = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    expect(after).toBe(userContent);
+  });
+
   it("fiction CLAUDE.md does not contain API endpoint tables", () => {
     writeStoryInstructions(tmpDir, "fiction");
     const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
