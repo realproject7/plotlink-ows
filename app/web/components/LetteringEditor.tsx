@@ -38,6 +38,27 @@ function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
   };
 }
 
+const FONT_MAP: Record<string, { family: string; googleId: string }> = {
+  English: { family: "Noto Sans", googleId: "Noto+Sans" },
+  Korean: { family: "Noto Sans KR", googleId: "Noto+Sans+KR" },
+  Japanese: { family: "Noto Sans JP", googleId: "Noto+Sans+JP" },
+  Chinese: { family: "Noto Sans SC", googleId: "Noto+Sans+SC" },
+  Hindi: { family: "Noto Sans Devanagari", googleId: "Noto+Sans+Devanagari" },
+  Arabic: { family: "Noto Naskh Arabic", googleId: "Noto+Naskh+Arabic" },
+};
+const DISPLAY_FONT = { family: "Bangers", googleId: "Bangers" };
+const FONT_FALLBACK = "system-ui, sans-serif";
+
+function loadGoogleFont(googleId: string, weights = "400;500;700") {
+  const id = `gfont-${googleId}`;
+  if (document.getElementById(id)) return;
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = `https://fonts.googleapis.com/css2?family=${googleId}:wght@${weights}&display=swap`;
+  document.head.appendChild(link);
+}
+
 interface Cut {
   id: number;
   cleanImagePath: string | null;
@@ -49,6 +70,7 @@ interface LetteringEditorProps {
   cut: Cut;
   onSave: (overlays: Overlay[]) => void;
   onClose: () => void;
+  language?: string;
 }
 
 function assetUrl(storyName: string, assetPath: string): string {
@@ -74,7 +96,15 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEditorProps) {
+export function LetteringEditor({ storyName, cut, onSave, onClose, language = "English" }: LetteringEditorProps) {
+  const bodyFont = FONT_MAP[language] || FONT_MAP.English;
+  const bodyFontFamily = `"${bodyFont.family}", ${FONT_FALLBACK}`;
+  const displayFontFamily = `"${DISPLAY_FONT.family}", ${FONT_FALLBACK}`;
+
+  useEffect(() => {
+    loadGoogleFont(bodyFont.googleId);
+    loadGoogleFont(DISPLAY_FONT.googleId, "400");
+  }, [bodyFont.googleId]);
   const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -246,7 +276,10 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                 }`}
                 style={{ left, top, width, height }}
               >
-                <span className="text-[9px] px-1 text-muted truncate block pointer-events-none">
+                <span
+                  className="text-[9px] px-1 text-muted truncate block pointer-events-none"
+                  style={{ fontFamily: overlay.type === "sfx" ? displayFontFamily : bodyFontFamily }}
+                >
                   {overlay.text || TYPE_LABEL[overlay.type]}
                 </span>
                 {isSelected && (
@@ -324,6 +357,10 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                   </div>
                 );
               })()}
+
+              <div className="text-[10px] text-muted" data-testid="inspector-font">
+                Font: {selectedOverlay.type === "sfx" ? DISPLAY_FONT.family : bodyFont.family}
+              </div>
 
               <div className="text-[10px] font-mono text-muted space-y-0.5">
                 <p>x: {selectedOverlay.x.toFixed(3)}, y: {selectedOverlay.y.toFixed(3)}</p>
