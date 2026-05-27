@@ -286,7 +286,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
       <LetteringEditor
         storyName={storyName}
         cut={editingCut}
+        plotFile={plotFile}
         language={language}
+        authFetch={authFetch}
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
           await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {

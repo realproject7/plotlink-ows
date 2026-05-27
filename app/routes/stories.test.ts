@@ -255,6 +255,22 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.language).toBe("Korean");
   });
 
+  it("rejects export-final for non-existent cut via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/test-story/cuts/plot-01/export-final/99", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "dummy",
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toContain("Cut 99");
+  });
+
   it("defaults language to English when no CJK in title", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });

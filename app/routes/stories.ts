@@ -358,6 +358,65 @@ stories.post("/:name/cuts/:plotFile/upload-clean/:cutId", async (c) => {
   return c.json({ ok: true, cleanImagePath });
 });
 
+/** POST /api/stories/:name/cuts/:plotFile/export-final/:cutId — save exported final image */
+stories.post("/:name/cuts/:plotFile/export-final/:cutId", async (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  const cutIdStr = c.req.param("cutId");
+  if (!name || !plotFile || !cutIdStr) return c.json({ error: "Invalid path" }, 400);
+
+  const cutId = parseInt(cutIdStr, 10);
+  if (isNaN(cutId) || cutId < 1) return c.json({ error: "Invalid cut ID" }, 400);
+
+  const storyDir = path.join(STORIES_DIR, name);
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const cutsFile = readCutsFile(storyDir, plotFile);
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const cut = cutsFile.cuts.find((ct) => ct.id === cutId);
+  if (!cut) return c.json({ error: `Cut ${cutId} not found` }, 404);
+
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: "No file provided" }, 400);
+  }
+  const file = formData.get("file") as File | Blob | null;
+  if (!file || (typeof file === "string")) {
+    return c.json({ error: "No file provided" }, 400);
+  }
+
+  if (file.size > 1024 * 1024) {
+    return c.json({ error: "File must be under 1MB" }, 400);
+  }
+
+  const mime = file.type;
+  if (mime !== "image/webp" && mime !== "image/jpeg") {
+    return c.json({ error: "Only WebP and JPEG images are supported" }, 400);
+  }
+
+  const ext = mime === "image/webp" ? "webp" : "jpg";
+  const padded = String(cutId).padStart(2, "0");
+  const assetDir = path.join(storyDir, "assets", plotFile);
+  fs.mkdirSync(assetDir, { recursive: true });
+
+  const fileName = `cut-${padded}-final.${ext}`;
+  const filePath = path.join(assetDir, fileName);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  fs.writeFileSync(filePath, buffer);
+
+  const finalImagePath = `assets/${plotFile}/cut-${padded}-final.${ext}`;
+  cut.finalImagePath = finalImagePath;
+  cut.exportedAt = new Date().toISOString();
+  writeCutsFile(storyDir, plotFile, cutsFile);
+
+  return c.json({ ok: true, finalImagePath });
+});
+
 /** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */
 stories.get("/:name/asset/*", (c) => {
   const name = safeName(c.req.param("name"));
