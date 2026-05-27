@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
+import { CutListPanel } from "./CutListPanel";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -483,6 +484,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             )}
           </div>
         )
+      ) : isCartoonPlot ? (
+        <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
+          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+        </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
           <textarea
