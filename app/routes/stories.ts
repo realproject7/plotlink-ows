@@ -246,11 +246,15 @@ stories.get("/:name/cuts/:plotFile", (c) => {
   }
 });
 
-/** GET /api/stories/:name/asset/:path — serve story asset file */
-stories.get("/:name/asset/:path", (c) => {
+/** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */
+stories.get("/:name/asset/*", (c) => {
   const name = safeName(c.req.param("name"));
-  const assetPath = c.req.param("path");
-  if (!name || !assetPath) return c.json({ error: "Invalid path" }, 400);
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+
+  const url = new URL(c.req.url);
+  const prefix = `/api/stories/${name}/asset/`;
+  const assetPath = url.pathname.slice(url.pathname.indexOf(prefix) + prefix.length);
+  if (!assetPath) return c.json({ error: "Invalid asset path" }, 400);
 
   if (assetPath.includes("..") || assetPath.startsWith("/")) {
     return c.json({ error: "Invalid asset path" }, 400);
@@ -259,7 +263,7 @@ stories.get("/:name/asset/:path", (c) => {
   const fullPath = path.join(STORIES_DIR, name, "assets", assetPath);
   const resolved = path.resolve(fullPath);
   const assetsRoot = path.resolve(path.join(STORIES_DIR, name, "assets"));
-  if (!resolved.startsWith(assetsRoot)) {
+  if (!resolved.startsWith(assetsRoot + path.sep) && resolved !== assetsRoot) {
     return c.json({ error: "Invalid asset path" }, 400);
   }
 
@@ -274,11 +278,11 @@ stories.get("/:name/asset/:path", (c) => {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
   };
-  const contentType = mimeTypes[ext] || "application/octet-stream";
+  const ct = mimeTypes[ext] || "application/octet-stream";
 
   const data = fs.readFileSync(resolved);
   return new Response(data, {
-    headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
+    headers: { "Content-Type": ct, "Cache-Control": "no-cache" },
   });
 });
 
