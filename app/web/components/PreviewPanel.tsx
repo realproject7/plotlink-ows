@@ -54,6 +54,7 @@ interface PreviewPanelProps {
   publishingFile?: string | null;
   walletAddress?: string | null;
   contentType?: "fiction" | "cartoon";
+  language?: string;
 }
 
 interface FileData {
@@ -70,7 +71,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction" }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -486,7 +487,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         )
       ) : isCartoonPlot ? (
         <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
-          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} />
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
