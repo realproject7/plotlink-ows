@@ -1,4 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { LetteringEditor } from "./LetteringEditor";
+
+interface Overlay {
+  id: string;
+  type: "speech" | "narration" | "sfx";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  speaker?: string;
+}
 
 interface CutDialogue {
   speaker: string;
@@ -18,6 +30,7 @@ interface Cut {
   exportedAt: string | null;
   uploadedCid: string | null;
   uploadedUrl: string | null;
+  overlays: Overlay[];
 }
 
 interface CutsFile {
@@ -75,6 +88,7 @@ function CutRow({
   onToggle,
   authFetch,
   onUpdated,
+  onOpenEditor,
 }: {
   cut: Cut;
   storyName: string;
@@ -83,6 +97,7 @@ function CutRow({
   onToggle: () => void;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onUpdated: () => void;
+  onOpenEditor: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -177,6 +192,16 @@ function CutRow({
             )}
           </div>
 
+          {/* Open editor button */}
+          {cut.cleanImagePath && (
+            <button
+              onClick={onOpenEditor}
+              className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"
+            >
+              Open editor
+            </button>
+          )}
+
           {/* Cut metadata */}
           {cut.characters.length > 0 && (
             <p className="text-xs text-muted">Characters: {cut.characters.join(", ")}</p>
@@ -202,6 +227,7 @@ export function CutListPanel({ storyName, fileName, authFetch }: CutListPanelPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCut, setExpandedCut] = useState<number | null>(null);
+  const [editingCutId, setEditingCutId] = useState<number | null>(null);
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -252,6 +278,28 @@ export function CutListPanel({ storyName, fileName, authFetch }: CutListPanelPro
     );
   }
 
+  const editingCut = editingCutId !== null ? cutsFile.cuts.find((c) => c.id === editingCutId) : null;
+
+  if (editingCut) {
+    return (
+      <LetteringEditor
+        storyName={storyName}
+        cut={editingCut}
+        onSave={async (overlays: Overlay[]) => {
+          const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
+          await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updated),
+          });
+          setEditingCutId(null);
+          loadCuts();
+        }}
+        onClose={() => setEditingCutId(null)}
+      />
+    );
+  }
+
   const stats = cutsFile.cuts.reduce(
     (acc, cut) => {
       const s = getCutStatus(cut);
@@ -284,6 +332,7 @@ export function CutListPanel({ storyName, fileName, authFetch }: CutListPanelPro
             onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
             authFetch={authFetch}
             onUpdated={loadCuts}
+            onOpenEditor={() => setEditingCutId(cut.id)}
           />
         ))}
       </div>
