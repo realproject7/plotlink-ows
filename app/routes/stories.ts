@@ -358,6 +358,32 @@ stories.post("/:name/cuts/:plotFile/upload-clean/:cutId", async (c) => {
   return c.json({ ok: true, cleanImagePath });
 });
 
+function saveExportedCut(
+  storyDir: string,
+  plotFile: string,
+  cutId: number,
+  buffer: Buffer,
+  mime: string,
+): { finalImagePath: string } {
+  const ext = mime === "image/webp" ? "webp" : "jpg";
+  const padded = String(cutId).padStart(2, "0");
+  const assetDir = path.join(storyDir, "assets", plotFile);
+  fs.mkdirSync(assetDir, { recursive: true });
+
+  const fileName = `cut-${padded}-final.${ext}`;
+  fs.writeFileSync(path.join(assetDir, fileName), buffer);
+
+  const finalImagePath = `assets/${plotFile}/cut-${padded}-final.${ext}`;
+
+  const cutsFile = readCutsFile(storyDir, plotFile)!;
+  const cut = cutsFile.cuts.find((c) => c.id === cutId)!;
+  cut.finalImagePath = finalImagePath;
+  cut.exportedAt = new Date().toISOString();
+  writeCutsFile(storyDir, plotFile, cutsFile);
+
+  return { finalImagePath };
+}
+
 /** POST /api/stories/:name/cuts/:plotFile/export-final/:cutId — save exported final image */
 stories.post("/:name/cuts/:plotFile/export-final/:cutId", async (c) => {
   const name = safeName(c.req.param("name"));
@@ -399,22 +425,10 @@ stories.post("/:name/cuts/:plotFile/export-final/:cutId", async (c) => {
     return c.json({ error: "Only WebP and JPEG images are supported" }, 400);
   }
 
-  const ext = mime === "image/webp" ? "webp" : "jpg";
-  const padded = String(cutId).padStart(2, "0");
-  const assetDir = path.join(storyDir, "assets", plotFile);
-  fs.mkdirSync(assetDir, { recursive: true });
-
-  const fileName = `cut-${padded}-final.${ext}`;
-  const filePath = path.join(assetDir, fileName);
   const buffer = Buffer.from(await file.arrayBuffer());
-  fs.writeFileSync(filePath, buffer);
+  const result = saveExportedCut(storyDir, plotFile, cutId, buffer, mime);
 
-  const finalImagePath = `assets/${plotFile}/cut-${padded}-final.${ext}`;
-  cut.finalImagePath = finalImagePath;
-  cut.exportedAt = new Date().toISOString();
-  writeCutsFile(storyDir, plotFile, cutsFile);
-
-  return c.json({ ok: true, finalImagePath });
+  return c.json({ ok: true, finalImagePath: result.finalImagePath });
 });
 
 /** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */
@@ -568,4 +582,4 @@ stories.post("/:name/:file/mark-not-indexed", async (c) => {
   return c.json({ ok: true });
 });
 
-export { stories as storiesRoutes, readPublishStatus, readStoryMeta, writeStoryMeta, STORIES_DIR };
+export { stories as storiesRoutes, readPublishStatus, readStoryMeta, writeStoryMeta, saveExportedCut, STORIES_DIR };

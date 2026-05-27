@@ -18,7 +18,7 @@ vi.mock("../lib/generate-story-instructions", () => ({
   writeStoryInstructions: vi.fn(),
 }));
 
-import { readStoryMeta, writeStoryMeta, storiesRoutes } from "./stories";
+import { readStoryMeta, writeStoryMeta, storiesRoutes, saveExportedCut } from "./stories";
 import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
 import { Hono } from "hono";
 
@@ -271,29 +271,32 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.error).toContain("No file");
   });
 
-  it("export-final persistence: file save + cuts.json update", () => {
+  it("saveExportedCut saves file and updates cuts.json", () => {
     const storyDir = path.join(tmpDir, "export-story");
     fs.mkdirSync(storyDir, { recursive: true });
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
 
-    const cutId = 1;
-    const ext = "jpg";
-    const padded = String(cutId).padStart(2, "0");
-    const assetDir = path.join(storyDir, "assets", "plot-01");
-    fs.mkdirSync(assetDir, { recursive: true });
-    const fileName = `cut-${padded}-final.${ext}`;
-    fs.writeFileSync(path.join(assetDir, fileName), Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]));
+    const buffer = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]);
+    const result = saveExportedCut(storyDir, "plot-01", 1, buffer, "image/jpeg");
 
-    const loaded = readCutsFile(storyDir, "plot-01")!;
-    const cut = loaded.cuts.find((c) => c.id === cutId)!;
-    cut.finalImagePath = `assets/plot-01/${fileName}`;
-    cut.exportedAt = new Date().toISOString();
-    writeCutsFile(storyDir, "plot-01", loaded);
+    expect(result.finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
 
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
     expect(reloaded.cuts[0].exportedAt).toBeTruthy();
-    expect(fs.existsSync(path.join(assetDir, fileName))).toBe(true);
+
+    const assetFile = path.join(storyDir, "assets", "plot-01", "cut-01-final.jpg");
+    expect(fs.existsSync(assetFile)).toBe(true);
+    expect(fs.readFileSync(assetFile)).toEqual(buffer);
+  });
+
+  it("saveExportedCut uses webp extension for image/webp", () => {
+    const storyDir = path.join(tmpDir, "webp-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const result = saveExportedCut(storyDir, "plot-01", 1, Buffer.from([0x00]), "image/webp");
+    expect(result.finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
   });
 
   it("rejects export-final for non-existent cut via route", async () => {
