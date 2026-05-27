@@ -1,4 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  getDefaultFont,
+  getDisplayFont,
+  getFontCdnUrl,
+  getFontFamily,
+  type FontEntry,
+} from "@app-lib/fonts";
 
 type OverlayType = "speech" | "narration" | "sfx";
 
@@ -38,24 +45,13 @@ function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
   };
 }
 
-const FONT_MAP: Record<string, { family: string; googleId: string }> = {
-  English: { family: "Noto Sans", googleId: "Noto+Sans" },
-  Korean: { family: "Noto Sans KR", googleId: "Noto+Sans+KR" },
-  Japanese: { family: "Noto Sans JP", googleId: "Noto+Sans+JP" },
-  Chinese: { family: "Noto Sans SC", googleId: "Noto+Sans+SC" },
-  Hindi: { family: "Noto Sans Devanagari", googleId: "Noto+Sans+Devanagari" },
-  Arabic: { family: "Noto Naskh Arabic", googleId: "Noto+Naskh+Arabic" },
-};
-const DISPLAY_FONT = { family: "Bangers", googleId: "Bangers" };
-const FONT_FALLBACK = "system-ui, sans-serif";
-
-function loadGoogleFont(googleId: string, weights = "400;500;700") {
-  const id = `gfont-${googleId}`;
+function loadFont(font: FontEntry) {
+  const id = `gfont-${font.googleFontsId}`;
   if (document.getElementById(id)) return;
   const link = document.createElement("link");
   link.id = id;
   link.rel = "stylesheet";
-  link.href = `https://fonts.googleapis.com/css2?family=${googleId}:wght@${weights}&display=swap`;
+  link.href = getFontCdnUrl(font);
   document.head.appendChild(link);
 }
 
@@ -97,14 +93,15 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 export function LetteringEditor({ storyName, cut, onSave, onClose, language = "English" }: LetteringEditorProps) {
-  const bodyFont = FONT_MAP[language] || FONT_MAP.English;
-  const bodyFontFamily = `"${bodyFont.family}", ${FONT_FALLBACK}`;
-  const displayFontFamily = `"${DISPLAY_FONT.family}", ${FONT_FALLBACK}`;
+  const bodyFont = getDefaultFont(language);
+  const displayFont = getDisplayFont();
+  const bodyFontFamily = getFontFamily(bodyFont);
+  const displayFontFamily = getFontFamily(displayFont);
 
   useEffect(() => {
-    loadGoogleFont(bodyFont.googleId);
-    loadGoogleFont(DISPLAY_FONT.googleId, "400");
-  }, [bodyFont.googleId]);
+    loadFont(bodyFont);
+    loadFont(displayFont);
+  }, [bodyFont, displayFont]);
   const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -359,7 +356,7 @@ export function LetteringEditor({ storyName, cut, onSave, onClose, language = "E
               })()}
 
               <div className="text-[10px] text-muted" data-testid="inspector-font">
-                Font: {selectedOverlay.type === "sfx" ? DISPLAY_FONT.family : bodyFont.family}
+                Font: {selectedOverlay.type === "sfx" ? displayFont.family : bodyFont.family}
               </div>
 
               <div className="text-[10px] font-mono text-muted space-y-0.5">

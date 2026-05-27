@@ -43,6 +43,7 @@ interface CutListPanelProps {
   storyName: string;
   fileName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
+  language?: string;
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded";
@@ -222,7 +223,7 @@ function CutRow({
   );
 }
 
-export function CutListPanel({ storyName, fileName, authFetch }: CutListPanelProps) {
+export function CutListPanel({ storyName, fileName, authFetch, language }: CutListPanelProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -285,6 +286,7 @@ export function CutListPanel({ storyName, fileName, authFetch }: CutListPanelPro
       <LetteringEditor
         storyName={storyName}
         cut={editingCut}
+        language={language}
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
           await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
