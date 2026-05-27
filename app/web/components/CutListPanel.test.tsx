@@ -205,6 +205,68 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("shows Upload & Generate button when cuts have final images", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [] })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("upload-generate-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("upload-generate-btn")).not.toBeDisabled();
+    });
+  });
+
+  it("disables Upload & Generate when all cuts are already uploaded", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "x.webp", uploadedCid: "QmDone", uploadedUrl: "https://done", overlays: [] })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("upload-generate-btn")).toBeDisabled();
+    });
+  });
+
+  it("Upload & Generate calls upload-plot-image, forwards CID to set-uploaded, then generate-markdown", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [] })],
+    };
+    const authFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
+      .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ cid: "QmNewCid123", url: "https://ipfs.example.com/QmNewCid123" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByTestId("upload-generate-btn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("upload-generate-btn"));
+
+    await waitFor(() => {
+      const calls = authFetch.mock.calls;
+      const urls = calls.map((c: [string]) => c[0]);
+
+      expect(urls).toContain("/api/stories/story/asset/plot-01/cut-01-final.webp");
+      expect(urls.some((u: string) => u === "/api/publish/upload-plot-image")).toBe(true);
+
+      const setUploadedCall = calls.find((c: [string, RequestInit?]) => typeof c[0] === "string" && c[0].includes("set-uploaded"));
+      expect(setUploadedCall).toBeTruthy();
+      const setUploadedBody = JSON.parse(setUploadedCall![1]?.body as string);
+      expect(setUploadedBody.cid).toBe("QmNewCid123");
+      expect(setUploadedBody.url).toBe("https://ipfs.example.com/QmNewCid123");
+
+      expect(urls.some((u: string) => u.includes("generate-markdown"))).toBe(true);
+    });
+  });
+
   it("shows error state on fetch failure", async () => {
     const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "Bad data" } });
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);

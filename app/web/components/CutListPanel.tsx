@@ -231,6 +231,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
   const [editingCutId, setEditingCutId] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genWarnings, setGenWarnings] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -342,6 +344,44 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
           data-testid="generate-markdown-btn"
         >
           {generating ? "Generating..." : "Generate MD"}
+        </button>
+        <button
+          onClick={async () => {
+            if (!cutsFile) return;
+            setUploading(true);
+            setUploadProgress("");
+            const toUpload = cutsFile.cuts.filter((ct) => ct.finalImagePath && !ct.uploadedCid);
+            for (let i = 0; i < toUpload.length; i++) {
+              const ct = toUpload[i];
+              setUploadProgress(`Uploading ${i + 1}/${toUpload.length}...`);
+              try {
+                const assetRel = ct.finalImagePath!.startsWith("assets/") ? ct.finalImagePath!.slice(7) : ct.finalImagePath!;
+                const imgRes = await authFetch(`/api/stories/${storyName}/asset/${assetRel}`);
+                if (!imgRes.ok) continue;
+                const blob = await imgRes.blob();
+                const fd = new FormData();
+                fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
+                const upRes = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
+                if (!upRes.ok) continue;
+                const { cid, url } = await upRes.json();
+                await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cid, url }),
+                });
+              } catch { /* skip failed */ }
+            }
+            setUploadProgress("Generating markdown...");
+            await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+            setUploading(false);
+            setUploadProgress("");
+            loadCuts();
+          }}
+          disabled={uploading || !cutsFile?.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid)}
+          className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+          data-testid="upload-generate-btn"
+        >
+          {uploadProgress || "Upload & Generate"}
         </button>
       </div>
       {genWarnings.length > 0 && (

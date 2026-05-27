@@ -295,6 +295,7 @@ export async function publishStoryline(
   onProgress: (progress: PublishProgress) => void,
   language?: string,
   isNsfw?: boolean,
+  contentType?: string,
 ): Promise<PublishResult> {
   // Normalize optional fields to backwards-compatible defaults
   const normalizedLanguage = language || "English";
@@ -340,7 +341,7 @@ export async function publishStoryline(
   // Streams "Indexing…" progress so the user does not escalate to Retry Publish.
   const indexError = await indexWithDelayAndRetry(
     "storyline",
-    { txHash, content, genre, language: normalizedLanguage, isNsfw: normalizedIsNsfw },
+    { txHash, content, genre, language: normalizedLanguage, isNsfw: normalizedIsNsfw, ...(contentType ? { contentType } : {}) },
     onProgress,
     txHash,
     contentCid,

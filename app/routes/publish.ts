@@ -74,6 +74,7 @@ publish.post("/file", async (c) => {
     language?: string;
     isNsfw?: boolean;
     storylineId?: number;
+    contentType?: string;
   }>();
 
   if (!body.title || !body.content) {
@@ -134,6 +135,7 @@ publish.post("/file", async (c) => {
           },
           body.language,
           body.isNsfw,
+          body.contentType,
         );
       }
 

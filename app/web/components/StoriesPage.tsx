@@ -3,6 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
+import { getContentTypeForPublish } from "../lib/publish-helpers";
 
 interface StoriesPageProps {
   token: string;
@@ -245,7 +246,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       const publishRes = await authFetch("/api/publish/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId }),
+        body: JSON.stringify({
+          storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId,
+          ...(getContentTypeForPublish(storyContentTypes, storyName, storylineId) ? { contentType: getContentTypeForPublish(storyContentTypes, storyName, storylineId) } : {}),
+        }),
       });
 
       if (!publishRes.ok) {
