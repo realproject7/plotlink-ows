@@ -127,6 +127,37 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("calls upload endpoint when file is selected", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, description: "Upload test" })],
+    };
+    const authFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, cleanImagePath: "assets/plot-01/cut-01-clean.webp" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({
+        ...cutsData,
+        cuts: [{ ...cutsData.cuts[0], cleanImagePath: "assets/plot-01/cut-01-clean.webp" }],
+      }) });
+
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Upload test")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Upload test"));
+    await waitFor(() => expect(screen.getByText("Upload clean image")).toBeInTheDocument());
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["img"], "test.webp", { type: "image/webp" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(authFetch).toHaveBeenCalledWith(
+        "/api/stories/story/cuts/plot-01/upload-clean/1",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
   it("shows error state on fetch failure", async () => {
     const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "Bad data" } });
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
