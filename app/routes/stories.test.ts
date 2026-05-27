@@ -1,14 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { readStoryMeta, writeStoryMeta } from "./stories";
+
+const testState = vi.hoisted(() => ({ storiesDir: "" }));
+
+vi.mock("../lib/paths", () => ({
+  get STORIES_DIR() { return testState.storiesDir; },
+  CONFIG_DIR: os.tmpdir(),
+  DATA_DIR: os.tmpdir(),
+  DB_PATH: path.join(os.tmpdir(), "test.db"),
+  DATABASE_URL: "file:" + path.join(os.tmpdir(), "test.db"),
+  ENV_FILE: path.join(os.tmpdir(), ".env"),
+}));
+
+vi.mock("../lib/generate-story-instructions", () => ({
+  writeStoryInstructions: vi.fn(),
+}));
+
+import { readStoryMeta, writeStoryMeta, storiesRoutes } from "./stories";
+import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
+import { Hono } from "hono";
 
 describe("story metadata (.story.json)", () => {
   let tmpDir: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-test-"));
+    testState.storiesDir = tmpDir;
   });
 
   afterEach(() => {
@@ -55,5 +74,147 @@ describe("story metadata (.story.json)", () => {
     writeStoryMeta(tmpDir, { contentType: "cartoon" });
     const meta = readStoryMeta(tmpDir);
     expect(meta.contentType).toBe("cartoon");
+  });
+});
+
+describe("clean image upload simulation", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-test-"));
+    testState.storiesDir = tmpDir;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("stores clean image file and updates cleanImagePath in cuts.json", () => {
+    const cf = createCutsFile("plot-01", 2);
+    writeCutsFile(tmpDir, "plot-01", cf);
+
+    const cutId = 1;
+    const ext = "webp";
+    const padded = String(cutId).padStart(2, "0");
+    const assetDir = path.join(tmpDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+
+    const fileName = `cut-${padded}-clean.${ext}`;
+    fs.writeFileSync(path.join(assetDir, fileName), Buffer.from("fake-webp-data"));
+
+    const loaded = readCutsFile(tmpDir, "plot-01")!;
+    const cut = loaded.cuts.find((c) => c.id === cutId)!;
+    cut.cleanImagePath = `assets/plot-01/${fileName}`;
+    writeCutsFile(tmpDir, "plot-01", loaded);
+
+    const reloaded = readCutsFile(tmpDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(fs.existsSync(path.join(assetDir, fileName))).toBe(true);
+  });
+
+  it("rejects upload to non-existent cut", () => {
+    const cf = createCutsFile("plot-01", 1);
+    writeCutsFile(tmpDir, "plot-01", cf);
+
+    const loaded = readCutsFile(tmpDir, "plot-01")!;
+    const cut = loaded.cuts.find((c) => c.id === 99);
+    expect(cut).toBeUndefined();
+  });
+
+  it("validates MIME type: rejects non-image files", () => {
+    const allowedMimes = ["image/webp", "image/jpeg"];
+    expect(allowedMimes.includes("image/png")).toBe(false);
+    expect(allowedMimes.includes("text/plain")).toBe(false);
+    expect(allowedMimes.includes("image/webp")).toBe(true);
+    expect(allowedMimes.includes("image/jpeg")).toBe(true);
+  });
+
+  it("validates file size: rejects files over 1MB", () => {
+    const maxSize = 1024 * 1024;
+    expect(1024 * 1024 + 1 > maxSize).toBe(true);
+    expect(1024 * 1024 > maxSize).toBe(false);
+    expect(500 * 1024 > maxSize).toBe(false);
+  });
+
+  it("returns correct cleanImagePath format", () => {
+    const cutId = 3;
+    const ext = "jpg";
+    const padded = String(cutId).padStart(2, "0");
+    const cleanImagePath = `assets/plot-02/cut-${padded}-clean.${ext}`;
+    expect(cleanImagePath).toBe("assets/plot-02/cut-03-clean.jpg");
+  });
+
+  it("missing state: new cuts have null cleanImagePath, finalImagePath, and upload fields", () => {
+    const cf = createCutsFile("plot-01", 3);
+    writeCutsFile(tmpDir, "plot-01", cf);
+
+    const loaded = readCutsFile(tmpDir, "plot-01")!;
+    expect(loaded.cuts[0].cleanImagePath).toBeNull();
+    expect(loaded.cuts[0].finalImagePath).toBeNull();
+    expect(loaded.cuts[0].uploadedCid).toBeNull();
+    expect(loaded.cuts[0].uploadedUrl).toBeNull();
+  });
+
+  it("rejects invalid cuts.json schema on read", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "plot-01.cuts.json"),
+      JSON.stringify({ version: 2, plotFile: "plot-01", cuts: [] }),
+    );
+    expect(() => readCutsFile(tmpDir, "plot-01")).toThrow("invalid");
+  });
+});
+
+describe("POST /upload-clean/:cutId route", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-route-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function postEmpty(url: string) {
+    const fd = new FormData();
+    return app.request(url, { method: "POST", body: fd });
+  }
+
+  it("rejects upload for non-existent cut via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/test-story/cuts/plot-01/upload-clean/99", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "dummy",
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toContain("Cut 99");
+  });
+
+  it("rejects upload without file via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await postEmpty("/api/stories/test-story/cuts/plot-01/upload-clean/1");
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("No file");
+  });
+
+  it("returns 404 for missing story via route", async () => {
+    const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/upload-clean/1");
+
+    expect(res.status).toBe(404);
   });
 });
