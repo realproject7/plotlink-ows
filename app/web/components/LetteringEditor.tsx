@@ -59,14 +59,18 @@ interface Cut {
   id: number;
   cleanImagePath: string | null;
   overlays: Overlay[];
+  narration?: string;
+  dialogue?: { speaker: string; text: string }[];
 }
 
 interface LetteringEditorProps {
   storyName: string;
   cut: Cut;
+  plotFile: string;
   onSave: (overlays: Overlay[]) => void;
   onClose: () => void;
   language?: string;
+  authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
 }
 
 function assetUrl(storyName: string, assetPath: string): string {
@@ -92,7 +96,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function LetteringEditor({ storyName, cut, onSave, onClose, language = "English" }: LetteringEditorProps) {
+export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, language = "English", authFetch }: LetteringEditorProps) {
   const bodyFont = getDefaultFont(language);
   const displayFont = getDisplayFont();
   const bodyFontFamily = getFontFamily(bodyFont);
@@ -105,6 +109,8 @@ export function LetteringEditor({ storyName, cut, onSave, onClose, language = "E
   const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [imageBounds, setImageBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -209,12 +215,44 @@ export function LetteringEditor({ storyName, cut, onSave, onClose, language = "E
     onSave(overlays);
   }, [overlays, onSave]);
 
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const { exportCut } = await import("./export-cut");
+      const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
+      const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
+        narration: cut.narration,
+        dialogue: cut.dialogue,
+      });
+
+      const fd = new FormData();
+      const ext = blob.type === "image/webp" ? "webp" : "jpg";
+      fd.append("file", blob, `cut-${cut.id}.${ext}`);
+
+      const res = await authFetch(
+        `/api/stories/${storyName}/cuts/${plotFile}/export-final/${cut.id}`,
+        { method: "POST", body: fd },
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        setExportError(data.error || "Export failed");
+      }
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }, [cut, overlays, storyName, plotFile, bodyFontFamily, displayFontFamily, authFetch]);
+
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
-  if (!cut.cleanImagePath) {
+  const isNarrationCut = !cut.cleanImagePath;
+
+  if (isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted">
-        No clean image — upload one first.
+        No clean image — upload one first, or add overlays for a narration cut.
       </div>
     );
   }
@@ -233,6 +271,10 @@ export function LetteringEditor({ storyName, cut, onSave, onClose, language = "E
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {exportError && <span className="text-[10px] text-error">{exportError}</span>}
+          <button onClick={handleExport} disabled={exporting} className="px-3 py-1 text-xs border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50" data-testid="export-btn">
+            {exporting ? "Exporting..." : "Export"}
+          </button>
           <button onClick={handleSave} className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim">Save</button>
           <button onClick={onClose} className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded">Close</button>
         </div>
@@ -246,14 +288,30 @@ export function LetteringEditor({ storyName, cut, onSave, onClose, language = "E
           onClick={handleBackgroundClick}
           data-testid="editor-surface"
         >
-          <img
-            ref={imgRef}
-            src={assetUrl(storyName, cut.cleanImagePath)}
-            alt={`Cut ${cut.id} clean`}
-            className="w-full h-full object-contain"
-            draggable={false}
-            onLoad={updateImageBounds}
-          />
+          {cut.cleanImagePath ? (
+            <img
+              ref={imgRef}
+              src={assetUrl(storyName, cut.cleanImagePath)}
+              alt={`Cut ${cut.id} clean`}
+              className="w-full h-full object-contain"
+              draggable={false}
+              onLoad={updateImageBounds}
+            />
+          ) : (
+            <div
+              className="w-full h-full bg-white flex items-center justify-center text-muted text-xs"
+              ref={(el) => {
+                if (el && imageBounds.width === 0) {
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width > 0) {
+                    setImageBounds({ x: 0, y: 0, width: rect.width, height: rect.height });
+                  }
+                }
+              }}
+            >
+              Narration cut
+            </div>
+          )}
 
           {imageBounds.width > 0 && overlays.map((overlay) => {
             const left = imageBounds.x + toPixel(overlay.x, imageBounds.width);

@@ -18,7 +18,7 @@ vi.mock("../lib/generate-story-instructions", () => ({
   writeStoryInstructions: vi.fn(),
 }));
 
-import { readStoryMeta, writeStoryMeta, storiesRoutes } from "./stories";
+import { readStoryMeta, writeStoryMeta, storiesRoutes, saveExportedCut } from "./stories";
 import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
 import { Hono } from "hono";
 
@@ -253,6 +253,66 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.language).toBe("Korean");
+  });
+
+  it("export-final rejects missing story via route", async () => {
+    const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/export-final/1");
+    expect(res.status).toBe(404);
+  });
+
+  it("export-final rejects missing file via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await postEmpty("/api/stories/test-story/cuts/plot-01/export-final/1");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("No file");
+  });
+
+  it("saveExportedCut saves file and updates cuts.json", () => {
+    const storyDir = path.join(tmpDir, "export-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const buffer = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]);
+    const result = saveExportedCut(storyDir, "plot-01", 1, buffer, "image/jpeg");
+
+    expect(result.finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
+    expect(reloaded.cuts[0].exportedAt).toBeTruthy();
+
+    const assetFile = path.join(storyDir, "assets", "plot-01", "cut-01-final.jpg");
+    expect(fs.existsSync(assetFile)).toBe(true);
+    expect(fs.readFileSync(assetFile)).toEqual(buffer);
+  });
+
+  it("saveExportedCut uses webp extension for image/webp", () => {
+    const storyDir = path.join(tmpDir, "webp-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const result = saveExportedCut(storyDir, "plot-01", 1, Buffer.from([0x00]), "image/webp");
+    expect(result.finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
+  });
+
+  it("rejects export-final for non-existent cut via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/test-story/cuts/plot-01/export-final/99", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "dummy",
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toContain("Cut 99");
   });
 
   it("defaults language to English when no CJK in title", async () => {

@@ -53,6 +53,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut()}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -62,16 +64,54 @@ describe("LetteringEditor", () => {
     expect(img).toHaveAttribute("src", "/api/stories/story/asset/plot-01/cut-01-clean.webp");
   });
 
-  it("shows message when no clean image", () => {
+  it("shows message when no clean image and no overlays", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ cleanImagePath: null })}
+        cut={makeCut({ cleanImagePath: null, overlays: [] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("No clean image — upload one first.")).toBeInTheDocument();
+    expect(screen.getByText(/No clean image/)).toBeInTheDocument();
+  });
+
+  it("allows editor for blank narration cut with overlays", () => {
+    const overlay: Overlay = {
+      id: "narr-1",
+      type: "narration",
+      x: 0.1, y: 0.1, width: 0.8, height: 0.2,
+      text: "The story begins...",
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ cleanImagePath: null, overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("export-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+  });
+
+  it("allows editor for narration cut with narration text but no overlays", () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ cleanImagePath: null, overlays: [], narration: "Once upon a time..." })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("export-btn")).toBeInTheDocument();
+    expect(screen.getByText("Narration cut")).toBeInTheDocument();
   });
 
   it("renders overlay elements after image load", () => {
@@ -90,6 +130,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -117,6 +159,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -148,6 +192,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -178,6 +224,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -255,7 +303,7 @@ describe("LetteringEditor", () => {
   it("saves overlays via onSave callback", () => {
     const onSave = vi.fn();
     render(
-      <LetteringEditor storyName="story" cut={makeCut()} onSave={onSave} onClose={vi.fn()} />,
+      <LetteringEditor storyName="story" cut={makeCut()} plotFile="plot-01" authFetch={vi.fn()} onSave={onSave} onClose={vi.fn()} />,
     );
     simulateImageLoad();
 
@@ -283,6 +331,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
@@ -315,6 +365,8 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
         onSave={vi.fn()}
         onClose={vi.fn()}
         language="Korean"

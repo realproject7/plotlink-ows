@@ -193,8 +193,8 @@ function CutRow({
             )}
           </div>
 
-          {/* Open editor button */}
-          {cut.cleanImagePath && (
+          {/* Open editor button — available for image cuts and narration cuts */}
+          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0) && (
             <button
               onClick={onOpenEditor}
               className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"
@@ -286,7 +286,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
       <LetteringEditor
         storyName={storyName}
         cut={editingCut}
+        plotFile={plotFile}
         language={language}
+        authFetch={authFetch}
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
           await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
