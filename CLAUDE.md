@@ -15,6 +15,7 @@ See **AGENTS.md** for the full writing workflow. Quick summary:
 Stories follow this structure:
 ```
 stories/{story-name}/
+  .story.json     # Content type metadata (fiction | cartoon)
   structure.md    # Outline, characters, arc
   genesis.md      # Synopsis hook (~1000 chars)
   plot-01.md      # Chapter 1 (max 10K chars)
@@ -80,6 +81,7 @@ Both upload-cover and update-storyline sign messages with the OWS wallet (messag
 | `/api/stories/:name/:file` | GET | Single file content and publish status |
 | `/api/stories/:name/:file` | PUT | Update file content `{ content }` |
 | `/api/stories/:name/:file/publish-status` | POST | Record publish result (txHash, storylineId, etc.) |
+| `/api/stories/:name/metadata` | POST | Write story metadata `{ contentType }` |
 | `/api/stories/:name/:file/mark-not-indexed` | POST | Mark file as not indexed `{ indexError? }` |
 
 ### Terminal

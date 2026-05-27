@@ -36,5 +36,8 @@ export const LANGUAGES = [
   "Others",
 ] as const;
 
+export const CONTENT_TYPES = ["fiction", "cartoon"] as const;
+
 export type Genre = (typeof GENRES)[number];
 export type Language = (typeof LANGUAGES)[number];
+export type ContentType = (typeof CONTENT_TYPES)[number];
