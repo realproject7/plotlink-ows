@@ -303,26 +303,23 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
+  const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
   useEffect(() => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon" }[]) => {
+      setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
+      const ct: Record<string, "fiction" | "cartoon"> = {};
+      for (const s of stories) ct[s.name] = s.contentType || "fiction";
+      setStoryContentTypes(ct);
+    };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (data?.stories) {
-        setConfirmedStories(new Set(
-          (data.stories as { name: string; hasStructure: boolean }[])
-            .filter((s) => s.hasStructure)
-            .map((s) => s.name)
-        ));
-      }
+      if (data?.stories) updateFromStories(data.stories);
     }).catch(() => {});
     const interval = setInterval(async () => {
       try {
         const res = await authFetch("/api/stories");
         if (res.ok) {
           const data = await res.json();
-          setConfirmedStories(new Set(
-            (data.stories as { name: string; hasStructure: boolean }[])
-              .filter((s) => s.hasStructure)
-              .map((s) => s.name)
-          ));
+          updateFromStories(data.stories);
         }
       } catch { /* ignore */ }
     }, 5000);
@@ -378,6 +375,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           onPublish={handlePublish}
           publishingFile={publishingFile}
           walletAddress={walletAddress}
+          contentType={selectedStory ? (storyContentTypes[selectedStory] || contentTypeMap.current.get(selectedStory) || "fiction") : "fiction"}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">

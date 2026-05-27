@@ -4,6 +4,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
+import { CartoonPreview } from "./CartoonPreview";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -51,6 +52,7 @@ interface PreviewPanelProps {
   onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => void;
   publishingFile?: string | null;
   walletAddress?: string | null;
+  contentType?: "fiction" | "cartoon";
 }
 
 interface FileData {
@@ -67,7 +69,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction" }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -394,6 +396,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const charCount = content.length;
   const isGenesis = fileName === "genesis.md";
   const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
+  const isCartoonPlot = contentType === "cartoon" && isPlot;
   const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
   const charLimit = (isGenesis || isPlot) ? 10000 : null;
   // Don't show over-limit warning for already-published files
@@ -460,20 +463,26 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
       {/* Content area */}
       {activeTab === "preview" ? (
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4" style={{ background: "var(--paper-bg)" }}>
-          {fileData?.content ? (
-            <div className="prose max-w-none">
-              <ReactMarkdown
-                remarkPlugins={[remarkBreaks, remarkGfm]}
-                rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
-              >
-                {fileData.content}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <p className="text-muted italic">No content</p>
-          )}
-        </div>
+        isCartoonPlot ? (
+          <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
+            <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4" style={{ background: "var(--paper-bg)" }}>
+            {fileData?.content ? (
+              <div className="prose max-w-none">
+                <ReactMarkdown
+                  remarkPlugins={[remarkBreaks, remarkGfm]}
+                  rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+                >
+                  {fileData.content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <p className="text-muted italic">No content</p>
+            )}
+          </div>
+        )
       ) : (
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
           <textarea

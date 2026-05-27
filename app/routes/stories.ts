@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
+import { readCutsFile } from "../lib/cuts";
 
 const stories = new Hono();
 
@@ -223,6 +224,62 @@ stories.post("/:name/metadata", async (c) => {
   writeStoryInstructions(storyDir, meta.contentType);
 
   return c.json({ ok: true });
+});
+
+/** GET /api/stories/:name/cuts/:plotFile — read cuts.json for a plot */
+stories.get("/:name/cuts/:plotFile", (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  try {
+    const cutsFile = readCutsFile(storyDir, plotFile);
+    if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+    return c.json(cutsFile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
+
+/** GET /api/stories/:name/asset/:path — serve story asset file */
+stories.get("/:name/asset/:path", (c) => {
+  const name = safeName(c.req.param("name"));
+  const assetPath = c.req.param("path");
+  if (!name || !assetPath) return c.json({ error: "Invalid path" }, 400);
+
+  if (assetPath.includes("..") || assetPath.startsWith("/")) {
+    return c.json({ error: "Invalid asset path" }, 400);
+  }
+
+  const fullPath = path.join(STORIES_DIR, name, "assets", assetPath);
+  const resolved = path.resolve(fullPath);
+  const assetsRoot = path.resolve(path.join(STORIES_DIR, name, "assets"));
+  if (!resolved.startsWith(assetsRoot)) {
+    return c.json({ error: "Invalid asset path" }, 400);
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return c.json({ error: "Asset not found" }, 404);
+  }
+
+  const ext = path.extname(resolved).toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    ".webp": "image/webp",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+  };
+  const contentType = mimeTypes[ext] || "application/octet-stream";
+
+  const data = fs.readFileSync(resolved);
+  return new Response(data, {
+    headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
+  });
 });
 
 /** GET /api/stories/:name/:file — single file content */
