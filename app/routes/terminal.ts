@@ -4,6 +4,8 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { STORIES_DIR, DATA_DIR } from "../lib/paths";
+import { readStoryMeta } from "./stories";
+import { writeStoryInstructions } from "../lib/generate-story-instructions";
 
 const MAX_SESSIONS = 5;
 const SESSION_FILE = path.join(DATA_DIR, "terminal-sessions.json");
@@ -47,6 +49,10 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   const isNewStory = storyName.startsWith("_new_");
   const storyDir = isNewStory ? STORIES_DIR : path.join(STORIES_DIR, storyName);
   if (!fs.existsSync(storyDir)) fs.mkdirSync(storyDir, { recursive: true });
+  if (!isNewStory) {
+    const { contentType } = readStoryMeta(storyDir);
+    writeStoryInstructions(storyDir, contentType);
+  }
   const shell = process.env.SHELL || "/bin/zsh";
 
   // Determine session ID

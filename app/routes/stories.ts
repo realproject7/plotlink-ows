@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import fs from "fs";
 import path from "path";
 import { STORIES_DIR } from "../lib/paths";
+import { writeStoryInstructions } from "../lib/generate-story-instructions";
 
 const stories = new Hono();
 
@@ -219,6 +220,7 @@ stories.post("/:name/metadata", async (c) => {
   const existing = readStoryMeta(storyDir);
   const meta: StoryMeta = { ...existing, contentType: body.contentType };
   writeStoryMeta(storyDir, meta);
+  writeStoryInstructions(storyDir, meta.contentType);
 
   return c.json({ ok: true });
 });
