@@ -3,6 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
+import { getContentTypeForPublish } from "../lib/publish-helpers";
 
 interface StoriesPageProps {
   token: string;
@@ -247,7 +248,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId,
-          ...(storyContentTypes[storyName] === "cartoon" && !storylineId ? { contentType: "cartoon" } : {}),
+          ...(getContentTypeForPublish(storyContentTypes, storyName, storylineId) ? { contentType: getContentTypeForPublish(storyContentTypes, storyName, storylineId) } : {}),
         }),
       });
 
