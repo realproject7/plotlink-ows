@@ -12,16 +12,16 @@ function mockAuthFetch(response: { ok: boolean; status?: number; data?: unknown 
   });
 }
 
-describe("preview routing logic", () => {
-  function shouldUseCartoonPreview(
-    contentType: "fiction" | "cartoon" | undefined,
-    fileName: string | null,
-  ): boolean {
-    if (!fileName) return false;
-    const isPlot = /^plot-\d+\.md$/.test(fileName);
-    return contentType === "cartoon" && isPlot;
-  }
+function shouldUseCartoonPreview(
+  contentType: "fiction" | "cartoon" | undefined,
+  fileName: string | null,
+): boolean {
+  if (!fileName) return false;
+  const isPlot = /^plot-\d+\.md$/.test(fileName);
+  return contentType === "cartoon" && isPlot;
+}
 
+describe("preview routing logic", () => {
   it("fiction plot uses markdown preview", () => {
     expect(shouldUseCartoonPreview("fiction", "plot-01.md")).toBe(false);
   });
@@ -163,5 +163,27 @@ describe("CartoonPreview", () => {
     render(<CartoonPreview storyName="test-story" fileName="plot-01.md" authFetch={authFetch} />);
 
     expect(screen.getByText("Loading cuts...")).toBeInTheDocument();
+  });
+});
+
+describe("fiction regression — CartoonPreview not rendered", () => {
+  it("fiction plot-01.md does NOT trigger CartoonPreview", () => {
+    expect(shouldUseCartoonPreview("fiction", "plot-01.md")).toBe(false);
+  });
+
+  it("fiction genesis.md does NOT trigger CartoonPreview", () => {
+    expect(shouldUseCartoonPreview("fiction", "genesis.md")).toBe(false);
+  });
+
+  it("fiction structure.md does NOT trigger CartoonPreview", () => {
+    expect(shouldUseCartoonPreview("fiction", "structure.md")).toBe(false);
+  });
+
+  it("undefined contentType does NOT trigger CartoonPreview", () => {
+    expect(shouldUseCartoonPreview(undefined, "plot-01.md")).toBe(false);
+  });
+
+  it("null fileName does NOT trigger CartoonPreview", () => {
+    expect(shouldUseCartoonPreview("cartoon", null)).toBe(false);
   });
 });
