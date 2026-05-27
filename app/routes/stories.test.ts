@@ -230,4 +230,28 @@ describe("POST /upload-clean/:cutId route", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("detects Korean language from structure.md title without .story.json language", async () => {
+    const storyDir = path.join(tmpDir, "korean-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# 한국어 이야기\n\n내용");
+    writeStoryMeta(storyDir, { contentType: "cartoon" });
+
+    const res = await app.request("/api/stories/korean-story");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("Korean");
+  });
+
+  it("defaults language to English when no CJK in title", async () => {
+    const storyDir = path.join(tmpDir, "english-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\nContent");
+    writeStoryMeta(storyDir, { contentType: "fiction" });
+
+    const res = await app.request("/api/stories/english-story");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("English");
+  });
 });

@@ -81,6 +81,15 @@ function writeStoryMeta(storyDir: string, meta: StoryMeta) {
   fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2) + "\n");
 }
 
+function detectLanguageFromContent(text: string): string | null {
+  if (/[가-힯]/.test(text)) return "Korean";
+  if (/[぀-ゟ゠-ヿ]/.test(text)) return "Japanese";
+  if (/[一-鿿]/.test(text)) return "Chinese";
+  if (/[ऀ-ॿ]/.test(text)) return "Hindi";
+  if (/[؀-ۿ]/.test(text)) return "Arabic";
+  return null;
+}
+
 function scanStory(storyDir: string, name: string): StoryInfo {
   const publishStatus = readPublishStatus(storyDir);
   const storyMeta = readStoryMeta(storyDir);
@@ -115,7 +124,13 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     }
   } catch { /* best effort */ }
 
-  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType, language: storyMeta.language || "English" };
+  let language = storyMeta.language || "English";
+  if (!storyMeta.language && title) {
+    const detected = detectLanguageFromContent(title);
+    if (detected) language = detected;
+  }
+
+  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType, language };
 }
 
 /** GET /api/stories — list all stories */
