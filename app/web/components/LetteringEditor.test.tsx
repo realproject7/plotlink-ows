@@ -267,6 +267,38 @@ describe("LetteringEditor", () => {
     );
   });
 
+  it("shows tail anchor controls for speech overlay without tailAnchor field", () => {
+    const overlay: Overlay = {
+      id: "test-no-tail",
+      type: "speech",
+      x: 0.1,
+      y: 0.1,
+      width: 0.25,
+      height: 0.12,
+      text: "Hello",
+      speaker: "Mira",
+    };
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    simulateImageLoad();
+    fireEvent.click(screen.getByTestId("overlay-test-no-tail"));
+
+    const tailX = screen.getByTestId("inspector-tail-x") as HTMLInputElement;
+    const tailY = screen.getByTestId("inspector-tail-y") as HTMLInputElement;
+    expect(tailX).toBeInTheDocument();
+    expect(tailY).toBeInTheDocument();
+    expect(parseFloat(tailX.value)).toBe(0.5);
+    expect(parseFloat(tailY.value)).toBe(1.2);
+  });
+
   it("calls onClose when Close button is clicked", () => {
     const onClose = vi.fn();
     render(

@@ -292,35 +292,38 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                 />
               </label>
 
-              {selectedOverlay.tailAnchor && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-medium text-muted">Tail anchor</span>
-                  <div className="flex gap-2">
-                    <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
-                      x
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={selectedOverlay.tailAnchor.x}
-                        onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...selectedOverlay.tailAnchor!, x: parseFloat(e.target.value) || 0 } })}
-                        className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
-                        data-testid="inspector-tail-x"
-                      />
-                    </label>
-                    <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
-                      y
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={selectedOverlay.tailAnchor.y}
-                        onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...selectedOverlay.tailAnchor!, y: parseFloat(e.target.value) || 0 } })}
-                        className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
-                        data-testid="inspector-tail-y"
-                      />
-                    </label>
+              {selectedOverlay.type === "speech" && (() => {
+                const tail = selectedOverlay.tailAnchor || { x: 0.5, y: 1.2 };
+                return (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-medium text-muted">Tail anchor</span>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
+                        x
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={tail.x}
+                          onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...tail, x: parseFloat(e.target.value) || 0 } })}
+                          className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                          data-testid="inspector-tail-x"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
+                        y
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={tail.y}
+                          onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...tail, y: parseFloat(e.target.value) || 0 } })}
+                          className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                          data-testid="inspector-tail-y"
+                        />
+                      </label>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="text-[10px] font-mono text-muted space-y-0.5">
                 <p>x: {selectedOverlay.x.toFixed(3)}, y: {selectedOverlay.y.toFixed(3)}</p>
