@@ -332,6 +332,19 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(reloaded.cuts[0].uploadedUrl).toBe("https://ipfs.example.com/QmTestCid");
   });
 
+  it("set-uploaded rejects non-existent cut", async () => {
+    const storyDir = path.join(tmpDir, "upload-story3");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/upload-story3/cuts/plot-01/set-uploaded/99", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: "QmTest", url: "https://example.com" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
   it("set-uploaded rejects missing CID", async () => {
     const storyDir = path.join(tmpDir, "upload-story2");
     fs.mkdirSync(storyDir, { recursive: true });
