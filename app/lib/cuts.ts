@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import type { Overlay } from "./overlays";
 
 export const SHOT_TYPES = ["wide", "medium", "close-up", "extreme-close-up"] as const;
 export type ShotType = (typeof SHOT_TYPES)[number];
@@ -22,6 +23,7 @@ export interface Cut {
   exportedAt: string | null;
   uploadedCid: string | null;
   uploadedUrl: string | null;
+  overlays: Overlay[];
 }
 
 export interface CutsFile {
@@ -44,6 +46,7 @@ export function createDefaultCut(id: number, _plotFile: string): Cut {
     exportedAt: null,
     uploadedCid: null,
     uploadedUrl: null,
+    overlays: [],
   };
 }
 
@@ -150,6 +153,9 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
       if (cut[field] !== null && typeof cut[field] !== "string") {
         return { valid: false, error: `Cut ${i} ${field} must be a string or null` };
       }
+    }
+    if (cut.overlays !== undefined && !Array.isArray(cut.overlays)) {
+      return { valid: false, error: `Cut ${i} overlays must be an array` };
     }
   }
 
