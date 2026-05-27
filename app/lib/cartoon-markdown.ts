@@ -15,6 +15,8 @@ export function generateCutBlock(cut: Cut, index: number): string {
   let content: string;
   if (cut.uploadedUrl) {
     content = `![${desc}](${cut.uploadedUrl})`;
+  } else if (cut.cleanImagePath || cut.finalImagePath) {
+    content = `<!-- Cut ${index}: awaiting upload -->`;
   } else if (!cut.cleanImagePath && !cut.finalImagePath) {
     const lines: string[] = [];
     if (cut.dialogue.length > 0) {
@@ -26,8 +28,6 @@ export function generateCutBlock(cut: Cut, index: number): string {
       lines.push(`*${cut.narration}*`);
     }
     content = lines.length > 0 ? lines.join("\n\n") : `*[Narration cut ${index}]*`;
-  } else {
-    content = `![${desc}](<!-- MISSING: not uploaded -->)`;
   }
 
   return `${MARKER_START(id)}\n${content}\n${MARKER_END(id)}`;

@@ -22,11 +22,19 @@ describe("generateCutBlock", () => {
     expect(block).toContain("<!-- ows:cartoon-cut cut-001 end -->");
   });
 
-  it("generates block with MISSING placeholder when not uploaded", () => {
+  it("generates comment placeholder when not uploaded", () => {
     const cut = makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp" });
     const block = generateCutBlock(cut, 2);
     expect(block).toContain("cut-002");
-    expect(block).toContain("<!-- MISSING: not uploaded -->");
+    expect(block).toContain("<!-- Cut 2: awaiting upload -->");
+    expect(block).not.toContain("![");
+  });
+
+  it("missing upload produces no image markdown", () => {
+    const cut = makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp" });
+    const block = generateCutBlock(cut, 1);
+    expect(block).not.toMatch(/!\[/);
+    expect(block).toContain("awaiting upload");
   });
 
   it("generates narration text for blank narration cut", () => {
