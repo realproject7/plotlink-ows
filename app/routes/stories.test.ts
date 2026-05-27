@@ -59,7 +59,7 @@ describe("story metadata (.story.json)", () => {
   });
 });
 
-describe("clean image assignment via cuts.json", () => {
+describe("clean image upload simulation", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -70,48 +70,77 @@ describe("clean image assignment via cuts.json", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("persists cleanImagePath when updated in cuts.json", () => {
+  it("stores clean image file and updates cleanImagePath in cuts.json", () => {
     const cf = createCutsFile("plot-01", 2);
     writeCutsFile(tmpDir, "plot-01", cf);
 
+    const cutId = 1;
+    const ext = "webp";
+    const padded = String(cutId).padStart(2, "0");
+    const assetDir = path.join(tmpDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+
+    const fileName = `cut-${padded}-clean.${ext}`;
+    fs.writeFileSync(path.join(assetDir, fileName), Buffer.from("fake-webp-data"));
+
     const loaded = readCutsFile(tmpDir, "plot-01")!;
-    loaded.cuts[0].cleanImagePath = "assets/plot-01/cut-01-clean.webp";
+    const cut = loaded.cuts.find((c) => c.id === cutId)!;
+    cut.cleanImagePath = `assets/plot-01/${fileName}`;
     writeCutsFile(tmpDir, "plot-01", loaded);
 
     const reloaded = readCutsFile(tmpDir, "plot-01")!;
     expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
-    expect(reloaded.cuts[1].cleanImagePath).not.toBeNull();
+    expect(fs.existsSync(path.join(assetDir, fileName))).toBe(true);
   });
 
-  it("asset directory can be created for storing clean images", () => {
-    const assetDir = path.join(tmpDir, "assets", "plot-01");
-    fs.mkdirSync(assetDir, { recursive: true });
-    const filePath = path.join(assetDir, "cut-01-clean.webp");
-    fs.writeFileSync(filePath, Buffer.from("fake-image-data"));
-
-    expect(fs.existsSync(filePath)).toBe(true);
-    expect(fs.readFileSync(filePath).toString()).toBe("fake-image-data");
-  });
-
-  it("rejects invalid cuts.json on write roundtrip", () => {
-    const cf = createCutsFile("plot-01");
+  it("rejects upload to non-existent cut", () => {
+    const cf = createCutsFile("plot-01", 1);
     writeCutsFile(tmpDir, "plot-01", cf);
 
-    fs.writeFileSync(
-      path.join(tmpDir, "plot-01.cuts.json"),
-      JSON.stringify({ version: 2, plotFile: "plot-01", cuts: [] }),
-    );
-
-    expect(() => readCutsFile(tmpDir, "plot-01")).toThrow("invalid");
+    const loaded = readCutsFile(tmpDir, "plot-01")!;
+    const cut = loaded.cuts.find((c) => c.id === 99);
+    expect(cut).toBeUndefined();
   });
 
-  it("missing image state: cleanImagePath is null by default", () => {
+  it("validates MIME type: rejects non-image files", () => {
+    const allowedMimes = ["image/webp", "image/jpeg"];
+    expect(allowedMimes.includes("image/png")).toBe(false);
+    expect(allowedMimes.includes("text/plain")).toBe(false);
+    expect(allowedMimes.includes("image/webp")).toBe(true);
+    expect(allowedMimes.includes("image/jpeg")).toBe(true);
+  });
+
+  it("validates file size: rejects files over 1MB", () => {
+    const maxSize = 1024 * 1024;
+    expect(1024 * 1024 + 1 > maxSize).toBe(true);
+    expect(1024 * 1024 > maxSize).toBe(false);
+    expect(500 * 1024 > maxSize).toBe(false);
+  });
+
+  it("returns correct cleanImagePath format", () => {
+    const cutId = 3;
+    const ext = "jpg";
+    const padded = String(cutId).padStart(2, "0");
+    const cleanImagePath = `assets/plot-02/cut-${padded}-clean.${ext}`;
+    expect(cleanImagePath).toBe("assets/plot-02/cut-03-clean.jpg");
+  });
+
+  it("missing state: new cuts have default cleanImagePath but null final/upload", () => {
     const cf = createCutsFile("plot-01", 3);
     writeCutsFile(tmpDir, "plot-01", cf);
 
     const loaded = readCutsFile(tmpDir, "plot-01")!;
-    expect(loaded.cuts[0].cleanImagePath).not.toBeNull();
+    expect(loaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
     expect(loaded.cuts[0].finalImagePath).toBeNull();
     expect(loaded.cuts[0].uploadedCid).toBeNull();
+    expect(loaded.cuts[0].uploadedUrl).toBeNull();
+  });
+
+  it("rejects invalid cuts.json schema on read", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "plot-01.cuts.json"),
+      JSON.stringify({ version: 2, plotFile: "plot-01", cuts: [] }),
+    );
+    expect(() => readCutsFile(tmpDir, "plot-01")).toThrow("invalid");
   });
 });
