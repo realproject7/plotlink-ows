@@ -58,10 +58,35 @@ function CutImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+function TextOverlay({ cut }: { cut: Cut }) {
+  const hasText = cut.dialogue.length > 0 || cut.narration || cut.sfx;
+  if (!hasText) return null;
+
+  return (
+    <div className="space-y-1.5" data-testid={`cut-${cut.id}-overlay`}>
+      {cut.dialogue.map((d, i) => (
+        <div key={i} className="flex gap-2 text-xs">
+          <span className="font-medium text-foreground flex-shrink-0">{d.speaker}:</span>
+          <span className="text-foreground">{d.text}</span>
+        </div>
+      ))}
+      {cut.narration && (
+        <div className="border-l-2 border-border pl-3">
+          <p className="text-xs text-muted italic">{cut.narration}</p>
+        </div>
+      )}
+      {cut.sfx && (
+        <p className="text-xs font-mono text-muted">SFX: {cut.sfx}</p>
+      )}
+    </div>
+  );
+}
+
 function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
-  const hasImage = cut.finalImagePath || cut.cleanImagePath;
+  const hasFinal = !!cut.finalImagePath;
+  const hasClean = !!cut.cleanImagePath;
+  const hasImage = hasFinal || hasClean;
   const isNarrationOnly = !hasImage && (cut.narration || cut.dialogue.length > 0);
-  const imagePath = cut.finalImagePath || cut.cleanImagePath;
 
   return (
     <div className="space-y-2">
@@ -78,18 +103,32 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
         )}
       </div>
 
-      {/* Image */}
-      {imagePath && (
+      {/* Final image — lettered, no overlay needed */}
+      {hasFinal && (
         <CutImage
-          src={assetUrl(storyName, imagePath)}
+          src={assetUrl(storyName, cut.finalImagePath!)}
           alt={cut.description || `Cut ${cut.id}`}
         />
       )}
 
+      {/* Clean image with text overlay */}
+      {!hasFinal && hasClean && (
+        <div className="border border-border rounded overflow-hidden">
+          <CutImage
+            src={assetUrl(storyName, cut.cleanImagePath!)}
+            alt={cut.description || `Cut ${cut.id}`}
+          />
+          <div className="px-3 py-2 bg-surface/80 border-t border-border">
+            <TextOverlay cut={cut} />
+          </div>
+        </div>
+      )}
+
       {/* Narration-only placeholder */}
-      {isNarrationOnly && !imagePath && (
-        <div className="w-full bg-surface border border-border rounded p-4">
+      {isNarrationOnly && (
+        <div className="w-full bg-surface border border-border rounded p-4 space-y-2">
           <span className="text-[10px] font-mono text-muted">Narration cut</span>
+          <TextOverlay cut={cut} />
         </div>
       )}
 
@@ -105,28 +144,9 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
         <p className="text-xs text-muted italic">{cut.description}</p>
       )}
 
-      {/* Dialogue */}
-      {cut.dialogue.length > 0 && (
-        <div className="space-y-1">
-          {cut.dialogue.map((d, i) => (
-            <div key={i} className="flex gap-2 text-xs">
-              <span className="font-medium text-foreground flex-shrink-0">{d.speaker}:</span>
-              <span className="text-foreground">{d.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Narration */}
-      {cut.narration && (
-        <div className="border-l-2 border-border pl-3">
-          <p className="text-xs text-muted italic">{cut.narration}</p>
-        </div>
-      )}
-
-      {/* SFX */}
-      {cut.sfx && (
-        <p className="text-xs font-mono text-muted">SFX: {cut.sfx}</p>
+      {/* Text shown below final images (already lettered, so just metadata) */}
+      {hasFinal && (
+        <TextOverlay cut={cut} />
       )}
     </div>
   );

@@ -89,13 +89,14 @@ describe("CartoonPreview", () => {
     });
   });
 
-  it("renders cut with clean image fallback when final is missing", async () => {
+  it("renders clean image with text overlay when final is missing", async () => {
     const cutsData = {
       version: 1,
       plotFile: "plot-01",
       cuts: [{
         id: 1, shotType: "medium", description: "Market scene",
-        characters: [], dialogue: [], narration: "", sfx: "",
+        characters: [], dialogue: [{ speaker: "Mira", text: "Look at this." }],
+        narration: "The market was bustling.", sfx: "",
         cleanImagePath: "assets/plot-01/cut-01-clean.webp",
         finalImagePath: null,
         exportedAt: null, uploadedCid: null, uploadedUrl: null,
@@ -107,6 +108,11 @@ describe("CartoonPreview", () => {
     await waitFor(() => {
       const img = screen.getByAltText("Market scene");
       expect(img).toHaveAttribute("src", "/api/stories/my-story/asset/plot-01/cut-01-clean.webp");
+      const overlay = screen.getByTestId("cut-1-overlay");
+      expect(overlay).toBeInTheDocument();
+      expect(screen.getByText("Mira:")).toBeInTheDocument();
+      expect(screen.getByText("Look at this.")).toBeInTheDocument();
+      expect(screen.getByText("The market was bustling.")).toBeInTheDocument();
     });
   });
 
