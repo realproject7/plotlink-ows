@@ -4,6 +4,7 @@ import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
+import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
 
 const stories = new Hono();
 
@@ -429,6 +430,29 @@ stories.post("/:name/cuts/:plotFile/export-final/:cutId", async (c) => {
   const result = saveExportedCut(storyDir, plotFile, cutId, buffer, mime);
 
   return c.json({ ok: true, finalImagePath: result.finalImagePath });
+});
+
+/** POST /api/stories/:name/cuts/:plotFile/generate-markdown — generate/update plot markdown from cuts */
+stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const cutsFile = readCutsFile(storyDir, plotFile);
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const mdFile = path.join(storyDir, `${plotFile}.md`);
+  const existingMd = fs.existsSync(mdFile) ? fs.readFileSync(mdFile, "utf-8") : "";
+
+  const { markdown, warnings } = mergeCartoonMarkdown(existingMd, cutsFile.cuts);
+  fs.writeFileSync(mdFile, markdown, "utf-8");
+
+  return c.json({ ok: true, warnings });
 });
 
 /** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */

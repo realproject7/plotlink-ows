@@ -229,6 +229,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
   const [error, setError] = useState<string | null>(null);
   const [expandedCut, setExpandedCut] = useState<number | null>(null);
   const [editingCutId, setEditingCutId] = useState<number | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genWarnings, setGenWarnings] = useState<string[]>([]);
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -322,7 +324,31 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
         {stats.clean > 0 && <span className="text-green-700">{stats.clean} clean</span>}
         {stats.lettered > 0 && <span className="text-amber-700">{stats.lettered} lettered</span>}
         {stats.uploaded > 0 && <span className="text-green-700">{stats.uploaded} uploaded</span>}
+        <button
+          onClick={async () => {
+            setGenerating(true);
+            setGenWarnings([]);
+            try {
+              const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+              if (res.ok) {
+                const data = await res.json();
+                setGenWarnings(data.warnings || []);
+              }
+            } catch { /* ignore */ }
+            setGenerating(false);
+          }}
+          disabled={generating}
+          className="ml-auto px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+          data-testid="generate-markdown-btn"
+        >
+          {generating ? "Generating..." : "Generate MD"}
+        </button>
       </div>
+      {genWarnings.length > 0 && (
+        <div className="px-3 py-1 border-b border-border text-[10px] text-amber-700">
+          {genWarnings.map((w, i) => <p key={i}>{w}</p>)}
+        </div>
+      )}
 
       {/* Cut list */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
