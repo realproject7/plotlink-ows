@@ -128,8 +128,8 @@ describe("LetteringEditor", () => {
 
     fireEvent.click(screen.getByTestId("overlay-test-overlay-2"));
 
-    expect(screen.getByText("Narration")).toBeInTheDocument();
     expect(screen.queryByTestId("inspector-empty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("delete-overlay")).toBeInTheDocument();
   });
 
   it("deselects overlay when clicking background", () => {
@@ -156,7 +156,7 @@ describe("LetteringEditor", () => {
     simulateImageLoad();
 
     fireEvent.click(screen.getByTestId("overlay-test-overlay-3"));
-    expect(screen.getByText("Speech")).toBeInTheDocument();
+    expect(screen.getByTestId("delete-overlay")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("editor-surface"));
     expect(screen.getByTestId("inspector-empty")).toBeInTheDocument();
@@ -202,6 +202,101 @@ describe("LetteringEditor", () => {
     expect(el.style.top).toBe("150px");
     expect(el.style.width).toBe("400px");
     expect(el.style.height).toBe("100px");
+  });
+
+  it("adds overlay via toolbar button", () => {
+    render(
+      <LetteringEditor storyName="story" cut={makeCut()} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    simulateImageLoad();
+
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+    fireEvent.click(screen.getByTestId("add-speech"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+  });
+
+  it("edits overlay text via inspector", () => {
+    render(
+      <LetteringEditor storyName="story" cut={makeCut()} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    simulateImageLoad();
+
+    fireEvent.click(screen.getByTestId("add-narration"));
+    const overlayEl = document.querySelector("[data-testid^='overlay-overlay-']")!;
+    fireEvent.click(overlayEl);
+
+    const textInput = screen.getByTestId("inspector-text");
+    fireEvent.change(textInput, { target: { value: "The dawn broke." } });
+
+    expect(textInput).toHaveValue("The dawn broke.");
+  });
+
+  it("deletes overlay with double-click confirmation", () => {
+    render(
+      <LetteringEditor storyName="story" cut={makeCut()} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    simulateImageLoad();
+
+    fireEvent.click(screen.getByTestId("add-sfx"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+
+    const overlayEl = document.querySelector("[data-testid^='overlay-overlay-']")!;
+    fireEvent.click(overlayEl);
+
+    const deleteBtn = screen.getByTestId("delete-overlay");
+    expect(deleteBtn).toHaveTextContent("Delete");
+    fireEvent.click(deleteBtn);
+    expect(deleteBtn).toHaveTextContent("Click again to delete");
+    fireEvent.click(deleteBtn);
+
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+  });
+
+  it("saves overlays via onSave callback", () => {
+    const onSave = vi.fn();
+    render(
+      <LetteringEditor storyName="story" cut={makeCut()} onSave={onSave} onClose={vi.fn()} />,
+    );
+    simulateImageLoad();
+
+    fireEvent.click(screen.getByTestId("add-speech"));
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ type: "speech" })]),
+    );
+  });
+
+  it("shows tail anchor controls for speech overlay without tailAnchor field", () => {
+    const overlay: Overlay = {
+      id: "test-no-tail",
+      type: "speech",
+      x: 0.1,
+      y: 0.1,
+      width: 0.25,
+      height: 0.12,
+      text: "Hello",
+      speaker: "Mira",
+    };
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    simulateImageLoad();
+    fireEvent.click(screen.getByTestId("overlay-test-no-tail"));
+
+    const tailX = screen.getByTestId("inspector-tail-x") as HTMLInputElement;
+    const tailY = screen.getByTestId("inspector-tail-y") as HTMLInputElement;
+    expect(tailX).toBeInTheDocument();
+    expect(tailY).toBeInTheDocument();
+    expect(parseFloat(tailX.value)).toBe(0.5);
+    expect(parseFloat(tailY.value)).toBe(1.2);
   });
 
   it("calls onClose when Close button is clicked", () => {

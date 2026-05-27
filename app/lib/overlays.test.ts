@@ -34,7 +34,7 @@ describe("toNorm", () => {
 });
 
 describe("createOverlay", () => {
-  it("creates speech overlay with defaults", () => {
+  it("creates speech overlay with defaults and tailAnchor", () => {
     const o = createOverlay("speech", 0.2, 0.3);
     expect(o.type).toBe("speech");
     expect(o.x).toBe(0.2);
@@ -43,7 +43,14 @@ describe("createOverlay", () => {
     expect(o.height).toBe(0.12);
     expect(o.text).toBe("");
     expect(o.speaker).toBe("");
+    expect(o.tailAnchor).toEqual({ x: 0.5, y: 1.2 });
     expect(o.id).toMatch(/^overlay-/);
+  });
+
+  it("tailAnchor survives JSON roundtrip", () => {
+    const o = createOverlay("speech");
+    const json = JSON.parse(JSON.stringify(o));
+    expect(json.tailAnchor).toEqual({ x: 0.5, y: 1.2 });
   });
 
   it("creates sfx overlay with smaller dimensions", () => {

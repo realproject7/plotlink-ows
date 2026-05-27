@@ -11,10 +11,31 @@ interface Overlay {
   height: number;
   text: string;
   speaker?: string;
+  tailAnchor?: { x: number; y: number };
 }
 
-function toPixel(norm: number, containerSize: number): number {
-  return norm * containerSize;
+function toPixel(norm: number, size: number): number {
+  return norm * size;
+}
+
+function toNorm(pixel: number, size: number): number {
+  if (size === 0) return 0;
+  return pixel / size;
+}
+
+let counter = 0;
+function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
+  counter++;
+  return {
+    id: `overlay-${Date.now()}-${counter}`,
+    type,
+    x,
+    y,
+    width: type === "sfx" ? 0.15 : 0.25,
+    height: type === "sfx" ? 0.08 : 0.12,
+    text: "",
+    ...(type === "speech" ? { speaker: "", tailAnchor: { x: 0.5, y: 1.2 } } : {}),
+  };
 }
 
 interface Cut {
@@ -47,33 +68,33 @@ const TYPE_BORDER: Record<OverlayType, string> = {
   sfx: "border-accent/40",
 };
 
+const MIN_SIZE = 0.05;
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
+
 export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEditorProps) {
-  const [overlays] = useState<Overlay[]>(cut.overlays || []);
+  const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [imageBounds, setImageBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const dragRef = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number } | null>(null);
 
   const updateImageBounds = useCallback(() => {
     const container = containerRef.current;
     const img = imgRef.current;
     if (!container || !img || !img.naturalWidth) return;
-
     const cw = container.clientWidth;
     const ch = container.clientHeight;
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
-
     const scale = Math.min(cw / iw, ch / ih);
     const rw = iw * scale;
     const rh = ih * scale;
-
-    setImageBounds({
-      x: (cw - rw) / 2,
-      y: (ch - rh) / 2,
-      width: rw,
-      height: rh,
-    });
+    setImageBounds({ x: (cw - rw) / 2, y: (ch - rh) / 2, width: rw, height: rh });
   }, []);
 
   useEffect(() => {
@@ -84,14 +105,78 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
     return () => observer.disconnect();
   }, [updateImageBounds]);
 
+  const addOverlay = useCallback((type: OverlayType) => {
+    const o = createOverlay(type, 0.1 + Math.random() * 0.3, 0.1 + Math.random() * 0.3);
+    setOverlays((prev) => [...prev, o]);
+    setSelectedId(o.id);
+  }, []);
+
+  const updateOverlay = useCallback((id: string, changes: Partial<Overlay>) => {
+    setOverlays((prev) => prev.map((o) => o.id === id ? { ...o, ...changes } : o));
+  }, []);
+
+  const deleteOverlay = useCallback((id: string) => {
+    setOverlays((prev) => prev.filter((o) => o.id !== id));
+    setSelectedId(null);
+    setConfirmDelete(false);
+  }, []);
+
   const handleBackgroundClick = useCallback(() => {
     setSelectedId(null);
+    setConfirmDelete(false);
   }, []);
 
   const handleOverlayClick = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedId(id);
+    setConfirmDelete(false);
   }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, id: string, mode: "move" | "resize") => {
+    e.stopPropagation();
+    e.preventDefault();
+    const overlay = overlays.find((o) => o.id === id);
+    if (!overlay) return;
+    setSelectedId(id);
+    dragRef.current = {
+      id,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: overlay.x,
+      origY: overlay.y,
+      origW: overlay.width,
+      origH: overlay.height,
+    };
+  }, [overlays]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag || imageBounds.width === 0) return;
+      const dx = toNorm(e.clientX - drag.startX, imageBounds.width);
+      const dy = toNorm(e.clientY - drag.startY, imageBounds.height);
+
+      if (drag.mode === "move") {
+        const newX = clamp(drag.origX + dx, 0, 1 - drag.origW);
+        const newY = clamp(drag.origY + dy, 0, 1 - drag.origH);
+        updateOverlay(drag.id, { x: newX, y: newY });
+      } else {
+        const newW = clamp(drag.origW + dx, MIN_SIZE, 1 - drag.origX);
+        const newH = clamp(drag.origH + dy, MIN_SIZE, 1 - drag.origY);
+        updateOverlay(drag.id, { width: newW, height: newH });
+      }
+    };
+
+    const onMouseUp = () => { dragRef.current = null; };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [imageBounds, updateOverlay]);
 
   const handleSave = useCallback(() => {
     onSave(overlays);
@@ -112,22 +197,17 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
       {/* Toolbar */}
       <div className="px-3 py-1.5 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-muted">Cut #{cut.id} — Editor</span>
-          <span className="text-[10px] text-muted">{overlays.length} overlays</span>
+          <span className="text-xs font-mono text-muted">Cut #{cut.id}</span>
+          <span className="text-[10px] text-muted" data-testid="overlay-count">{overlays.length} overlays</span>
+          <div className="flex items-center gap-1 ml-2">
+            <button onClick={() => addOverlay("speech")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-speech">Speech</button>
+            <button onClick={() => addOverlay("narration")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-narration">Narration</button>
+            <button onClick={() => addOverlay("sfx")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-sfx">SFX</button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSave}
-            className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim"
-          >
-            Save
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded"
-          >
-            Close
-          </button>
+          <button onClick={handleSave} className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim">Save</button>
+          <button onClick={onClose} className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded">Close</button>
         </div>
       </div>
 
@@ -148,7 +228,6 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
             onLoad={updateImageBounds}
           />
 
-          {/* Overlay elements — positioned relative to rendered image bounds */}
           {imageBounds.width > 0 && overlays.map((overlay) => {
             const left = imageBounds.x + toPixel(overlay.x, imageBounds.width);
             const top = imageBounds.y + toPixel(overlay.y, imageBounds.height);
@@ -161,38 +240,106 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                 key={overlay.id}
                 data-testid={`overlay-${overlay.id}`}
                 onClick={(e) => handleOverlayClick(e, overlay.id)}
-                className={`absolute border-2 rounded cursor-pointer ${TYPE_BORDER[overlay.type]} ${
+                onMouseDown={(e) => handleMouseDown(e, overlay.id, "move")}
+                className={`absolute border-2 rounded cursor-move select-none ${TYPE_BORDER[overlay.type]} ${
                   isSelected ? "ring-2 ring-accent" : ""
                 }`}
                 style={{ left, top, width, height }}
               >
-                <span className="text-[9px] px-1 text-muted truncate block">
+                <span className="text-[9px] px-1 text-muted truncate block pointer-events-none">
                   {overlay.text || TYPE_LABEL[overlay.type]}
                 </span>
+                {isSelected && (
+                  <div
+                    onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, overlay.id, "resize"); }}
+                    className="absolute bottom-0 right-0 w-2 h-2 bg-accent cursor-se-resize"
+                    data-testid={`resize-${overlay.id}`}
+                  />
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Inspector panel */}
-        <div className="w-48 border-l border-border p-3 overflow-y-auto flex-shrink-0">
+        <div className="w-52 border-l border-border p-3 overflow-y-auto flex-shrink-0">
           {selectedOverlay ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="text-xs font-medium text-foreground">{TYPE_LABEL[selectedOverlay.type]}</p>
+
               {selectedOverlay.speaker !== undefined && (
-                <div className="text-[10px] text-muted">
-                  <span className="font-medium">Speaker:</span> {selectedOverlay.speaker || "(none)"}
-                </div>
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-medium text-muted">Speaker</span>
+                  <input
+                    value={selectedOverlay.speaker || ""}
+                    onChange={(e) => updateOverlay(selectedOverlay.id, { speaker: e.target.value })}
+                    className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                    placeholder="Character name"
+                    data-testid="inspector-speaker"
+                  />
+                </label>
               )}
-              <div className="text-[10px] text-muted">
-                <span className="font-medium">Text:</span> {selectedOverlay.text || "(empty)"}
-              </div>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-medium text-muted">Text</span>
+                <textarea
+                  value={selectedOverlay.text}
+                  onChange={(e) => updateOverlay(selectedOverlay.id, { text: e.target.value })}
+                  rows={3}
+                  className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent resize-none focus:border-accent focus:outline-none"
+                  placeholder="Overlay text"
+                  data-testid="inspector-text"
+                />
+              </label>
+
+              {selectedOverlay.type === "speech" && (() => {
+                const tail = selectedOverlay.tailAnchor || { x: 0.5, y: 1.2 };
+                return (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-medium text-muted">Tail anchor</span>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
+                        x
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={tail.x}
+                          onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...tail, x: parseFloat(e.target.value) || 0 } })}
+                          className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                          data-testid="inspector-tail-x"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
+                        y
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={tail.y}
+                          onChange={(e) => updateOverlay(selectedOverlay.id, { tailAnchor: { ...tail, y: parseFloat(e.target.value) || 0 } })}
+                          className="w-14 px-1 py-0.5 text-[10px] border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                          data-testid="inspector-tail-y"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="text-[10px] font-mono text-muted space-y-0.5">
-                <p>x: {selectedOverlay.x.toFixed(3)}</p>
-                <p>y: {selectedOverlay.y.toFixed(3)}</p>
-                <p>w: {selectedOverlay.width.toFixed(3)}</p>
-                <p>h: {selectedOverlay.height.toFixed(3)}</p>
+                <p>x: {selectedOverlay.x.toFixed(3)}, y: {selectedOverlay.y.toFixed(3)}</p>
+                <p>w: {selectedOverlay.width.toFixed(3)}, h: {selectedOverlay.height.toFixed(3)}</p>
               </div>
+
+              <button
+                onClick={() => {
+                  if (confirmDelete) deleteOverlay(selectedOverlay.id);
+                  else setConfirmDelete(true);
+                }}
+                className="w-full px-2 py-1 text-xs text-error border border-error/30 rounded hover:bg-error/5"
+                data-testid="delete-overlay"
+              >
+                {confirmDelete ? "Click again to delete" : "Delete"}
+              </button>
             </div>
           ) : (
             <p className="text-xs text-muted" data-testid="inspector-empty">
