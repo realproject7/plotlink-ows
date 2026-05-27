@@ -34,6 +34,7 @@ interface StoryInfo {
   hasGenesis: boolean;
   plotCount: number;
   publishedCount: number;
+  contentType: "fiction" | "cartoon";
 }
 
 function readPublishStatus(storyDir: string): Record<string, FileStatus> {
@@ -51,8 +52,31 @@ function writePublishStatus(storyDir: string, status: Record<string, FileStatus>
   fs.writeFileSync(statusFile, JSON.stringify(status, null, 2) + "\n");
 }
 
+interface StoryMeta {
+  contentType: "fiction" | "cartoon";
+}
+
+function readStoryMeta(storyDir: string): StoryMeta {
+  const metaFile = path.join(storyDir, ".story.json");
+  try {
+    if (fs.existsSync(metaFile)) {
+      const raw = JSON.parse(fs.readFileSync(metaFile, "utf-8"));
+      if (raw.contentType === "fiction" || raw.contentType === "cartoon") {
+        return { contentType: raw.contentType };
+      }
+    }
+  } catch { /* ignore */ }
+  return { contentType: "fiction" };
+}
+
+function writeStoryMeta(storyDir: string, meta: StoryMeta) {
+  const metaFile = path.join(storyDir, ".story.json");
+  fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2) + "\n");
+}
+
 function scanStory(storyDir: string, name: string): StoryInfo {
   const publishStatus = readPublishStatus(storyDir);
+  const storyMeta = readStoryMeta(storyDir);
   const entries = fs.readdirSync(storyDir).filter((f) => f.endsWith(".md"));
 
   const files: FileStatus[] = entries.map((file) => {
@@ -84,7 +108,7 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     }
   } catch { /* best effort */ }
 
-  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount };
+  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType };
 }
 
 /** GET /api/stories — list all stories */
@@ -175,6 +199,28 @@ stories.get("/:name", (c) => {
   });
 
   return c.json({ ...info, files: filesWithContent });
+});
+
+/** POST /api/stories/:name/metadata — write/update .story.json */
+stories.post("/:name/metadata", async (c) => {
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const body = await c.req.json<{ contentType?: string }>();
+  if (body.contentType !== "fiction" && body.contentType !== "cartoon") {
+    return c.json({ error: "contentType must be 'fiction' or 'cartoon'" }, 400);
+  }
+
+  const existing = readStoryMeta(storyDir);
+  const meta: StoryMeta = { ...existing, contentType: body.contentType };
+  writeStoryMeta(storyDir, meta);
+
+  return c.json({ ok: true });
 });
 
 /** GET /api/stories/:name/:file — single file content */
@@ -290,4 +336,4 @@ stories.post("/:name/:file/mark-not-indexed", async (c) => {
   return c.json({ ok: true });
 });
 
-export { stories as storiesRoutes, readPublishStatus, STORIES_DIR };
+export { stories as storiesRoutes, readPublishStatus, readStoryMeta, writeStoryMeta, STORIES_DIR };

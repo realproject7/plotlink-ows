@@ -41,6 +41,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
+  const [showNewStoryModal, setShowNewStoryModal] = useState(false);
+  const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
   const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,7 +75,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   const handleNewStory = useCallback(() => {
+    setShowNewStoryModal(true);
+  }, []);
+
+  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon") => {
+    setShowNewStoryModal(false);
     const id = `_new_${Date.now()}`;
+    contentTypeMap.current.set(id, contentType);
     setUntitledSessions((prev) => [...prev, id]);
     setSelectedStory(id);
     setSelectedFile(null);
@@ -103,6 +111,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             }
             if (renamed) {
               setUntitledSessions((prev) => prev.slice(1));
+              const ct = contentTypeMap.current.get(oldName) || "fiction";
+              contentTypeMap.current.delete(oldName);
+              authFetch(`/api/stories/${name}/metadata`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contentType: ct }),
+              }).catch(() => {});
             }
             setSelectedStory(name);
             setSelectedFile(null);
@@ -282,6 +297,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handleDestroySession = useCallback((name: string) => {
     if (name.startsWith("_new_")) {
       setUntitledSessions((prev) => prev.filter((id) => id !== name));
+      contentTypeMap.current.delete(name);
     }
   }, []);
 
@@ -369,6 +385,37 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           </div>
         )}
       </div>
+
+      {showNewStoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(240, 235, 225, 0.9)" }}>
+          <div className="bg-surface border border-border rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
+            <h3 className="text-sm font-serif font-medium text-foreground text-center">New Story</h3>
+            <p className="text-xs text-muted text-center">Choose a content type</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handleCreateStory("fiction")}
+                className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
+              >
+                <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
+                <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
+              </button>
+              <button
+                onClick={() => handleCreateStory("cartoon")}
+                className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
+              >
+                <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>
+                <p className="text-[11px] text-muted">Comics, manga, webtoons</p>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowNewStoryModal(false)}
+              className="w-full px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-surface rounded text-center"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

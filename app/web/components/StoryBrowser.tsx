@@ -15,6 +15,7 @@ interface StoryInfo {
   hasGenesis: boolean;
   plotCount: number;
   publishedCount: number;
+  contentType?: "fiction" | "cartoon";
 }
 
 interface StoryBrowserProps {
@@ -230,7 +231,10 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
               >
                 <span className="text-xs text-muted">{expanded.has(story.name) ? "\u25BC" : "\u25B6"}</span>
                 <span className="font-medium truncate" title={story.name}>{story.title || story.name}</span>
-                <span className="ml-auto text-xs text-muted">
+                {story.contentType === "cartoon" && (
+                  <span className="bg-accent/10 text-accent rounded px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0">Cartoon</span>
+                )}
+                <span className="ml-auto flex-shrink-0 text-xs text-muted">
                   {story.publishedCount}/{story.files.length}
                 </span>
               </button>
