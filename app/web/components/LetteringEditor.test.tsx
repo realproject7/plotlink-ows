@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { LetteringEditor } from "./LetteringEditor";
 
 beforeAll(() => {
@@ -7,6 +7,8 @@ beforeAll(() => {
     callback: ResizeObserverCallback;
     constructor(callback: ResizeObserverCallback) { this.callback = callback; }
     observe(target: Element) {
+      Object.defineProperty(target, "clientWidth", { value: 400, configurable: true });
+      Object.defineProperty(target, "clientHeight", { value: 300, configurable: true });
       this.callback([{ contentRect: { width: 400, height: 300 }, target } as unknown as ResizeObserverEntry], this);
     }
     unobserve() {}
@@ -26,6 +28,15 @@ interface Overlay {
 }
 
 afterEach(cleanup);
+
+function simulateImageLoad() {
+  const img = document.querySelector("img");
+  if (img) {
+    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
+    act(() => { fireEvent.load(img); });
+  }
+}
 
 function makeCut(overrides: Record<string, unknown> = {}) {
   return {
@@ -63,7 +74,7 @@ describe("LetteringEditor", () => {
     expect(screen.getByText("No clean image — upload one first.")).toBeInTheDocument();
   });
 
-  it("renders overlay elements", () => {
+  it("renders overlay elements after image load", () => {
     const overlay: Overlay = {
       id: "test-overlay-1",
       type: "speech",
@@ -83,6 +94,8 @@ describe("LetteringEditor", () => {
         onClose={vi.fn()}
       />,
     );
+
+    simulateImageLoad();
 
     const el = screen.getByTestId("overlay-test-overlay-1");
     expect(el).toBeInTheDocument();
@@ -109,7 +122,9 @@ describe("LetteringEditor", () => {
       />,
     );
 
-    expect(screen.getByTestId("inspector-empty")).toBeInTheDocument();
+    simulateImageLoad();
+
+    expect(screen.queryByTestId("inspector-empty")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("overlay-test-overlay-2"));
 
@@ -137,6 +152,8 @@ describe("LetteringEditor", () => {
         onClose={vi.fn()}
       />,
     );
+
+    simulateImageLoad();
 
     fireEvent.click(screen.getByTestId("overlay-test-overlay-3"));
     expect(screen.getByText("Speech")).toBeInTheDocument();

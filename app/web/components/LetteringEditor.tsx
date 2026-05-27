@@ -50,24 +50,39 @@ const TYPE_BORDER: Record<OverlayType, string> = {
 export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEditorProps) {
   const [overlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [imageBounds, setImageBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const updateImageBounds = useCallback(() => {
+    const container = containerRef.current;
+    const img = imgRef.current;
+    if (!container || !img || !img.naturalWidth) return;
+
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+
+    const scale = Math.min(cw / iw, ch / ih);
+    const rw = iw * scale;
+    const rh = ih * scale;
+
+    setImageBounds({
+      x: (cw - rw) / 2,
+      y: (ch - rh) / 2,
+      width: rw,
+      height: rh,
+    });
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
-      }
-    });
+    const observer = new ResizeObserver(() => updateImageBounds());
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [updateImageBounds]);
 
   const handleBackgroundClick = useCallback(() => {
     setSelectedId(null);
@@ -125,18 +140,20 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
           data-testid="editor-surface"
         >
           <img
+            ref={imgRef}
             src={assetUrl(storyName, cut.cleanImagePath)}
             alt={`Cut ${cut.id} clean`}
             className="w-full h-full object-contain"
             draggable={false}
+            onLoad={updateImageBounds}
           />
 
-          {/* Overlay elements */}
-          {containerSize.width > 0 && overlays.map((overlay) => {
-            const left = toPixel(overlay.x, containerSize.width);
-            const top = toPixel(overlay.y, containerSize.height);
-            const width = toPixel(overlay.width, containerSize.width);
-            const height = toPixel(overlay.height, containerSize.height);
+          {/* Overlay elements — positioned relative to rendered image bounds */}
+          {imageBounds.width > 0 && overlays.map((overlay) => {
+            const left = imageBounds.x + toPixel(overlay.x, imageBounds.width);
+            const top = imageBounds.y + toPixel(overlay.y, imageBounds.height);
+            const width = toPixel(overlay.width, imageBounds.width);
+            const height = toPixel(overlay.height, imageBounds.height);
             const isSelected = overlay.id === selectedId;
 
             return (
