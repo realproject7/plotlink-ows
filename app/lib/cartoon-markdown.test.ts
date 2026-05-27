@@ -150,29 +150,6 @@ describe("mergeCartoonMarkdown", () => {
   });
 });
 
-describe("contentType propagation logic", () => {
-  it("cartoon genesis should include contentType", () => {
-    const isCartoon = true;
-    const hasStorylineId = false;
-    const shouldSendContentType = isCartoon && !hasStorylineId;
-    expect(shouldSendContentType).toBe(true);
-  });
-
-  it("cartoon plot should NOT include contentType", () => {
-    const isCartoon = true;
-    const hasStorylineId = true;
-    const shouldSendContentType = isCartoon && !hasStorylineId;
-    expect(shouldSendContentType).toBe(false);
-  });
-
-  it("fiction genesis should NOT include contentType", () => {
-    const isCartoon = false;
-    const hasStorylineId = false;
-    const shouldSendContentType = isCartoon && !hasStorylineId;
-    expect(shouldSendContentType).toBe(false);
-  });
-});
-
 describe("getReadinessWarnings", () => {
   it("warns for each cut without uploadedUrl", () => {
     const cuts = [
