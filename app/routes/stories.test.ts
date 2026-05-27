@@ -255,6 +255,28 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.language).toBe("Korean");
   });
 
+  it("export-final saves file and updates cuts.json metadata", () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("plot-01", 1);
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    const finalPath = path.join(assetDir, "cut-01-final.webp");
+    fs.writeFileSync(finalPath, Buffer.from("final-image-data"));
+
+    const loaded = readCutsFile(storyDir, "plot-01")!;
+    loaded.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
+    loaded.cuts[0].exportedAt = new Date().toISOString();
+    writeCutsFile(storyDir, "plot-01", loaded);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
+    expect(reloaded.cuts[0].exportedAt).toBeTruthy();
+    expect(fs.existsSync(finalPath)).toBe(true);
+  });
+
   it("rejects export-final for non-existent cut via route", async () => {
     const storyDir = path.join(tmpDir, "test-story");
     fs.mkdirSync(storyDir, { recursive: true });

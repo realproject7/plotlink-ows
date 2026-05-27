@@ -99,6 +99,21 @@ describe("LetteringEditor", () => {
     expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
   });
 
+  it("allows editor for narration cut with narration text but no overlays", () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ cleanImagePath: null, overlays: [], narration: "Once upon a time..." })}
+        plotFile="plot-01"
+        authFetch={vi.fn()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("export-btn")).toBeInTheDocument();
+    expect(screen.getByText("Narration cut")).toBeInTheDocument();
+  });
+
   it("renders overlay elements after image load", () => {
     const overlay: Overlay = {
       id: "test-overlay-1",

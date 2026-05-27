@@ -59,6 +59,8 @@ interface Cut {
   id: number;
   cleanImagePath: string | null;
   overlays: Overlay[];
+  narration?: string;
+  dialogue?: { speaker: string; text: string }[];
 }
 
 interface LetteringEditorProps {
@@ -242,7 +244,9 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
-  if (!cut.cleanImagePath && overlays.length === 0) {
+  const isNarrationCut = !cut.cleanImagePath;
+
+  if (isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted">
         No clean image — upload one first, or add overlays for a narration cut.
@@ -291,7 +295,17 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
               onLoad={updateImageBounds}
             />
           ) : (
-            <div className="w-full h-full bg-white flex items-center justify-center text-muted text-xs">
+            <div
+              className="w-full h-full bg-white flex items-center justify-center text-muted text-xs"
+              ref={(el) => {
+                if (el && imageBounds.width === 0) {
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width > 0) {
+                    setImageBounds({ x: 0, y: 0, width: rect.width, height: rect.height });
+                  }
+                }
+              }}
+            >
               Narration cut
             </div>
           )}
