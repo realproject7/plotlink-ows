@@ -69,6 +69,19 @@ describe("story metadata (.story.json)", () => {
     expect(raw.contentType).toBe("cartoon");
   });
 
+  it("persists language in .story.json", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon", language: "Korean" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.contentType).toBe("cartoon");
+    expect(meta.language).toBe("Korean");
+  });
+
+  it("defaults language to undefined when not set", () => {
+    writeStoryMeta(tmpDir, { contentType: "fiction" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.language).toBeUndefined();
+  });
+
   it("writeStoryMeta overwrites existing .story.json", () => {
     writeStoryMeta(tmpDir, { contentType: "fiction" });
     writeStoryMeta(tmpDir, { contentType: "cartoon" });
