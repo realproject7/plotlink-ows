@@ -30,8 +30,7 @@ export interface CutsFile {
   cuts: Cut[];
 }
 
-export function createDefaultCut(id: number, plotFile: string): Cut {
-  const padded = String(id).padStart(2, "0");
+export function createDefaultCut(id: number, _plotFile: string): Cut {
   return {
     id,
     shotType: "medium",
@@ -40,7 +39,7 @@ export function createDefaultCut(id: number, plotFile: string): Cut {
     dialogue: [],
     narration: "",
     sfx: "",
-    cleanImagePath: `assets/${plotFile}/cut-${padded}-clean.webp`,
+    cleanImagePath: null,
     finalImagePath: null,
     exportedAt: null,
     uploadedCid: null,

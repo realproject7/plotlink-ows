@@ -1,15 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { readStoryMeta, writeStoryMeta } from "./stories";
+
+const testState = vi.hoisted(() => ({ storiesDir: "" }));
+
+vi.mock("../lib/paths", () => ({
+  get STORIES_DIR() { return testState.storiesDir; },
+  CONFIG_DIR: os.tmpdir(),
+  DATA_DIR: os.tmpdir(),
+  DB_PATH: path.join(os.tmpdir(), "test.db"),
+  DATABASE_URL: "file:" + path.join(os.tmpdir(), "test.db"),
+  ENV_FILE: path.join(os.tmpdir(), ".env"),
+}));
+
+vi.mock("../lib/generate-story-instructions", () => ({
+  writeStoryInstructions: vi.fn(),
+}));
+
+import { readStoryMeta, writeStoryMeta, storiesRoutes } from "./stories";
 import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
+import { Hono } from "hono";
 
 describe("story metadata (.story.json)", () => {
   let tmpDir: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-test-"));
+    testState.storiesDir = tmpDir;
   });
 
   afterEach(() => {
@@ -64,6 +82,7 @@ describe("clean image upload simulation", () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-test-"));
+    testState.storiesDir = tmpDir;
   });
 
   afterEach(() => {
@@ -125,12 +144,12 @@ describe("clean image upload simulation", () => {
     expect(cleanImagePath).toBe("assets/plot-02/cut-03-clean.jpg");
   });
 
-  it("missing state: new cuts have default cleanImagePath but null final/upload", () => {
+  it("missing state: new cuts have null cleanImagePath, finalImagePath, and upload fields", () => {
     const cf = createCutsFile("plot-01", 3);
     writeCutsFile(tmpDir, "plot-01", cf);
 
     const loaded = readCutsFile(tmpDir, "plot-01")!;
-    expect(loaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(loaded.cuts[0].cleanImagePath).toBeNull();
     expect(loaded.cuts[0].finalImagePath).toBeNull();
     expect(loaded.cuts[0].uploadedCid).toBeNull();
     expect(loaded.cuts[0].uploadedUrl).toBeNull();
@@ -142,5 +161,60 @@ describe("clean image upload simulation", () => {
       JSON.stringify({ version: 2, plotFile: "plot-01", cuts: [] }),
     );
     expect(() => readCutsFile(tmpDir, "plot-01")).toThrow("invalid");
+  });
+});
+
+describe("POST /upload-clean/:cutId route", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-route-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function postEmpty(url: string) {
+    const fd = new FormData();
+    return app.request(url, { method: "POST", body: fd });
+  }
+
+  it("rejects upload for non-existent cut via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/test-story/cuts/plot-01/upload-clean/99", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "dummy",
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toContain("Cut 99");
+  });
+
+  it("rejects upload without file via route", async () => {
+    const storyDir = path.join(tmpDir, "test-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await postEmpty("/api/stories/test-story/cuts/plot-01/upload-clean/1");
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("No file");
+  });
+
+  it("returns 404 for missing story via route", async () => {
+    const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/upload-clean/1");
+
+    expect(res.status).toBe(404);
   });
 });

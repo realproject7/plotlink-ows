@@ -288,9 +288,14 @@ stories.post("/:name/cuts/:plotFile/upload-clean/:cutId", async (c) => {
   const cut = cutsFile.cuts.find((c) => c.id === cutId);
   if (!cut) return c.json({ error: `Cut ${cutId} not found` }, 404);
 
-  const formData = await c.req.formData();
-  const file = formData.get("file");
-  if (!file || !(file instanceof File)) {
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: "No file provided" }, 400);
+  }
+  const file = formData.get("file") as File | Blob | null;
+  if (!file || (typeof file === "string")) {
     return c.json({ error: "No file provided" }, 400);
   }
 
