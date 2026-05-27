@@ -105,13 +105,9 @@ describe("fiction PreviewPanel regression", () => {
       expect(screen.getByText("Hook content here that is enough")).toBeInTheDocument();
     });
 
-    const publishBtn = screen.queryByText("Publish to PlotLink");
-    if (publishBtn) {
-      fireEvent.click(publishBtn);
-      expect(onPublish).toHaveBeenCalled();
-      const args = onPublish.mock.calls[0];
-      expect(args[0]).toBe("fiction-story");
-      expect(args[1]).toBe("genesis.md");
-    }
+    const publishBtn = await screen.findByText("Publish to PlotLink");
+    expect(publishBtn).toBeInTheDocument();
+    fireEvent.click(publishBtn);
+    expect(onPublish).toHaveBeenCalledWith("fiction-story", "genesis.md", expect.any(String), expect.any(String), expect.any(Boolean));
   });
 });
