@@ -37,6 +37,7 @@ interface StoryInfo {
   plotCount: number;
   publishedCount: number;
   contentType: "fiction" | "cartoon";
+  language: string;
 }
 
 function readPublishStatus(storyDir: string): Record<string, FileStatus> {
@@ -56,6 +57,7 @@ function writePublishStatus(storyDir: string, status: Record<string, FileStatus>
 
 interface StoryMeta {
   contentType: "fiction" | "cartoon";
+  language?: string;
 }
 
 function readStoryMeta(storyDir: string): StoryMeta {
@@ -64,7 +66,10 @@ function readStoryMeta(storyDir: string): StoryMeta {
     if (fs.existsSync(metaFile)) {
       const raw = JSON.parse(fs.readFileSync(metaFile, "utf-8"));
       if (raw.contentType === "fiction" || raw.contentType === "cartoon") {
-        return { contentType: raw.contentType };
+        return {
+          contentType: raw.contentType,
+          ...(typeof raw.language === "string" ? { language: raw.language } : {}),
+        };
       }
     }
   } catch { /* ignore */ }
@@ -110,7 +115,7 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     }
   } catch { /* best effort */ }
 
-  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType };
+  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType, language: storyMeta.language || "English" };
 }
 
 /** GET /api/stories — list all stories */
@@ -213,13 +218,17 @@ stories.post("/:name/metadata", async (c) => {
     return c.json({ error: "Story not found" }, 404);
   }
 
-  const body = await c.req.json<{ contentType?: string }>();
+  const body = await c.req.json<{ contentType?: string; language?: string }>();
   if (body.contentType !== "fiction" && body.contentType !== "cartoon") {
     return c.json({ error: "contentType must be 'fiction' or 'cartoon'" }, 400);
   }
 
   const existing = readStoryMeta(storyDir);
-  const meta: StoryMeta = { ...existing, contentType: body.contentType };
+  const meta: StoryMeta = {
+    ...existing,
+    contentType: body.contentType,
+    ...(typeof body.language === "string" ? { language: body.language } : {}),
+  };
   writeStoryMeta(storyDir, meta);
   writeStoryInstructions(storyDir, meta.contentType);
 

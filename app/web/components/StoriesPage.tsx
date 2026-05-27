@@ -304,12 +304,18 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
+  const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon" }[]) => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
-      for (const s of stories) ct[s.name] = s.contentType || "fiction";
+      const lang: Record<string, string> = {};
+      for (const s of stories) {
+        ct[s.name] = s.contentType || "fiction";
+        lang[s.name] = s.language || "English";
+      }
       setStoryContentTypes(ct);
+      setStoryLanguages(lang);
     };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
       if (data?.stories) updateFromStories(data.stories);
@@ -376,7 +382,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           publishingFile={publishingFile}
           walletAddress={walletAddress}
           contentType={selectedStory ? (storyContentTypes[selectedStory] || contentTypeMap.current.get(selectedStory) || "fiction") : "fiction"}
-          language="English"
+          language={selectedStory ? (storyLanguages[selectedStory] || "English") : "English"}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
