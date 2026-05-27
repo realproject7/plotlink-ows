@@ -21,16 +21,11 @@ describe("createDefaultCut", () => {
     expect(cut.dialogue).toEqual([]);
     expect(cut.narration).toBe("");
     expect(cut.sfx).toBe("");
-    expect(cut.cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(cut.cleanImagePath).toBeNull();
     expect(cut.finalImagePath).toBeNull();
     expect(cut.exportedAt).toBeNull();
     expect(cut.uploadedCid).toBeNull();
     expect(cut.uploadedUrl).toBeNull();
-  });
-
-  it("pads cut number in image path", () => {
-    const cut = createDefaultCut(3, "plot-02");
-    expect(cut.cleanImagePath).toBe("assets/plot-02/cut-03-clean.webp");
   });
 });
 
