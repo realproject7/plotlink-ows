@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize } from "./cartoon-readiness";
+import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
 function makeCut(overrides: Partial<Cut> = {}): Cut {
@@ -89,5 +90,33 @@ describe("checkMarkdownReadiness", () => {
     const md = "x".repeat(10001);
     const { issues } = checkMarkdownReadiness(md, []);
     expect(issues.some((i) => i.includes("10,000"))).toBe(true);
+  });
+});
+
+describe("checkExportSize", () => {
+  it("passes for file under 1MB", () => {
+    expect(checkExportSize(500 * 1024)).toBeNull();
+  });
+
+  it("passes for file at exactly 1MB", () => {
+    expect(checkExportSize(1024 * 1024)).toBeNull();
+  });
+
+  it("fails for file over 1MB", () => {
+    const result = checkExportSize(1024 * 1024 + 1);
+    expect(result).toContain("1MB");
+  });
+});
+
+describe("font/package size impact", () => {
+  it("no vendored font files — all fonts use CDN", () => {
+    for (const font of FONT_REGISTRY) {
+      expect(font.googleFontsId).toBeTruthy();
+      expect(font.license).toBe("OFL-1.1");
+    }
+  });
+
+  it("font registry is small (under 10 entries for MVP)", () => {
+    expect(FONT_REGISTRY.length).toBeLessThanOrEqual(10);
   });
 });

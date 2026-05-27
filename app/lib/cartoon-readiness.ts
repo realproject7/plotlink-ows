@@ -1,5 +1,14 @@
 import type { Cut } from "./cuts";
 
+const MAX_EXPORT_SIZE = 1024 * 1024;
+
+export function checkExportSize(fileSizeBytes: number): string | null {
+  if (fileSizeBytes > MAX_EXPORT_SIZE) {
+    return `Export is ${(fileSizeBytes / 1024).toFixed(0)}KB, exceeds 1MB limit`;
+  }
+  return null;
+}
+
 export function checkCartoonReadiness(cuts: Cut[]): { ready: boolean; issues: string[] } {
   const issues: string[] = [];
 

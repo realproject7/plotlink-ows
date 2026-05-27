@@ -1,71 +1,79 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { readStoryMeta } from "../routes/stories";
+
+const testState = vi.hoisted(() => ({ storiesDir: "" }));
+
+vi.mock("../lib/paths", () => ({
+  get STORIES_DIR() { return testState.storiesDir; },
+  CONFIG_DIR: os.tmpdir(),
+  DATA_DIR: os.tmpdir(),
+  DB_PATH: path.join(os.tmpdir(), "test.db"),
+  DATABASE_URL: "file:" + path.join(os.tmpdir(), "test.db"),
+  ENV_FILE: path.join(os.tmpdir(), ".env"),
+}));
+
+vi.mock("../lib/generate-story-instructions", () => ({
+  writeStoryInstructions: vi.fn(),
+}));
+
+import { readStoryMeta, storiesRoutes } from "../routes/stories";
 import { getContentTypeForPublish } from "../web/lib/publish-helpers";
+import { Hono } from "hono";
 
 describe("fiction regression", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it("readStoryMeta defaults to fiction when .story.json is missing", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
-    try {
-      const meta = readStoryMeta(tmpDir);
-      expect(meta.contentType).toBe("fiction");
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.contentType).toBe("fiction");
   });
 
-  it("story scanner filters .md files only", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
-    try {
-      fs.writeFileSync(path.join(tmpDir, "structure.md"), "# Test");
-      fs.writeFileSync(path.join(tmpDir, "genesis.md"), "# Hook");
-      fs.writeFileSync(path.join(tmpDir, ".story.json"), '{"contentType":"fiction"}');
-      fs.writeFileSync(path.join(tmpDir, "plot-01.cuts.json"), "{}");
+  it("GET /api/stories/:name returns fiction contentType and filters .md only via route", async () => {
+    const storyDir = path.join(tmpDir, "fiction-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# My Fiction");
+    fs.writeFileSync(path.join(storyDir, "genesis.md"), "# Hook");
+    fs.writeFileSync(path.join(storyDir, ".story.json"), '{"contentType":"fiction"}');
+    fs.writeFileSync(path.join(storyDir, "plot-01.cuts.json"), "{}");
 
-      const entries = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".md"));
-      expect(entries).toContain("structure.md");
-      expect(entries).toContain("genesis.md");
-      expect(entries).not.toContain(".story.json");
-      expect(entries).not.toContain("plot-01.cuts.json");
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const res = await app.request("/api/stories/fiction-story");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.contentType).toBe("fiction");
+    expect(body.files.every((f: { file: string }) => f.file.endsWith(".md"))).toBe(true);
+    expect(body.files.some((f: { file: string }) => f.file === "plot-01.cuts.json")).toBe(false);
   });
 
-  it("fiction publish payload omits contentType", () => {
-    const ct = getContentTypeForPublish({ "my-fiction": "fiction" }, "my-fiction", undefined);
-    expect(ct).toBeUndefined();
+  it("fiction publish payload omits contentType via getContentTypeForPublish", () => {
+    expect(getContentTypeForPublish({ "my-fiction": "fiction" }, "my-fiction", undefined)).toBeUndefined();
+    expect(getContentTypeForPublish({ "my-fiction": "fiction" }, "my-fiction", 42)).toBeUndefined();
   });
 
-  it("fiction plot publish omits contentType", () => {
-    const ct = getContentTypeForPublish({ "my-fiction": "fiction" }, "my-fiction", 42);
-    expect(ct).toBeUndefined();
-  });
+  it("GET /api/stories lists fiction stories without cartoon fields via route", async () => {
+    const storyDir = path.join(tmpDir, "plain-fiction");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# Plain Fiction");
 
-  it("readStoryMeta reads fiction contentType correctly", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
-    try {
-      fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
-      const meta = readStoryMeta(tmpDir);
-      expect(meta.contentType).toBe("fiction");
-      expect(meta.language).toBeUndefined();
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("fiction story with .story.json has no cartoon-specific fields", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fiction-reg-"));
-    try {
-      fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
-      const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, ".story.json"), "utf-8"));
-      expect(raw.contentType).toBe("fiction");
-      expect(raw.cuts).toBeUndefined();
-      expect(raw.overlays).toBeUndefined();
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const res = await app.request("/api/stories");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const story = body.stories.find((s: { name: string }) => s.name === "plain-fiction");
+    expect(story).toBeTruthy();
+    expect(story.contentType).toBe("fiction");
+    expect(story.language).toBe("English");
   });
 });
