@@ -107,6 +107,8 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     return { valid: false, error: "cuts must be an array" };
   }
 
+  const validShots = new Set<string>(SHOT_TYPES);
+
   for (let i = 0; i < obj.cuts.length; i++) {
     const cut = obj.cuts[i] as Record<string, unknown>;
     if (typeof cut !== "object" || cut === null) {
@@ -114,6 +116,36 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     if (typeof cut.id !== "number") {
       return { valid: false, error: `Cut ${i} missing numeric id` };
+    }
+    if (typeof cut.shotType !== "string" || !validShots.has(cut.shotType)) {
+      return { valid: false, error: `Cut ${i} has invalid shotType` };
+    }
+    if (typeof cut.description !== "string") {
+      return { valid: false, error: `Cut ${i} missing description` };
+    }
+    if (!Array.isArray(cut.characters)) {
+      return { valid: false, error: `Cut ${i} characters must be an array` };
+    }
+    if (!Array.isArray(cut.dialogue)) {
+      return { valid: false, error: `Cut ${i} dialogue must be an array` };
+    }
+    for (let j = 0; j < (cut.dialogue as unknown[]).length; j++) {
+      const d = (cut.dialogue as Record<string, unknown>[])[j];
+      if (typeof d !== "object" || d === null || typeof d.speaker !== "string" || typeof d.text !== "string") {
+        return { valid: false, error: `Cut ${i} dialogue[${j}] must have speaker and text strings` };
+      }
+    }
+    if (typeof cut.narration !== "string") {
+      return { valid: false, error: `Cut ${i} missing narration` };
+    }
+    if (typeof cut.sfx !== "string") {
+      return { valid: false, error: `Cut ${i} missing sfx` };
+    }
+    const nullableStrings = ["cleanImagePath", "finalImagePath", "exportedAt", "uploadedCid", "uploadedUrl"] as const;
+    for (const field of nullableStrings) {
+      if (cut[field] !== null && typeof cut[field] !== "string") {
+        return { valid: false, error: `Cut ${i} ${field} must be a string or null` };
+      }
     }
   }
 

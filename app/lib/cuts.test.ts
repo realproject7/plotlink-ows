@@ -207,6 +207,54 @@ describe("validateCutsFile", () => {
     });
   });
 
+  it("rejects cut with invalid shotType", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), shotType: "ultra-wide" };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 has invalid shotType",
+    });
+  });
+
+  it("rejects cut with non-string description", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), description: 42 };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 missing description",
+    });
+  });
+
+  it("rejects cut with non-array characters", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), characters: "Mira" };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 characters must be an array",
+    });
+  });
+
+  it("rejects cut with malformed dialogue entry", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), dialogue: [{ speaker: 123, text: "hi" }] };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 dialogue[0] must have speaker and text strings",
+    });
+  });
+
+  it("rejects cut with non-string narration", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), narration: null };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 missing narration",
+    });
+  });
+
+  it("rejects cut with invalid nullable field type", () => {
+    const cut = { ...createDefaultCut(1, "plot-01"), cleanImagePath: 42 };
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [cut] })).toEqual({
+      valid: false,
+      error: "Cut 0 cleanImagePath must be a string or null",
+    });
+  });
+
   it("exports SHOT_TYPES constant", () => {
     expect(SHOT_TYPES).toEqual(["wide", "medium", "close-up", "extreme-close-up"]);
   });
