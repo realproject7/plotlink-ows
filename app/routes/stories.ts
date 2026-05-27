@@ -251,9 +251,7 @@ stories.get("/:name/asset/*", (c) => {
   const name = safeName(c.req.param("name"));
   if (!name) return c.json({ error: "Invalid story name" }, 400);
 
-  const url = new URL(c.req.url);
-  const prefix = `/api/stories/${name}/asset/`;
-  const assetPath = url.pathname.slice(url.pathname.indexOf(prefix) + prefix.length);
+  const assetPath = c.req.param("*");
   if (!assetPath) return c.json({ error: "Invalid asset path" }, 400);
 
   if (assetPath.includes("..") || assetPath.startsWith("/")) {
