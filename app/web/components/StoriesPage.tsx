@@ -376,6 +376,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           publishingFile={publishingFile}
           walletAddress={walletAddress}
           contentType={selectedStory ? (storyContentTypes[selectedStory] || contentTypeMap.current.get(selectedStory) || "fiction") : "fiction"}
+          language="English"
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
