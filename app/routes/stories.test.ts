@@ -243,6 +243,18 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.language).toBe("Korean");
   });
 
+  it("parses explicit Language metadata from structure.md with Latin title", async () => {
+    const storyDir = path.join(tmpDir, "latin-korean");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\n**Language:** Korean\n\nContent");
+    writeStoryMeta(storyDir, { contentType: "cartoon" });
+
+    const res = await app.request("/api/stories/latin-korean");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("Korean");
+  });
+
   it("defaults language to English when no CJK in title", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });

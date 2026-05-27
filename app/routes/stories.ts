@@ -81,7 +81,13 @@ function writeStoryMeta(storyDir: string, meta: StoryMeta) {
   fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2) + "\n");
 }
 
-function detectLanguageFromContent(text: string): string | null {
+function parseLanguageMetadata(content: string): string | null {
+  const match = content.match(/^(?:\*\*)?Language(?:\*\*)?:\s*(?:\*\*)?([^*\n]+)/im);
+  if (match) return match[1].trim();
+  return null;
+}
+
+function detectLanguageFromScript(text: string): string | null {
   if (/[가-힯]/.test(text)) return "Korean";
   if (/[぀-ゟ゠-ヿ]/.test(text)) return "Japanese";
   if (/[一-鿿]/.test(text)) return "Chinese";
@@ -108,14 +114,15 @@ function scanStory(storyDir: string, name: string): StoryInfo {
   const plotCount = entries.filter((f) => f.match(/^plot-\d+\.md$/)).length;
   const publishedCount = files.filter((f) => f.status === "published" || f.status === "published-not-indexed").length;
 
-  // Extract title from structure.md or genesis.md
+  // Extract title and language hints from structure.md or genesis.md
   let title: string | null = null;
+  let structContent: string | null = null;
   try {
     const structPath = path.join(storyDir, "structure.md");
     const genesisPath = path.join(storyDir, "genesis.md");
     if (fs.existsSync(structPath)) {
-      const content = fs.readFileSync(structPath, "utf-8");
-      const match = content.match(/^#\s+(.+)$/m);
+      structContent = fs.readFileSync(structPath, "utf-8");
+      const match = structContent.match(/^#\s+(.+)$/m);
       if (match) title = match[1];
     } else if (fs.existsSync(genesisPath)) {
       const content = fs.readFileSync(genesisPath, "utf-8");
@@ -125,9 +132,11 @@ function scanStory(storyDir: string, name: string): StoryInfo {
   } catch { /* best effort */ }
 
   let language = storyMeta.language || "English";
-  if (!storyMeta.language && title) {
-    const detected = detectLanguageFromContent(title);
-    if (detected) language = detected;
+  if (!storyMeta.language) {
+    const fromMetadata = structContent ? parseLanguageMetadata(structContent) : null;
+    const fromScript = title ? detectLanguageFromScript(title) : null;
+    if (fromMetadata) language = fromMetadata;
+    else if (fromScript) language = fromScript;
   }
 
   return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType, language };
