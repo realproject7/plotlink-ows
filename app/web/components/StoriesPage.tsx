@@ -245,7 +245,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       const publishRes = await authFetch("/api/publish/file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId }),
+        body: JSON.stringify({ storyName, fileName, title, content: fileData.content, genre, language, isNsfw, storylineId, contentType: storyContentTypes[storyName] || "fiction" }),
       });
 
       if (!publishRes.ok) {

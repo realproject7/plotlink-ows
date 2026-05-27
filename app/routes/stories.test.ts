@@ -315,6 +315,37 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.error).toContain("Cut 99");
   });
 
+  it("set-uploaded stores CID and URL in cuts.json", async () => {
+    const storyDir = path.join(tmpDir, "upload-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/upload-story/cuts/plot-01/set-uploaded/1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: "QmTestCid", url: "https://ipfs.example.com/QmTestCid" }),
+    });
+
+    expect(res.status).toBe(200);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].uploadedCid).toBe("QmTestCid");
+    expect(reloaded.cuts[0].uploadedUrl).toBe("https://ipfs.example.com/QmTestCid");
+  });
+
+  it("set-uploaded rejects missing CID", async () => {
+    const storyDir = path.join(tmpDir, "upload-story2");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
+
+    const res = await app.request("/api/stories/upload-story2/cuts/plot-01/set-uploaded/1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid: "", url: "" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
   it("defaults language to English when no CJK in title", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });

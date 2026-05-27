@@ -432,6 +432,37 @@ stories.post("/:name/cuts/:plotFile/export-final/:cutId", async (c) => {
   return c.json({ ok: true, finalImagePath: result.finalImagePath });
 });
 
+/** POST /api/stories/:name/cuts/:plotFile/set-uploaded/:cutId — record upload CID/URL for a cut */
+stories.post("/:name/cuts/:plotFile/set-uploaded/:cutId", async (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  const cutIdStr = c.req.param("cutId");
+  if (!name || !plotFile || !cutIdStr) return c.json({ error: "Invalid path" }, 400);
+
+  const cutId = parseInt(cutIdStr, 10);
+  if (isNaN(cutId) || cutId < 1) return c.json({ error: "Invalid cut ID" }, 400);
+
+  const storyDir = path.join(STORIES_DIR, name);
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const cutsFile = readCutsFile(storyDir, plotFile);
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const cut = cutsFile.cuts.find((ct) => ct.id === cutId);
+  if (!cut) return c.json({ error: `Cut ${cutId} not found` }, 404);
+
+  const body = await c.req.json<{ cid: string; url: string }>();
+  if (!body.cid || !body.url) return c.json({ error: "cid and url required" }, 400);
+
+  cut.uploadedCid = body.cid;
+  cut.uploadedUrl = body.url;
+  writeCutsFile(storyDir, plotFile, cutsFile);
+
+  return c.json({ ok: true });
+});
+
 /** POST /api/stories/:name/cuts/:plotFile/generate-markdown — generate/update plot markdown from cuts */
 stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
   const name = safeName(c.req.param("name"));
