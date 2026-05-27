@@ -299,6 +299,34 @@ describe("LetteringEditor", () => {
     expect(parseFloat(tailY.value)).toBe(1.2);
   });
 
+  it("uses Korean font when language is Korean", () => {
+    const overlay: Overlay = {
+      id: "test-kr-font",
+      type: "speech",
+      x: 0.1,
+      y: 0.1,
+      width: 0.25,
+      height: 0.12,
+      text: "안녕",
+      speaker: "주인공",
+    };
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        language="Korean"
+      />,
+    );
+
+    simulateImageLoad();
+    fireEvent.click(screen.getByTestId("overlay-test-kr-font"));
+
+    expect(screen.getByTestId("inspector-font")).toHaveTextContent("Noto Sans KR");
+  });
+
   it("calls onClose when Close button is clicked", () => {
     const onClose = vi.fn();
     render(

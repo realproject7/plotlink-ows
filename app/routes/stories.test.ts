@@ -69,6 +69,19 @@ describe("story metadata (.story.json)", () => {
     expect(raw.contentType).toBe("cartoon");
   });
 
+  it("persists language in .story.json", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon", language: "Korean" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.contentType).toBe("cartoon");
+    expect(meta.language).toBe("Korean");
+  });
+
+  it("defaults language to undefined when not set", () => {
+    writeStoryMeta(tmpDir, { contentType: "fiction" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.language).toBeUndefined();
+  });
+
   it("writeStoryMeta overwrites existing .story.json", () => {
     writeStoryMeta(tmpDir, { contentType: "fiction" });
     writeStoryMeta(tmpDir, { contentType: "cartoon" });
@@ -216,5 +229,41 @@ describe("POST /upload-clean/:cutId route", () => {
     const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/upload-clean/1");
 
     expect(res.status).toBe(404);
+  });
+
+  it("detects Korean language from structure.md title without .story.json language", async () => {
+    const storyDir = path.join(tmpDir, "korean-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# 한국어 이야기\n\n내용");
+    writeStoryMeta(storyDir, { contentType: "cartoon" });
+
+    const res = await app.request("/api/stories/korean-story");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("Korean");
+  });
+
+  it("parses explicit Language metadata from structure.md with Latin title", async () => {
+    const storyDir = path.join(tmpDir, "latin-korean");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\n**Language:** Korean\n\nContent");
+    writeStoryMeta(storyDir, { contentType: "cartoon" });
+
+    const res = await app.request("/api/stories/latin-korean");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("Korean");
+  });
+
+  it("defaults language to English when no CJK in title", async () => {
+    const storyDir = path.join(tmpDir, "english-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\nContent");
+    writeStoryMeta(storyDir, { contentType: "fiction" });
+
+    const res = await app.request("/api/stories/english-story");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("English");
   });
 });

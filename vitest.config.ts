@@ -9,6 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@app-lib": path.resolve(__dirname, "app/lib"),
       "../../lib": path.resolve(__dirname, "lib"),
     },
   },

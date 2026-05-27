@@ -1,4 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  getDefaultFont,
+  getDisplayFont,
+  getFontCdnUrl,
+  getFontFamily,
+  type FontEntry,
+} from "@app-lib/fonts";
 
 type OverlayType = "speech" | "narration" | "sfx";
 
@@ -38,6 +45,16 @@ function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
   };
 }
 
+function loadFont(font: FontEntry) {
+  const id = `gfont-${font.googleFontsId}`;
+  if (document.getElementById(id)) return;
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = getFontCdnUrl(font);
+  document.head.appendChild(link);
+}
+
 interface Cut {
   id: number;
   cleanImagePath: string | null;
@@ -49,6 +66,7 @@ interface LetteringEditorProps {
   cut: Cut;
   onSave: (overlays: Overlay[]) => void;
   onClose: () => void;
+  language?: string;
 }
 
 function assetUrl(storyName: string, assetPath: string): string {
@@ -74,7 +92,16 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEditorProps) {
+export function LetteringEditor({ storyName, cut, onSave, onClose, language = "English" }: LetteringEditorProps) {
+  const bodyFont = getDefaultFont(language);
+  const displayFont = getDisplayFont();
+  const bodyFontFamily = getFontFamily(bodyFont);
+  const displayFontFamily = getFontFamily(displayFont);
+
+  useEffect(() => {
+    loadFont(bodyFont);
+    loadFont(displayFont);
+  }, [bodyFont, displayFont]);
   const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -246,7 +273,10 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                 }`}
                 style={{ left, top, width, height }}
               >
-                <span className="text-[9px] px-1 text-muted truncate block pointer-events-none">
+                <span
+                  className="text-[9px] px-1 text-muted truncate block pointer-events-none"
+                  style={{ fontFamily: overlay.type === "sfx" ? displayFontFamily : bodyFontFamily }}
+                >
                   {overlay.text || TYPE_LABEL[overlay.type]}
                 </span>
                 {isSelected && (
@@ -324,6 +354,10 @@ export function LetteringEditor({ storyName, cut, onSave, onClose }: LetteringEd
                   </div>
                 );
               })()}
+
+              <div className="text-[10px] text-muted" data-testid="inspector-font">
+                Font: {selectedOverlay.type === "sfx" ? displayFont.family : bodyFont.family}
+              </div>
 
               <div className="text-[10px] font-mono text-muted space-y-0.5">
                 <p>x: {selectedOverlay.x.toFixed(3)}, y: {selectedOverlay.y.toFixed(3)}</p>

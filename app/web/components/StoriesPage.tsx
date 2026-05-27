@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
+import { LANGUAGES } from "../../../lib/genres";
 
 interface StoriesPageProps {
   token: string;
@@ -42,7 +43,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
+  const [newStoryLanguage, setNewStoryLanguage] = useState("English");
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
+  const languageMap = useRef<Map<string, string>>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
   const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,10 +81,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setShowNewStoryModal(true);
   }, []);
 
-  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon") => {
+  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string) => {
     setShowNewStoryModal(false);
     const id = `_new_${Date.now()}`;
     contentTypeMap.current.set(id, contentType);
+    languageMap.current.set(id, language);
     setUntitledSessions((prev) => [...prev, id]);
     setSelectedStory(id);
     setSelectedFile(null);
@@ -112,11 +116,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             if (renamed) {
               setUntitledSessions((prev) => prev.slice(1));
               const ct = contentTypeMap.current.get(oldName) || "fiction";
+              const lang = languageMap.current.get(oldName) || "English";
               contentTypeMap.current.delete(oldName);
+              languageMap.current.delete(oldName);
               authFetch(`/api/stories/${name}/metadata`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contentType: ct }),
+                body: JSON.stringify({ contentType: ct, language: lang }),
               }).catch(() => {});
             }
             setSelectedStory(name);
@@ -298,18 +304,25 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     if (name.startsWith("_new_")) {
       setUntitledSessions((prev) => prev.filter((id) => id !== name));
       contentTypeMap.current.delete(name);
+      languageMap.current.delete(name);
     }
   }, []);
 
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
+  const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon" }[]) => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
-      for (const s of stories) ct[s.name] = s.contentType || "fiction";
+      const lang: Record<string, string> = {};
+      for (const s of stories) {
+        ct[s.name] = s.contentType || "fiction";
+        lang[s.name] = s.language || "English";
+      }
       setStoryContentTypes(ct);
+      setStoryLanguages(lang);
     };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
       if (data?.stories) updateFromStories(data.stories);
@@ -376,6 +389,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           publishingFile={publishingFile}
           walletAddress={walletAddress}
           contentType={selectedStory ? (storyContentTypes[selectedStory] || contentTypeMap.current.get(selectedStory) || "fiction") : "fiction"}
+          language={selectedStory ? (storyLanguages[selectedStory] || "English") : "English"}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
@@ -388,17 +402,27 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(240, 235, 225, 0.9)" }}>
           <div className="bg-surface border border-border rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
             <h3 className="text-sm font-serif font-medium text-foreground text-center">New Story</h3>
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Language</span>
+              <select
+                value={newStoryLanguage}
+                onChange={(e) => setNewStoryLanguage(e.target.value)}
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+              >
+                {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </label>
             <p className="text-xs text-muted text-center">Choose a content type</p>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => handleCreateStory("fiction")}
+                onClick={() => handleCreateStory("fiction", newStoryLanguage)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
               </button>
               <button
-                onClick={() => handleCreateStory("cartoon")}
+                onClick={() => handleCreateStory("cartoon", newStoryLanguage)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>

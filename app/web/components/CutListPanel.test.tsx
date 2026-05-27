@@ -1,6 +1,20 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
+
+beforeAll(() => {
+  global.ResizeObserver = class {
+    callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) { this.callback = callback; }
+    observe(target: Element) {
+      Object.defineProperty(target, "clientWidth", { value: 400, configurable: true });
+      Object.defineProperty(target, "clientHeight", { value: 300, configurable: true });
+      this.callback([{ contentRect: { width: 400, height: 300 }, target } as unknown as ResizeObserverEntry], this);
+    }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
 
 afterEach(cleanup);
 
@@ -155,6 +169,39 @@ describe("CutListPanel", () => {
         "/api/stories/story/cuts/plot-01/upload-clean/1",
         expect.objectContaining({ method: "POST" }),
       );
+    });
+  });
+
+  it("passes language to editor for non-English cartoon", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", description: "Korean scene", overlays: [{
+        id: "kr-overlay", type: "speech", x: 0.1, y: 0.1, width: 0.25, height: 0.12,
+        text: "안녕", speaker: "주인공",
+      }] })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} language="Korean" />);
+
+    await waitFor(() => expect(screen.getByText("Korean scene")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Korean scene"));
+    await waitFor(() => expect(screen.getByText("Open editor")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Open editor"));
+
+    // Simulate image load in editor
+    const img = document.querySelector("img");
+    if (img) {
+      Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
+      Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
+      act(() => { fireEvent.load(img); });
+    }
+
+    // Click the overlay to see inspector font
+    await waitFor(() => expect(screen.getByTestId("overlay-kr-overlay")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("overlay-kr-overlay"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("inspector-font")).toHaveTextContent("Noto Sans KR");
     });
   });
 
