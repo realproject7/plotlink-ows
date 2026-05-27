@@ -162,6 +162,48 @@ describe("LetteringEditor", () => {
     expect(screen.getByTestId("inspector-empty")).toBeInTheDocument();
   });
 
+  it("positions overlays correctly with mismatched aspect ratio (letterboxing)", () => {
+    const overlay: Overlay = {
+      id: "test-overlay-ar",
+      type: "speech",
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      text: "Full",
+      speaker: "A",
+    };
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Simulate a wide image in a tall container (will letterbox top/bottom)
+    const img = document.querySelector("img")!;
+    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 200, configurable: true });
+
+    const container = screen.getByTestId("editor-surface");
+    Object.defineProperty(container, "clientWidth", { value: 400, configurable: true });
+    Object.defineProperty(container, "clientHeight", { value: 400, configurable: true });
+
+    act(() => { fireEvent.load(img); });
+
+    // With 800x200 image in 400x400 container:
+    // scale = min(400/800, 400/200) = min(0.5, 2) = 0.5
+    // rendered: 400x100, offset y = (400-100)/2 = 150
+    const el = screen.getByTestId("overlay-test-overlay-ar");
+    expect(el.style.left).toBe("0px");
+    expect(el.style.top).toBe("150px");
+    expect(el.style.width).toBe("400px");
+    expect(el.style.height).toBe("100px");
+  });
+
   it("calls onClose when Close button is clicked", () => {
     const onClose = vi.fn();
     render(
