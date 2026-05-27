@@ -271,22 +271,29 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.error).toContain("No file");
   });
 
-  it("export-final metadata persists finalImagePath and exportedAt", () => {
-    const storyDir = path.join(tmpDir, "persist-story");
+  it("export-final persistence: file save + cuts.json update", () => {
+    const storyDir = path.join(tmpDir, "export-story");
     fs.mkdirSync(storyDir, { recursive: true });
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01"));
 
-    const loaded = readCutsFile(storyDir, "plot-01")!;
-    expect(loaded.cuts[0].finalImagePath).toBeNull();
-    expect(loaded.cuts[0].exportedAt).toBeNull();
+    const cutId = 1;
+    const ext = "jpg";
+    const padded = String(cutId).padStart(2, "0");
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    const fileName = `cut-${padded}-final.${ext}`;
+    fs.writeFileSync(path.join(assetDir, fileName), Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]));
 
-    loaded.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
-    loaded.cuts[0].exportedAt = "2026-05-27T10:00:00Z";
+    const loaded = readCutsFile(storyDir, "plot-01")!;
+    const cut = loaded.cuts.find((c) => c.id === cutId)!;
+    cut.finalImagePath = `assets/plot-01/${fileName}`;
+    cut.exportedAt = new Date().toISOString();
     writeCutsFile(storyDir, "plot-01", loaded);
 
     const reloaded = readCutsFile(storyDir, "plot-01")!;
-    expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
-    expect(reloaded.cuts[0].exportedAt).toBe("2026-05-27T10:00:00Z");
+    expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
+    expect(reloaded.cuts[0].exportedAt).toBeTruthy();
+    expect(fs.existsSync(path.join(assetDir, fileName))).toBe(true);
   });
 
   it("rejects export-final for non-existent cut via route", async () => {
