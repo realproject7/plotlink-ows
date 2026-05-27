@@ -10,6 +10,7 @@ export interface Overlay {
   height: number;
   text: string;
   speaker?: string;
+  tailAnchor?: { x: number; y: number };
 }
 
 export function toPixel(norm: number, containerSize: number): number {
@@ -33,6 +34,6 @@ export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
     width: type === "sfx" ? 0.15 : 0.25,
     height: type === "sfx" ? 0.08 : 0.12,
     text: "",
-    ...(type === "speech" ? { speaker: "" } : {}),
+    ...(type === "speech" ? { speaker: "", tailAnchor: { x: 0.5, y: 1.2 } } : {}),
   };
 }
