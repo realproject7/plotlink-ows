@@ -209,14 +209,27 @@ After clean images are generated and approved by the writer:
 
 ## Publish Markdown — plot-NN.md
 
-The publish file for cartoon episodes is a sequence of images:
+**Do NOT hand-write plot-NN.md with image links.** OWS generates the publish
+markdown from cuts.json after final images are uploaded. Hand-authored markdown
+with local asset paths (\`assets/...\`) or placeholder URLs ("final image
+pending") will be rejected by publish readiness checks.
 
-1. Upload each final (lettered) image via the upload-plot-image API
-2. Compose plot-NN.md as a sequence of image references:
-   \`![Cut 1 — Scene description](uploaded-image-url)\`
-3. Optional: brief caption text between images for pacing
-4. Each image must be WebP or JPEG, under 1MB
-5. Total markdown content must be under 10K characters
+Correct flow:
+
+1. Upload final (lettered) images via OWS — this records the IPFS URL per cut in
+   cuts.json (\`uploadedUrl\`).
+2. Use OWS "Generate MD" / "Upload & Generate" to produce plot-NN.md. OWS emits
+   marker-delimited blocks:
+   \`\`\`
+   <!-- ows:cartoon-cut cut-001 start -->
+   ![Cut 1 — Scene description](https://ipfs-gateway/...)
+   <!-- ows:cartoon-cut cut-001 end -->
+   \`\`\`
+3. Cuts that are not yet uploaded produce a safe \`<!-- ... awaiting upload -->\`
+   comment, never a fake image URL. Publish is blocked until all cuts upload.
+4. Each image is WebP or JPEG, under 1MB. Total markdown under 10K characters.
+5. Keep human-readable planning notes in cuts.json or structure.md — never as
+   fake publish image links.
 
 ## Publishing Rules
 
@@ -231,8 +244,8 @@ The publish file for cartoon episodes is a sequence of images:
 2. **Generate** — Create clean images for each cut (no text in images)
 3. **Review** — Writer reviews clean images, requests adjustments
 4. **Letter** — Writer adds speech bubbles and text via lettering editor
-5. **Upload** — Upload final lettered images to get IPFS URLs
-6. **Compose** — Build plot-NN.md with image sequence
+5. **Upload** — Upload final lettered images to get IPFS URLs (recorded in cuts.json)
+6. **Generate** — Use OWS to generate plot-NN.md from cuts.json (do not hand-write it)
 7. **Preview** — Verify all images render correctly
 8. **Publish** — Chain the episode (immutable after this step)
 `;

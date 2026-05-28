@@ -91,6 +91,49 @@ describe("checkMarkdownReadiness", () => {
     const { issues } = checkMarkdownReadiness(md, []);
     expect(issues.some((i) => i.includes("10,000"))).toBe(true);
   });
+
+  it("blocks local asset path image references", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Cut 1](assets/plot-01/cut-01-final.webp)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const cuts = [makeCut()];
+    const { ready, issues } = checkMarkdownReadiness(md, cuts);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("not an uploaded URL"))).toBe(true);
+  });
+
+  it("blocks relative/dot-path image references", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Cut 1](./cut-01.webp)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready } = checkMarkdownReadiness(md, [makeCut()]);
+    expect(ready).toBe(false);
+  });
+
+  it("blocks 'final image pending' placeholder text", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "final image pending",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut()]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("awaiting-upload"))).toBe(true);
+  });
+
+  it("passes for uploaded http image URLs", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Cut 1](https://ipfs.example.com/QmAbc)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: "https://ipfs.example.com/QmAbc" })]);
+    expect(ready).toBe(true);
+  });
 });
 
 describe("checkExportSize", () => {

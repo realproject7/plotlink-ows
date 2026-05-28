@@ -37,6 +37,13 @@ describe("generateCutBlock", () => {
     expect(block).toContain("awaiting upload");
   });
 
+  it("never emits local asset paths for unuploaded cut", () => {
+    const cut = makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp" });
+    const block = generateCutBlock(cut, 1);
+    expect(block).not.toContain("assets/");
+    expect(block).not.toMatch(/\.webp|\.jpg|\.jpeg/);
+  });
+
   it("generates narration text for blank narration cut", () => {
     const cut = makeCut({
       cleanImagePath: null, finalImagePath: null,
@@ -166,5 +173,37 @@ describe("getReadinessWarnings", () => {
   it("returns empty for all uploaded cuts", () => {
     const cuts = [makeCut({ uploadedUrl: "https://ok.com" })];
     expect(getReadinessWarnings(cuts)).toHaveLength(0);
+  });
+});
+
+describe("generated markdown + readiness integration", () => {
+  it("unuploaded cuts generate markdown that fails readiness (cannot look publish-ready)", async () => {
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    const cuts = [makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp" })];
+    const md = generateCartoonMarkdown(cuts);
+
+    expect(md).not.toContain("assets/");
+    expect(md).not.toMatch(/!\[/);
+
+    const { ready, issues } = checkMarkdownReadiness(md, cuts);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("awaiting-upload"))).toBe(true);
+  });
+
+  it("uploaded cuts generate markdown that passes readiness", async () => {
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    const cuts = [makeCut({
+      description: "Scene",
+      cleanImagePath: "assets/plot-01/cut-01-clean.webp",
+      finalImagePath: "assets/plot-01/cut-01-final.webp",
+      uploadedUrl: "https://ipfs.example.com/QmAbc",
+    })];
+    const md = generateCartoonMarkdown(cuts);
+
+    expect(md).toContain("https://ipfs.example.com/QmAbc");
+    expect(md).toContain("<!-- ows:cartoon-cut cut-001 start -->");
+
+    const { ready } = checkMarkdownReadiness(md, cuts);
+    expect(ready).toBe(true);
   });
 });
