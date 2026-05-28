@@ -267,8 +267,12 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
 
   if (error) {
     return (
-      <div className="p-4 space-y-2">
-        <p className="text-sm text-error">{error}</p>
+      <div className="p-4 space-y-2" data-testid="cuts-error">
+        <p className="text-sm text-error font-medium">Invalid cuts file</p>
+        <p className="text-xs text-error">{error}</p>
+        <p className="text-xs text-muted">
+          {plotFile}.cuts.json must follow the OWS v1 schema. Ask Claude to regenerate it using the v1 cuts schema from the cartoon writing instructions.
+        </p>
         <button onClick={loadCuts} className="text-xs text-accent hover:text-accent-dim">Retry</button>
       </div>
     );

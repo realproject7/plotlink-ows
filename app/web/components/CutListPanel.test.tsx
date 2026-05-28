@@ -276,4 +276,36 @@ describe("CutListPanel", () => {
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
   });
+
+  it("shows actionable v1 schema guidance for invalid cuts (wrong schema)", async () => {
+    const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "plot-01.cuts.json is invalid: Cut 0 has invalid shotType" } });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cuts-error")).toBeInTheDocument();
+      expect(screen.getByText("Invalid cuts file")).toBeInTheDocument();
+      expect(screen.getByText(/invalid shotType/)).toBeInTheDocument();
+      expect(screen.getByText(/OWS v1 schema/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows actionable error for invalid JSON", async () => {
+    const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "plot-01.cuts.json contains invalid JSON" } });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/contains invalid JSON/)).toBeInTheDocument();
+      expect(screen.getByText(/OWS v1 schema/)).toBeInTheDocument();
+    });
+  });
+
+  it("missing cuts file (404) shows No cuts, not an error", async () => {
+    const authFetch = mockAuthFetch({ ok: false, status: 404, data: { error: "Cuts file not found" } });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No cuts yet")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("cuts-error")).not.toBeInTheDocument();
+  });
 });

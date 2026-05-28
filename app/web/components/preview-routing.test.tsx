@@ -53,14 +53,27 @@ describe("CartoonPreview", () => {
     });
   });
 
-  it("shows error state on fetch failure", async () => {
-    const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "Invalid JSON" } });
+  it("shows actionable v1 schema error for invalid cuts", async () => {
+    const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "plot-01.cuts.json is invalid: Cut 0 missing numeric id" } });
     render(<CartoonPreview storyName="test-story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Invalid JSON")).toBeInTheDocument();
+      expect(screen.getByTestId("cuts-error")).toBeInTheDocument();
+      expect(screen.getByText("Invalid cuts file")).toBeInTheDocument();
+      expect(screen.getByText(/missing numeric id/)).toBeInTheDocument();
+      expect(screen.getByText(/OWS v1 schema/)).toBeInTheDocument();
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
+  });
+
+  it("missing cuts (404) shows No cuts, not an error", async () => {
+    const authFetch = mockAuthFetch({ ok: false, status: 404, data: { error: "Cuts file not found" } });
+    render(<CartoonPreview storyName="test-story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No cuts yet")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("cuts-error")).not.toBeInTheDocument();
   });
 
   it("renders cut with final image", async () => {

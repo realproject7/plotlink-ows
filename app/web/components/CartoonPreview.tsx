@@ -200,8 +200,12 @@ export function CartoonPreview({ storyName, fileName, authFetch }: CartoonPrevie
 
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 px-4">
-        <p className="text-sm text-error">{error}</p>
+      <div className="h-full flex flex-col items-center justify-center gap-2 px-4 text-center" data-testid="cuts-error">
+        <p className="text-sm text-error font-medium">Invalid cuts file</p>
+        <p className="text-xs text-error">{error}</p>
+        <p className="text-xs text-muted max-w-sm">
+          {plotFile}.cuts.json must follow the OWS v1 schema. Ask Claude to regenerate it using the v1 cuts schema shown in the cartoon writing instructions.
+        </p>
         <button onClick={loadCuts} className="text-xs text-accent hover:text-accent-dim">
           Retry
         </button>

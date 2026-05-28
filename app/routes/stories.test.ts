@@ -231,6 +231,41 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET cuts returns 404 when cuts file is missing", async () => {
+    const storyDir = path.join(tmpDir, "no-cuts-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+
+    const res = await app.request("/api/stories/no-cuts-story/cuts/plot-01");
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toContain("not found");
+  });
+
+  it("GET cuts returns 400 with validation error for invalid schema", async () => {
+    const storyDir = path.join(tmpDir, "bad-cuts-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(storyDir, "plot-01.cuts.json"),
+      JSON.stringify({ version: 1, plotFile: "plot-01", cuts: [{ id: "c01", shot: "wide" }] }),
+    );
+
+    const res = await app.request("/api/stories/bad-cuts-story/cuts/plot-01");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("invalid");
+  });
+
+  it("GET cuts returns 400 for malformed JSON", async () => {
+    const storyDir = path.join(tmpDir, "malformed-cuts-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "plot-01.cuts.json"), "{ not valid json");
+
+    const res = await app.request("/api/stories/malformed-cuts-story/cuts/plot-01");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("invalid JSON");
+  });
+
   it("detects Korean language from structure.md title without .story.json language", async () => {
     const storyDir = path.join(tmpDir, "korean-story");
     fs.mkdirSync(storyDir, { recursive: true });
