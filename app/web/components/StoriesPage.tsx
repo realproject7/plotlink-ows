@@ -302,7 +302,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         setPublishProgress("");
       }, 3000);
     }
-  }, [authFetch]);
+  }, [authFetch, storyContentTypes, walletAddress]);
 
   const handleDestroySession = useCallback((name: string) => {
     if (name.startsWith("_new_")) {
