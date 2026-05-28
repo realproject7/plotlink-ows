@@ -86,6 +86,31 @@ plotlink-ows
 - Preview shows vertical cut sequence
 - Publish cartoon genesis with contentType: "cartoon"
 
+## Lettering Fonts (Design Note)
+
+Lettering fonts are loaded from Google Fonts CDN at runtime (no vendored font
+files — keeps package size minimal). All fonts are OFL-1.1 licensed; metadata
+lives in `app/lib/fonts.ts`.
+
+### Deterministic Export
+
+Before exporting a cut to canvas, the editor waits for the selected body and
+display fonts to be ready using the browser FontFace API
+(`document.fonts.load` + `document.fonts.check`):
+
+- If fonts load successfully, editor preview and exported image match.
+- If fonts fail to load (offline, CDN blocked), export is blocked and a
+  visible error names the missing fonts. Export does NOT silently fall back to
+  system fonts.
+- In environments without the FontFace API, export proceeds (graceful
+  degradation for non-browser contexts).
+
+### Offline / CDN-Blocked Testing
+
+To verify the font-failure path: block `fonts.googleapis.com` in the browser
+devtools network tab, then attempt to export a lettered cut. The export should
+show a "Fonts not loaded" error rather than producing a fallback-font image.
+
 ## Public Safety
 
 Never include in test output, issues, or docs:

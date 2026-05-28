@@ -11,6 +11,31 @@ interface Overlay {
 
 const MAX_SIZE = 1024 * 1024;
 
+export async function ensureFontsReady(families: string[]): Promise<{ ready: boolean; missing: string[] }> {
+  if (typeof document === "undefined" || !document.fonts || typeof document.fonts.load !== "function") {
+    return { ready: true, missing: [] };
+  }
+
+  const missing: string[] = [];
+  for (const family of families) {
+    try {
+      const loaded = await document.fonts.load(`16px "${family}"`);
+      // load() resolves with the FontFace[] that matched. An empty array means
+      // the family was never registered (e.g. CDN CSS blocked), so check() may
+      // only be matching a system fallback — treat as missing.
+      if (!loaded || loaded.length === 0) {
+        missing.push(family);
+      } else if (!document.fonts.check(`16px "${family}"`)) {
+        missing.push(family);
+      }
+    } catch {
+      missing.push(family);
+    }
+  }
+
+  return { ready: missing.length === 0, missing };
+}
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
