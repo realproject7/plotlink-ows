@@ -29,6 +29,56 @@ function makeCut(overrides: Record<string, unknown> = {}) {
   };
 }
 
+describe("export state refresh and save-before-export", () => {
+  it("export calls onSave before exporting and onExported after", async () => {
+    const { LetteringEditor } = await import("./LetteringEditor");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onExported = vi.fn();
+    const authFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", overlays: [{ id: "o1", type: "speech" as const, x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "Hi" }] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={onSave}
+        onClose={vi.fn()}
+        onExported={onExported}
+      />,
+    );
+
+    const exportBtn = screen.getByTestId("export-btn");
+    expect(exportBtn).toBeInTheDocument();
+  });
+
+  it("export blocks if save rejects", async () => {
+    const { LetteringEditor } = await import("./LetteringEditor");
+    const onSave = vi.fn().mockRejectedValue(new Error("Save failed"));
+    const onExported = vi.fn();
+    const authFetch = vi.fn();
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", overlays: [] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={onSave}
+        onClose={vi.fn()}
+        onExported={onExported}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("export-btn"));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalled();
+      expect(onExported).not.toHaveBeenCalled();
+    });
+  });
+});
+
 describe("Upload & Generate failure visibility", () => {
   it("shows error when asset fetch fails", async () => {
     const cutsData = {

@@ -67,7 +67,7 @@ interface LetteringEditorProps {
   storyName: string;
   cut: Cut;
   plotFile: string;
-  onSave: (overlays: Overlay[]) => void;
+  onSave: (overlays: Overlay[]) => void | Promise<void>;
   onClose: () => void;
   onExported?: () => void;
   language?: string;
@@ -220,7 +220,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     setExporting(true);
     setExportError(null);
     try {
-      onSave(overlays);
+      await onSave(overlays);
 
       const { exportCut } = await import("./export-cut");
       const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
