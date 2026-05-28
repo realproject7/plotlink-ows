@@ -49,6 +49,42 @@ describe("generateStoryInstructions", () => {
     const cartoon = generateStoryInstructions("cartoon");
     expect(fiction).not.toBe(cartoon);
   });
+
+  it("cartoon output includes a valid cuts.json example matching the real schema", () => {
+    const out = generateStoryInstructions("cartoon");
+    expect(out).toContain('"version": 1');
+    expect(out).toContain('"plotFile": "plot-01"');
+    expect(out).toContain('"shotType"');
+    expect(out).toContain('"description"');
+    expect(out).toContain('"speaker"');
+    expect(out).toContain('"text"');
+    expect(out).toContain('"narration"');
+    expect(out).toContain('"cleanImagePath"');
+    expect(out).toContain('"finalImagePath"');
+    expect(out).toContain('"overlays": []');
+  });
+
+  it("cartoon cuts example parses and passes validateCutsFile", async () => {
+    const { validateCutsFile } = await import("./cuts");
+    const out = generateStoryInstructions("cartoon");
+    const match = out.match(/```json\n([\s\S]*?)\n```/);
+    expect(match).toBeTruthy();
+    const parsed = JSON.parse(match![1]);
+    expect(validateCutsFile(parsed)).toEqual({ valid: true });
+  });
+
+  it("cartoon output guides against invalid pilot schema forms", () => {
+    const out = generateStoryInstructions("cartoon");
+    // The guidance table names the wrong forms so agents avoid them
+    expect(out).toContain("$schema");
+    expect(out).toContain('"c01"');
+    expect(out).toContain("shot");
+    expect(out).toContain("image.prompt");
+    expect(out).toContain("dialogue[].line");
+    expect(out).toContain("image.clean");
+    // And the document must NOT present them as the schema to use
+    expect(out).toContain("Do NOT invent alternate");
+  });
 });
 
 describe("writeStoryInstructions", () => {

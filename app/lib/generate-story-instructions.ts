@@ -120,17 +120,59 @@ Same as fiction: a prose synopsis hook, ~1000 characters. This is text only — 
 
 ## Cut Planning — plot-NN.cuts.json
 
-Before generating images for an episode, create the cut plan first.
+Before generating images for an episode, create the cut plan first. The cuts.json
+is the single source of truth for the episode's visual sequence.
 
-Each cut entry specifies:
-- Cut number and shot type (wide, medium, close-up, extreme-close-up)
-- Visual scene description (what is shown in the image)
-- Characters present in the cut
-- Dialogue lines (kept separate from the image)
-- Narration or caption text (also kept separate)
-- SFX text if any
+**CRITICAL: Use this EXACT schema. Do NOT invent alternate or nested planning
+structures.** OWS reads this file with a strict validator — any other shape is
+rejected.
 
-The cuts.json is the single source of truth for the episode's visual sequence.
+Valid \`plot-01.cuts.json\`:
+
+\`\`\`json
+{
+  "version": 1,
+  "plotFile": "plot-01",
+  "cuts": [
+    {
+      "id": 1,
+      "shotType": "wide",
+      "description": "Establishing shot of the rain-soaked city at dusk",
+      "characters": ["Mira"],
+      "dialogue": [
+        { "speaker": "Mira", "text": "It always rains here." }
+      ],
+      "narration": "The city never slept, and neither did she.",
+      "sfx": "RAIN",
+      "cleanImagePath": null,
+      "finalImagePath": null,
+      "exportedAt": null,
+      "uploadedCid": null,
+      "uploadedUrl": null,
+      "overlays": []
+    }
+  ]
+}
+\`\`\`
+
+### Required field naming (do NOT use the wrong forms)
+
+| Use this | NOT this |
+|----------|----------|
+| \`version: 1\` (top level) | \`$schema\`, \`story\`, \`workflow\`, \`promptDefaults\` |
+| numeric \`id\` (1, 2, 3) | string ids like \`"c01"\` |
+| \`shotType\` | \`shot\` |
+| \`description\` | nested \`image.prompt\` |
+| \`dialogue[].text\` | \`dialogue[].line\` |
+| \`narration\` (string) | nested \`text.narration\` |
+| \`sfx\` (single string) | \`sfx\` as an array |
+| \`cleanImagePath\` / \`finalImagePath\` (top-level on the cut) | nested \`image.clean\` / \`image.final\` |
+
+- \`shotType\` must be one of: \`wide\`, \`medium\`, \`close-up\`, \`extreme-close-up\`.
+- All image/export/upload path fields start as \`null\`; OWS fills them in.
+- \`overlays\` starts as an empty array \`[]\`; the lettering editor populates it.
+- For a narration-only cut with no image, leave \`cleanImagePath\` as \`null\` and
+  fill \`narration\` and/or \`dialogue\`.
 
 ## CRITICAL: Clean-Image-First Workflow
 
