@@ -73,6 +73,14 @@ describe("generateStoryInstructions", () => {
     expect(validateCutsFile(parsed)).toEqual({ valid: true });
   });
 
+  it("cartoon output instructs OWS-generated publish markdown, not hand-written", () => {
+    const out = generateStoryInstructions("cartoon");
+    expect(out).toContain("Do NOT hand-write plot-NN.md");
+    expect(out).toContain("OWS generates the publish");
+    expect(out).toContain("ows:cartoon-cut cut-001 start");
+    expect(out).toContain("awaiting upload");
+  });
+
   it("cartoon output guides against invalid pilot schema forms", () => {
     const out = generateStoryInstructions("cartoon");
     // The guidance table names the wrong forms so agents avoid them

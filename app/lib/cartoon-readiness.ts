@@ -52,8 +52,17 @@ export function checkMarkdownReadiness(
     }
   }
 
-  if (markdown.includes("awaiting upload")) {
+  if (/awaiting upload|image pending|final image pending|pending upload/i.test(markdown)) {
     issues.push("Markdown contains awaiting-upload placeholders");
+  }
+
+  // Image references must use uploaded http(s)/IPFS URLs — never local asset paths.
+  const imageRefs = [...markdown.matchAll(/!\[[^\]]*\]\(([^)]*)\)/g)];
+  for (const ref of imageRefs) {
+    const url = ref[1].trim();
+    if (!/^https?:\/\//i.test(url)) {
+      issues.push(`Invalid image reference (not an uploaded URL): ${url.slice(0, 60)}`);
+    }
   }
 
   if (markdown.length > 10000) {
