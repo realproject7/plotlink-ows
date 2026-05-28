@@ -101,7 +101,7 @@ describe("checkMarkdownReadiness", () => {
     const cuts = [makeCut()];
     const { ready, issues } = checkMarkdownReadiness(md, cuts);
     expect(ready).toBe(false);
-    expect(issues.some((i) => i.includes("not an uploaded URL"))).toBe(true);
+    expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
   });
 
   it("blocks relative/dot-path image references", () => {
@@ -190,6 +190,35 @@ describe("checkMarkdownReadiness", () => {
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
     expect(issues.some((i) => i.includes("exactly one image reference"))).toBe(true);
+  });
+
+  it("fails when a stray image ref outside any cut block is not a recorded URL", () => {
+    const url = "https://ipfs/QmA";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![Cut 1](${url})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+      "",
+      "![sneaky](https://example.com/fake.webp)",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
+  });
+
+  it("fails when a duplicate cut block references a non-recorded URL", () => {
+    const url = "https://ipfs/QmA";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![Cut 1](${url})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![dupe](https://example.com/fake2.webp)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
   });
 });
 

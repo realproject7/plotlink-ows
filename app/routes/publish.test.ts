@@ -109,7 +109,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     const res = await post(publishBody({ content: md }));
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.issues.some((i: string) => i.includes("not an uploaded URL"))).toBe(true);
+    expect(data.issues.some((i: string) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
   });
 
   it("blocks cartoon plot with missing marker blocks", async () => {
