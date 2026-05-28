@@ -295,15 +295,18 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
         authFetch={authFetch}
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
-          await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
+          const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(updated),
           });
-          setEditingCutId(null);
-          loadCuts();
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to save overlays");
+          }
         }}
-        onClose={() => setEditingCutId(null)}
+        onExported={() => loadCuts()}
+        onClose={() => { setEditingCutId(null); loadCuts(); }}
       />
     );
   }
@@ -350,29 +353,45 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
             if (!cutsFile) return;
             setUploading(true);
             setUploadProgress("");
+            setGenWarnings([]);
             const toUpload = cutsFile.cuts.filter((ct) => ct.finalImagePath && !ct.uploadedCid);
+            const errors: string[] = [];
             for (let i = 0; i < toUpload.length; i++) {
               const ct = toUpload[i];
-              setUploadProgress(`Uploading ${i + 1}/${toUpload.length}...`);
+              setUploadProgress(`Uploading cut ${ct.id} (${i + 1}/${toUpload.length})...`);
               try {
                 const assetRel = ct.finalImagePath!.startsWith("assets/") ? ct.finalImagePath!.slice(7) : ct.finalImagePath!;
                 const imgRes = await authFetch(`/api/stories/${storyName}/asset/${assetRel}`);
-                if (!imgRes.ok) continue;
+                if (!imgRes.ok) { errors.push(`Cut ${ct.id}: failed to fetch asset`); continue; }
                 const blob = await imgRes.blob();
                 const fd = new FormData();
                 fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
                 const upRes = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
-                if (!upRes.ok) continue;
+                if (!upRes.ok) { const e = await upRes.json().catch(() => ({})); errors.push(`Cut ${ct.id}: upload failed — ${e.error || "unknown"}`); continue; }
                 const { cid, url } = await upRes.json();
-                await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
+                const setRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ cid, url }),
                 });
-              } catch { /* skip failed */ }
+                if (!setRes.ok) { errors.push(`Cut ${ct.id}: failed to record upload`); }
+              } catch (err) {
+                errors.push(`Cut ${ct.id}: ${err instanceof Error ? err.message : "failed"}`);
+              }
+            }
+            if (errors.length > 0) {
+              setGenWarnings(errors);
+              setUploading(false);
+              setUploadProgress("");
+              loadCuts();
+              return;
             }
             setUploadProgress("Generating markdown...");
-            await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+            const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+            if (mdRes.ok) {
+              const data = await mdRes.json();
+              if (data.warnings?.length > 0) setGenWarnings(data.warnings);
+            }
             setUploading(false);
             setUploadProgress("");
             loadCuts();

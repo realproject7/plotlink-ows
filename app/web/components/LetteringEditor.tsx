@@ -67,8 +67,9 @@ interface LetteringEditorProps {
   storyName: string;
   cut: Cut;
   plotFile: string;
-  onSave: (overlays: Overlay[]) => void;
+  onSave: (overlays: Overlay[]) => void | Promise<void>;
   onClose: () => void;
+  onExported?: () => void;
   language?: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
 }
@@ -96,7 +97,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, language = "English", authFetch }: LetteringEditorProps) {
+export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onExported, language = "English", authFetch }: LetteringEditorProps) {
   const bodyFont = getDefaultFont(language);
   const displayFont = getDisplayFont();
   const bodyFontFamily = getFontFamily(bodyFont);
@@ -219,6 +220,8 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
     setExporting(true);
     setExportError(null);
     try {
+      await onSave(overlays);
+
       const { exportCut } = await import("./export-cut");
       const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
       const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
@@ -237,13 +240,15 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, lan
       if (!res.ok) {
         const data = await res.json();
         setExportError(data.error || "Export failed");
+      } else {
+        onExported?.();
       }
     } catch (err) {
       setExportError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setExporting(false);
     }
-  }, [cut, overlays, storyName, plotFile, bodyFontFamily, displayFontFamily, authFetch]);
+  }, [cut, overlays, storyName, plotFile, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
