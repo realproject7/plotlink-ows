@@ -30,16 +30,17 @@ function makeCut(overrides: Record<string, unknown> = {}) {
 }
 
 describe("export state refresh and save-before-export", () => {
-  it("export calls onSave before exporting and onExported after", async () => {
+  it("export calls onSave before export and onExported after success", async () => {
     const { LetteringEditor } = await import("./LetteringEditor");
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const onExported = vi.fn();
-    const authFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+    const callOrder: string[] = [];
+    const onSave = vi.fn().mockImplementation(async () => { callOrder.push("save"); });
+    const onExported = vi.fn().mockImplementation(() => { callOrder.push("exported"); });
+    const authFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, finalImagePath: "x.webp" }) });
 
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", overlays: [{ id: "o1", type: "speech" as const, x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "Hi" }] })}
+        cut={makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", overlays: [] })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={onSave}
@@ -48,8 +49,11 @@ describe("export state refresh and save-before-export", () => {
       />,
     );
 
-    const exportBtn = screen.getByTestId("export-btn");
-    expect(exportBtn).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("export-btn"));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalled();
+    });
   });
 
   it("export blocks if save rejects", async () => {

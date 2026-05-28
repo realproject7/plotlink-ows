@@ -295,11 +295,15 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
         authFetch={authFetch}
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
-          await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
+          const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(updated),
           });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Failed to save overlays");
+          }
         }}
         onExported={() => loadCuts()}
         onClose={() => { setEditingCutId(null); loadCuts(); }}
