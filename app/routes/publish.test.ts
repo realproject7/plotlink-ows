@@ -32,6 +32,7 @@ vi.mock("../../lib/ows/wallet", () => ({
 
 import { publishRoutes } from "./publish";
 import { createCutsFile, writeCutsFile } from "../lib/cuts";
+import { writeStoryMeta } from "./stories";
 import { Hono } from "hono";
 
 function makeApp() {
@@ -73,8 +74,15 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     });
   }
 
+  function setupCartoonStory(): string {
+    const storyDir = path.join(tmpDir, "story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeStoryMeta(storyDir, { contentType: "cartoon" });
+    return storyDir;
+  }
+
   it("blocks cartoon plot when cuts.json is missing", async () => {
-    fs.mkdirSync(path.join(tmpDir, "story"), { recursive: true });
+    setupCartoonStory();
     const res = await post(publishBody({ content: "some content" }));
     expect(res.status).toBe(400);
     const data = await res.json();
@@ -82,8 +90,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
   });
 
   it("blocks cartoon plot with awaiting-upload placeholder", async () => {
-    const storyDir = path.join(tmpDir, "story");
-    fs.mkdirSync(storyDir, { recursive: true });
+    const storyDir = setupCartoonStory();
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
 
     const md = "<!-- ows:cartoon-cut cut-001 start -->\n<!-- Cut 1: awaiting upload -->\n<!-- ows:cartoon-cut cut-001 end -->";
@@ -95,8 +102,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
   });
 
   it("blocks cartoon plot with local asset path image ref", async () => {
-    const storyDir = path.join(tmpDir, "story");
-    fs.mkdirSync(storyDir, { recursive: true });
+    const storyDir = setupCartoonStory();
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
 
     const md = "<!-- ows:cartoon-cut cut-001 start -->\n![Cut 1](assets/plot-01/cut-01-final.webp)\n<!-- ows:cartoon-cut cut-001 end -->";
@@ -107,8 +113,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
   });
 
   it("blocks cartoon plot with missing marker blocks", async () => {
-    const storyDir = path.join(tmpDir, "story");
-    fs.mkdirSync(storyDir, { recursive: true });
+    const storyDir = setupCartoonStory();
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
 
     const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](https://ipfs/x)\n<!-- ows:cartoon-cut cut-001 end -->";
@@ -119,8 +124,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
   });
 
   it("blocks cartoon plot when cuts.json is invalid", async () => {
-    const storyDir = path.join(tmpDir, "story");
-    fs.mkdirSync(storyDir, { recursive: true });
+    const storyDir = setupCartoonStory();
     fs.writeFileSync(path.join(storyDir, "plot-01.cuts.json"), "{ not json");
 
     const res = await post(publishBody({ content: "x" }));
@@ -130,15 +134,43 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
   });
 
   it("does not apply cartoon guard to fiction plots", async () => {
-    // Fiction plot with no cuts.json should pass the readiness guard and reach
-    // wallet check (mocked listAgentWallets returns [] → "No OWS wallet" 400).
+    // Fiction story (.story.json contentType fiction) should pass the readiness
+    // guard and reach wallet check (mocked listAgentWallets [] → "No OWS wallet").
     const storyDir = path.join(tmpDir, "story");
     fs.mkdirSync(storyDir, { recursive: true });
+    writeStoryMeta(storyDir, { contentType: "fiction" });
 
     const res = await post(publishBody({ contentType: "fiction", content: "Some fiction prose." }));
     const data = await res.json();
-    // Not blocked by cartoon readiness — error is the wallet check instead.
     expect(data.error).not.toContain("cuts.json");
     expect(data.error).not.toContain("not ready");
+  });
+
+  it("cannot bypass cartoon guard by omitting contentType in body", async () => {
+    // Story is cartoon server-side; body omits contentType entirely.
+    const storyDir = setupCartoonStory();
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n<!-- Cut 1: awaiting upload -->\n<!-- ows:cartoon-cut cut-001 end -->";
+
+    const body = publishBody({ content: md });
+    delete (body as Record<string, unknown>).contentType;
+    const res = await post(body);
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("not ready");
+  });
+
+  it("cannot bypass cartoon guard by sending contentType: fiction", async () => {
+    // Story is cartoon server-side; body lies and says fiction.
+    const storyDir = setupCartoonStory();
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](assets/plot-01/cut-01-final.webp)\n<!-- ows:cartoon-cut cut-001 end -->";
+
+    const res = await post(publishBody({ contentType: "fiction", content: md }));
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("not ready");
   });
 });

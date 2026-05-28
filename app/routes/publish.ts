@@ -7,6 +7,7 @@ import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { readCutsFile } from "../lib/cuts";
 import { checkMarkdownReadiness } from "../lib/cartoon-readiness";
+import { readStoryMeta } from "./stories";
 
 const publish = new Hono();
 
@@ -95,22 +96,28 @@ publish.post("/file", async (c) => {
     }, 400);
   }
 
-  // Cartoon plot readiness — block invalid/incomplete publish markdown
-  if (body.contentType === "cartoon" && isPlot) {
-    const plotFile = body.fileName.replace(/\.md$/, "");
+  // Cartoon plot readiness — block invalid/incomplete publish markdown.
+  // Derive cartoon status from server-side .story.json metadata (NOT the
+  // request body) so a direct API caller cannot bypass by omitting/faking
+  // contentType.
+  if (isPlot) {
     const storyDir = path.join(STORIES_DIR, body.storyName);
-    let cutsFile;
-    try {
-      cutsFile = readCutsFile(storyDir, plotFile);
-    } catch (err) {
-      return c.json({ error: `Cannot publish: ${(err as Error).message}` }, 400);
-    }
-    if (!cutsFile) {
-      return c.json({ error: `Cannot publish: ${plotFile}.cuts.json not found. Generate cuts and upload final images first.` }, 400);
-    }
-    const { ready, issues } = checkMarkdownReadiness(body.content, cutsFile.cuts);
-    if (!ready) {
-      return c.json({ error: `Cartoon plot not ready to publish: ${issues.join("; ")}`, issues }, 400);
+    const isCartoon = readStoryMeta(storyDir).contentType === "cartoon";
+    if (isCartoon) {
+      const plotFile = body.fileName.replace(/\.md$/, "");
+      let cutsFile;
+      try {
+        cutsFile = readCutsFile(storyDir, plotFile);
+      } catch (err) {
+        return c.json({ error: `Cannot publish: ${(err as Error).message}` }, 400);
+      }
+      if (!cutsFile) {
+        return c.json({ error: `Cannot publish: ${plotFile}.cuts.json not found. Generate cuts and upload final images first.` }, 400);
+      }
+      const { ready, issues } = checkMarkdownReadiness(body.content, cutsFile.cuts);
+      if (!ready) {
+        return c.json({ error: `Cartoon plot not ready to publish: ${issues.join("; ")}`, issues }, 400);
+      }
     }
   }
 
