@@ -81,6 +81,13 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("awaiting upload");
   });
 
+  it("cartoon output requires every publishable cut to be uploaded (incl. narration)", () => {
+    const out = generateStoryInstructions("cartoon");
+    expect(out).toContain("Every publishable cut must become a final uploaded image");
+    // Must NOT tell agents that narration-only cuts can stay image-less for publish
+    expect(out).not.toContain("For a narration-only cut with no image, leave");
+  });
+
   it("cartoon output guides against invalid pilot schema forms", () => {
     const out = generateStoryInstructions("cartoon");
     // The guidance table names the wrong forms so agents avoid them

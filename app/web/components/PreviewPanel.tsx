@@ -6,6 +6,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CutListPanel } from "./CutListPanel";
+import { checkMarkdownReadiness } from "@app-lib/cartoon-readiness";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -83,6 +84,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [isNsfw, setIsNsfw] = useState(false);
+  const [cartoonIssues, setCartoonIssues] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -144,6 +146,37 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     const interval = setInterval(loadFile, 3000);
     return () => clearInterval(interval);
   }, [storyName, fileName, loadFile, activeTab, dirty]);
+
+  // Compute cartoon publish readiness for cartoon plot files
+  const cartoonPlotForReadiness = contentType === "cartoon" && !!fileName && /^plot-\d+\.md$/.test(fileName);
+  useEffect(() => {
+    if (!cartoonPlotForReadiness || !storyName || !fileName) {
+      setCartoonIssues([]);
+      return;
+    }
+    let cancelled = false;
+    const plotFile = fileName.replace(/\.md$/, "");
+    (async () => {
+      try {
+        const [fileRes, cutsRes] = await Promise.all([
+          authFetch(`/api/stories/${storyName}/${fileName}`),
+          authFetch(`/api/stories/${storyName}/cuts/${plotFile}`),
+        ]);
+        if (cancelled) return;
+        if (!cutsRes.ok) {
+          setCartoonIssues(["Cuts file missing or invalid — generate cuts and upload images first"]);
+          return;
+        }
+        const cutsData = await cutsRes.json();
+        const content = fileRes.ok ? (await fileRes.json()).content ?? "" : "";
+        const { issues } = checkMarkdownReadiness(content, cutsData.cuts || []);
+        if (!cancelled) setCartoonIssues(issues);
+      } catch {
+        if (!cancelled) setCartoonIssues(["Could not verify publish readiness"]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content]);
 
   // Auto-detect genre from structure.md when story changes
   useEffect(() => {
@@ -816,7 +849,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   }
                   onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                 }}
-                disabled={!!publishingFile || overLimit}
+                disabled={!!publishingFile || overLimit || cartoonIssues.length > 0}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
@@ -824,7 +857,17 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               {overLimit && (
                 <span className="text-error text-xs">Reduce content to publish</span>
               )}
+              {cartoonIssues.length > 0 && (
+                <span className="text-error text-xs">Not ready to publish</span>
+              )}
             </div>
+            {cartoonIssues.length > 0 && (
+              <div className="flex flex-col gap-0.5" data-testid="cartoon-publish-issues">
+                {cartoonIssues.map((issue, i) => (
+                  <span key={i} className="text-error text-xs">{issue}</span>
+                ))}
+              </div>
+            )}
             {imageValidation.warnings.length > 0 && (
               <div className="flex flex-col gap-0.5">
                 {imageValidation.warnings.map((w, i) => (
