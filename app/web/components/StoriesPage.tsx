@@ -45,6 +45,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
   const [newStoryLanguage, setNewStoryLanguage] = useState("English");
+  // Track confirmed stories (those with structure.md) for Archive gating
+  const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
+  const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
+  const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
@@ -312,10 +316,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, []);
 
-  // Track confirmed stories (those with structure.md) for Archive gating
-  const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
-  const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
-  const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
   useEffect(() => {
     const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
