@@ -30,8 +30,12 @@ function makeCut(overrides: Record<string, unknown> = {}) {
 }
 
 describe("export state refresh and save-before-export", () => {
-  it("export calls onSave before export and onExported after success", async () => {
+  it("export calls onSave then export then onExported in order", async () => {
+    vi.doMock("./export-cut", () => ({
+      exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
+    }));
     const { LetteringEditor } = await import("./LetteringEditor");
+
     const callOrder: string[] = [];
     const onSave = vi.fn().mockImplementation(async () => { callOrder.push("save"); });
     const onExported = vi.fn().mockImplementation(() => { callOrder.push("exported"); });
@@ -52,8 +56,13 @@ describe("export state refresh and save-before-export", () => {
     fireEvent.click(screen.getByTestId("export-btn"));
 
     await waitFor(() => {
-      expect(onSave).toHaveBeenCalled();
+      expect(onExported).toHaveBeenCalled();
     });
+
+    expect(callOrder).toEqual(["save", "exported"]);
+    expect(onSave).toHaveBeenCalledBefore(onExported);
+
+    vi.doUnmock("./export-cut");
   });
 
   it("export blocks if save rejects", async () => {
