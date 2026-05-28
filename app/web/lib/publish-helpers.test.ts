@@ -21,4 +21,19 @@ describe("getContentTypeForPublish", () => {
   it("returns undefined for unknown story", () => {
     expect(getContentTypeForPublish({}, "unknown", undefined)).toBeUndefined();
   });
+
+  it("returns cartoon after metadata update (simulates stale closure fix)", () => {
+    let storyContentTypes: Record<string, string> = {};
+
+    const buildPayload = (storyName: string, storylineId: number | undefined) => {
+      const ct = getContentTypeForPublish(storyContentTypes, storyName, storylineId);
+      return ct ? { contentType: ct } : {};
+    };
+
+    expect(buildPayload("my-cartoon", undefined)).toEqual({});
+
+    storyContentTypes = { "my-cartoon": "cartoon" };
+
+    expect(buildPayload("my-cartoon", undefined)).toEqual({ contentType: "cartoon" });
+  });
 });
