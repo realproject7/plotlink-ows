@@ -19,9 +19,10 @@ describe("ensureFontsReady", () => {
     }
   });
 
-  it("returns ready when all fonts load and check passes", async () => {
+  it("returns ready when all fonts load (non-empty) and check passes", async () => {
+    const fakeFace = { family: "x" };
     const fakeFonts = {
-      load: vi.fn().mockResolvedValue([]),
+      load: vi.fn().mockResolvedValue([fakeFace]),
       check: vi.fn().mockReturnValue(true),
     };
     Object.defineProperty(document, "fonts", { value: fakeFonts, configurable: true });
@@ -32,9 +33,21 @@ describe("ensureFontsReady", () => {
     expect(fakeFonts.load).toHaveBeenCalledTimes(2);
   });
 
-  it("reports missing fonts when check fails", async () => {
+  it("treats empty load result as missing even when check returns true", async () => {
     const fakeFonts = {
       load: vi.fn().mockResolvedValue([]),
+      check: vi.fn().mockReturnValue(true),
+    };
+    Object.defineProperty(document, "fonts", { value: fakeFonts, configurable: true });
+
+    const result = await ensureFontsReady(["Noto Sans KR"]);
+    expect(result.ready).toBe(false);
+    expect(result.missing).toContain("Noto Sans KR");
+  });
+
+  it("reports missing fonts when check fails", async () => {
+    const fakeFonts = {
+      load: vi.fn().mockResolvedValue([{ family: "x" }]),
       check: vi.fn().mockReturnValue(false),
     };
     Object.defineProperty(document, "fonts", { value: fakeFonts, configurable: true });

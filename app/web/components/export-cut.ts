@@ -19,8 +19,13 @@ export async function ensureFontsReady(families: string[]): Promise<{ ready: boo
   const missing: string[] = [];
   for (const family of families) {
     try {
-      await document.fonts.load(`16px "${family}"`);
-      if (!document.fonts.check(`16px "${family}"`)) {
+      const loaded = await document.fonts.load(`16px "${family}"`);
+      // load() resolves with the FontFace[] that matched. An empty array means
+      // the family was never registered (e.g. CDN CSS blocked), so check() may
+      // only be matching a system fallback — treat as missing.
+      if (!loaded || loaded.length === 0) {
+        missing.push(family);
+      } else if (!document.fonts.check(`16px "${family}"`)) {
         missing.push(family);
       }
     } catch {
