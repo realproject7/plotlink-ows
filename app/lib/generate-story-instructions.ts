@@ -171,8 +171,11 @@ Valid \`plot-01.cuts.json\`:
 - \`shotType\` must be one of: \`wide\`, \`medium\`, \`close-up\`, \`extreme-close-up\`.
 - All image/export/upload path fields start as \`null\`; OWS fills them in.
 - \`overlays\` starts as an empty array \`[]\`; the lettering editor populates it.
-- For a narration-only cut with no image, leave \`cleanImagePath\` as \`null\` and
-  fill \`narration\` and/or \`dialogue\`.
+- **Every publishable cut must become a final uploaded image.** Even
+  narration-only or background-only cuts must get a clean image, be lettered/
+  exported, and uploaded before the episode can publish. \`cleanImagePath\` may
+  be \`null\` during early planning, but a cut with no uploaded image will block
+  publish readiness.
 
 ## CRITICAL: Clean-Image-First Workflow
 

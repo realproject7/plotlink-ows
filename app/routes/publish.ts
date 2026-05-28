@@ -3,6 +3,10 @@ import { streamSSE } from "hono/streaming";
 import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost, uploadCoverImage, uploadPlotImage, updateStoryline } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import path from "path";
+import { STORIES_DIR } from "../lib/paths";
+import { readCutsFile } from "../lib/cuts";
+import { checkMarkdownReadiness } from "../lib/cartoon-readiness";
 
 const publish = new Hono();
 
@@ -89,6 +93,25 @@ publish.post("/file", async (c) => {
     return c.json({
       error: `Content exceeds ${charLimit.toLocaleString()} character limit (${body.content.length.toLocaleString()} chars). Reduce content before publishing.`,
     }, 400);
+  }
+
+  // Cartoon plot readiness — block invalid/incomplete publish markdown
+  if (body.contentType === "cartoon" && isPlot) {
+    const plotFile = body.fileName.replace(/\.md$/, "");
+    const storyDir = path.join(STORIES_DIR, body.storyName);
+    let cutsFile;
+    try {
+      cutsFile = readCutsFile(storyDir, plotFile);
+    } catch (err) {
+      return c.json({ error: `Cannot publish: ${(err as Error).message}` }, 400);
+    }
+    if (!cutsFile) {
+      return c.json({ error: `Cannot publish: ${plotFile}.cuts.json not found. Generate cuts and upload final images first.` }, 400);
+    }
+    const { ready, issues } = checkMarkdownReadiness(body.content, cutsFile.cuts);
+    if (!ready) {
+      return c.json({ error: `Cartoon plot not ready to publish: ${issues.join("; ")}`, issues }, 400);
+    }
   }
 
   // Get wallet
