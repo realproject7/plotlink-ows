@@ -222,7 +222,17 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     try {
       await onSave(overlays);
 
-      const { exportCut } = await import("./export-cut");
+      const { exportCut, ensureFontsReady } = await import("./export-cut");
+
+      const usesSfx = overlays.some((o) => o.type === "sfx");
+      const fontsToCheck = [bodyFont.family, ...(usesSfx ? [displayFont.family] : [])];
+      const { ready, missing } = await ensureFontsReady(fontsToCheck);
+      if (!ready) {
+        setExportError(`Fonts not loaded: ${missing.join(", ")}. Check your connection and retry.`);
+        setExporting(false);
+        return;
+      }
+
       const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
       const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
         narration: cut.narration,
@@ -248,7 +258,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     } finally {
       setExporting(false);
     }
-  }, [cut, overlays, storyName, plotFile, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
+  }, [cut, overlays, storyName, plotFile, bodyFont, displayFont, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 

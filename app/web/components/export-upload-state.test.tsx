@@ -33,6 +33,7 @@ describe("export state refresh and save-before-export", () => {
   it("export calls onSave then export then onExported in order", async () => {
     vi.doMock("./export-cut", () => ({
       exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
+      ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
     }));
     const { LetteringEditor } = await import("./LetteringEditor");
 
