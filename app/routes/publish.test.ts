@@ -161,6 +161,45 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(data.error).toContain("not ready");
   });
 
+  it("blocks cartoon plot when block URL does not match recorded uploadedUrl", async () => {
+    const storyDir = setupCartoonStory();
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].uploadedUrl = "https://ipfs.filebase.io/ipfs/QmReal";
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](https://example.com/fake.webp)\n<!-- ows:cartoon-cut cut-001 end -->";
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.issues.some((i: string) => i.includes("does not match the recorded uploaded URL"))).toBe(true);
+  });
+
+  it("blocks cartoon plot when cut has no uploadedUrl despite valid-looking markdown URL", async () => {
+    const storyDir = setupCartoonStory();
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1)); // uploadedUrl null by default
+
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](https://ipfs.filebase.io/ipfs/QmAnything)\n<!-- ows:cartoon-cut cut-001 end -->";
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.issues.some((i: string) => i.includes("not uploaded"))).toBe(true);
+  });
+
+  it("allows cartoon plot when block URL exactly matches recorded uploadedUrl", async () => {
+    const storyDir = setupCartoonStory();
+    const url = "https://ipfs.filebase.io/ipfs/QmExact";
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].uploadedUrl = url;
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const md = `<!-- ows:cartoon-cut cut-001 start -->\n![C](${url})\n<!-- ows:cartoon-cut cut-001 end -->`;
+    const res = await post(publishBody({ content: md }));
+    const data = await res.json();
+    // Readiness passes — not blocked by cartoon guard (reaches wallet check instead).
+    expect(data.error).not.toContain("not ready");
+    expect(data.error).not.toContain("cuts.json");
+  });
+
   it("cannot bypass cartoon guard by sending contentType: fiction", async () => {
     // Story is cartoon server-side; body lies and says fiction.
     const storyDir = setupCartoonStory();

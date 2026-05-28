@@ -134,6 +134,63 @@ describe("checkMarkdownReadiness", () => {
     const { ready } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: "https://ipfs.example.com/QmAbc" })]);
     expect(ready).toBe(true);
   });
+
+  it("fails when cut.uploadedUrl is null even with a valid-looking URL in markdown", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Cut 1](https://ipfs.filebase.io/ipfs/QmReal)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: null })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("not uploaded"))).toBe(true);
+  });
+
+  it("fails when block URL does not match recorded uploadedUrl", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Cut 1](https://example.com/fake.webp)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: "https://ipfs.filebase.io/ipfs/QmA" })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("does not match the recorded uploaded URL"))).toBe(true);
+  });
+
+  it("passes only when block URL exactly equals recorded uploadedUrl", () => {
+    const url = "https://ipfs.filebase.io/ipfs/QmExact";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![Cut 1](${url})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(true);
+  });
+
+  it("fails when a completed cut block has no image reference", () => {
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "Just some text, no image",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: "https://ipfs/QmA" })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("no image reference"))).toBe(true);
+  });
+
+  it("fails when a cut block has more than one image reference", () => {
+    const url = "https://ipfs/QmA";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![A](${url})`,
+      `![B](${url})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("exactly one image reference"))).toBe(true);
+  });
 });
 
 describe("checkExportSize", () => {
