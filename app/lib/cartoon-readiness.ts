@@ -84,15 +84,20 @@ export function checkMarkdownReadiness(
     issues.push("Markdown contains awaiting-upload placeholders");
   }
 
-  // Every image reference anywhere in the markdown must be a recorded cut
-  // uploadedUrl. This rejects local/relative paths AND stray/extra https refs
-  // (including those outside or in duplicate cut blocks) that are not tied to a
-  // real uploaded cut image.
-  const uploadedUrls = new Set(cuts.map((c) => c.uploadedUrl).filter((u): u is string => !!u));
+  // Every image reference anywhere in the markdown must be (1) an http(s) URL
+  // and (2) a recorded cut uploadedUrl. The http(s) check is independent so a
+  // bad recorded uploadedUrl (e.g. a local "assets/..." path) cannot be matched
+  // by equally-bad local markdown. The Set check rejects stray/extra https refs
+  // (outside or in duplicate cut blocks) not tied to a real uploaded cut image.
+  const uploadedUrls = new Set(
+    cuts.map((c) => c.uploadedUrl).filter((u): u is string => !!u && /^https?:\/\//i.test(u)),
+  );
   const allRefs = [...markdown.matchAll(/!\[[^\]]*\]\(([^)]*)\)/g)];
   for (const ref of allRefs) {
     const url = ref[1].trim();
-    if (!uploadedUrls.has(url)) {
+    if (!/^https?:\/\//i.test(url)) {
+      issues.push(`Invalid image reference (not an http(s) URL): ${url.slice(0, 60)}`);
+    } else if (!uploadedUrls.has(url)) {
       issues.push(`Image reference is not a recorded uploaded cut URL: ${url.slice(0, 60)}`);
     }
   }

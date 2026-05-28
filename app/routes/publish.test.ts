@@ -109,7 +109,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     const res = await post(publishBody({ content: md }));
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.issues.some((i: string) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
+    expect(data.issues.some((i: string) => i.includes("not an http(s) URL"))).toBe(true);
   });
 
   it("blocks cartoon plot with missing marker blocks", async () => {
@@ -198,6 +198,20 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     // Readiness passes — not blocked by cartoon guard (reaches wallet check instead).
     expect(data.error).not.toContain("not ready");
     expect(data.error).not.toContain("cuts.json");
+  });
+
+  it("blocks cartoon plot when uploadedUrl is a local path matched by local markdown", async () => {
+    const storyDir = setupCartoonStory();
+    const localPath = "assets/plot-01/cut-01-final.webp";
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].uploadedUrl = localPath;
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const md = `<!-- ows:cartoon-cut cut-001 start -->\n![C](${localPath})\n<!-- ows:cartoon-cut cut-001 end -->`;
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.issues.some((i: string) => i.includes("not an http(s) URL"))).toBe(true);
   });
 
   it("cannot bypass cartoon guard by sending contentType: fiction", async () => {

@@ -101,7 +101,7 @@ describe("checkMarkdownReadiness", () => {
     const cuts = [makeCut()];
     const { ready, issues } = checkMarkdownReadiness(md, cuts);
     expect(ready).toBe(false);
-    expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
+    expect(issues.some((i) => i.includes("not an http(s) URL"))).toBe(true);
   });
 
   it("blocks relative/dot-path image references", () => {
@@ -204,6 +204,19 @@ describe("checkMarkdownReadiness", () => {
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
     expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
+  });
+
+  it("fails when uploadedUrl is a local path matched by local markdown", () => {
+    const localPath = "assets/plot-01/cut-01-final.webp";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![Cut 1](${localPath})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    // Bad recorded uploadedUrl that is NOT an http(s) URL; markdown matches it.
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: localPath })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("not an http(s) URL"))).toBe(true);
   });
 
   it("fails when a duplicate cut block references a non-recorded URL", () => {
