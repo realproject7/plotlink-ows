@@ -32,6 +32,25 @@ function TestPublishComponent({ authFetch }: { authFetch: (url: string, opts?: R
   );
 }
 
+describe("StoriesPage.handlePublish dependency array (source guard)", () => {
+  it("production handlePublish includes storyContentTypes and walletAddress in deps", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "StoriesPage.tsx"),
+      "utf-8",
+    );
+
+    const handlePublishMatch = source.match(
+      /const handlePublish = useCallback\([\s\S]*?\}, \[([^\]]+)\]\)/,
+    );
+    expect(handlePublishMatch).toBeTruthy();
+    const deps = handlePublishMatch![1];
+    expect(deps).toContain("storyContentTypes");
+    expect(deps).toContain("walletAddress");
+  });
+});
+
 describe("publish callback boundary (stale closure regression)", () => {
   it("cartoon genesis includes contentType after metadata update", () => {
     const authFetch = vi.fn();
