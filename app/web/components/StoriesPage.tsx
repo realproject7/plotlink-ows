@@ -45,12 +45,15 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
   const [newStoryLanguage, setNewStoryLanguage] = useState("English");
+  const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
+  const [bypassStories, setBypassStories] = useState<Record<string, boolean>>({});
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
   const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
+  const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
   const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,14 +86,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   const handleNewStory = useCallback(() => {
+    setNewStoryAgentMode("normal");
     setShowNewStoryModal(true);
   }, []);
 
-  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string) => {
+  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass") => {
     setShowNewStoryModal(false);
     const id = `_new_${Date.now()}`;
     contentTypeMap.current.set(id, contentType);
     languageMap.current.set(id, language);
+    agentModeMap.current.set(id, agentMode);
+    if (agentMode === "bypass") {
+      setBypassStories((prev) => ({ ...prev, [id]: true }));
+    }
     setUntitledSessions((prev) => [...prev, id]);
     setSelectedStory(id);
     setSelectedFile(null);
@@ -122,12 +130,21 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               setUntitledSessions((prev) => prev.slice(1));
               const ct = contentTypeMap.current.get(oldName) || "fiction";
               const lang = languageMap.current.get(oldName) || "English";
+              const mode = agentModeMap.current.get(oldName) || "normal";
               contentTypeMap.current.delete(oldName);
               languageMap.current.delete(oldName);
+              agentModeMap.current.delete(oldName);
+              if (mode === "bypass") {
+                setBypassStories((prev) => {
+                  const next = { ...prev, [name]: true };
+                  delete next[oldName];
+                  return next;
+                });
+              }
               authFetch(`/api/stories/${name}/metadata`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contentType: ct, language: lang }),
+                body: JSON.stringify({ contentType: ct, language: lang, agentMode: mode }),
               }).catch(() => {});
             }
             setSelectedStory(name);
@@ -313,6 +330,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       setUntitledSessions((prev) => prev.filter((id) => id !== name));
       contentTypeMap.current.delete(name);
       languageMap.current.delete(name);
+      agentModeMap.current.delete(name);
+      setBypassStories((prev) => {
+        if (!(name in prev)) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     }
   }, []);
 
@@ -367,7 +391,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} />
       </div>
 
       {/* Drag Handle */}
@@ -416,17 +440,34 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
             </label>
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Agent mode</span>
+              <select
+                value={newStoryAgentMode}
+                onChange={(e) => setNewStoryAgentMode(e.target.value as "normal" | "bypass")}
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                data-testid="agent-mode-select"
+              >
+                <option value="normal">Normal (approve each action)</option>
+                <option value="bypass">Permissions Bypass (advanced)</option>
+              </select>
+              {newStoryAgentMode === "bypass" && (
+                <p className="text-[10px] text-amber-700" data-testid="agent-mode-warning">
+                  Less safe: Claude can run actions without per-command approval.
+                </p>
+              )}
+            </label>
             <p className="text-xs text-muted text-center">Choose a content type</p>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => handleCreateStory("fiction", newStoryLanguage)}
+                onClick={() => handleCreateStory("fiction", newStoryLanguage, newStoryAgentMode)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
               </button>
               <button
-                onClick={() => handleCreateStory("cartoon", newStoryLanguage)}
+                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>

@@ -44,7 +44,56 @@ function saveSessionMap(map: Record<string, string>) {
   } catch { /* ignore */ }
 }
 
-function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean }) {
+/**
+ * Build the Claude CLI command string for a session.
+ * - resume: reuse an existing session ID
+ * - bypass: add --dangerously-skip-permissions (opt-in, less safe)
+ */
+export function buildClaudeCommand(opts: {
+  resume: boolean;
+  sessionId: string;
+  bypass?: boolean;
+}): string {
+  let cmd = "claude";
+  if (opts.resume) {
+    cmd += ` --resume "${opts.sessionId}"`;
+  } else {
+    cmd += ` --session-id "${opts.sessionId}"`;
+  }
+  if (opts.bypass) {
+    cmd += " --dangerously-skip-permissions";
+  }
+  return cmd;
+}
+
+// In-memory agent mode per active session name (covers _new_ sessions and
+// reconnects before a story directory / .story.json exists).
+const agentModeBySession = new Map<string, "normal" | "bypass">();
+
+/**
+ * Resolve effective permissions-bypass for a spawn.
+ *
+ * The client-supplied bypass flag is only trusted for a brand-new (_new_)
+ * story's first spawn. For existing stories, bypass derives strictly from
+ * server-side state (already-spawned session mode, then stored .story.json),
+ * so a direct WS URL cannot force bypass on a story whose metadata says normal.
+ */
+export function resolveBypass(args: {
+  isNewStory: boolean;
+  optBypass?: boolean;
+  sessionMode?: "normal" | "bypass";
+  storedMode?: "normal" | "bypass";
+}): boolean {
+  if (args.isNewStory) {
+    return args.optBypass ?? args.sessionMode === "bypass";
+  }
+  if (args.sessionMode !== undefined) {
+    return args.sessionMode === "bypass";
+  }
+  return args.storedMode === "bypass";
+}
+
+function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean; bypass?: boolean }) {
   // New story sessions spawn in the stories root so Claude can create any folder
   const isNewStory = storyName.startsWith("_new_");
   const storyDir = isNewStory ? STORIES_DIR : path.join(STORIES_DIR, storyName);
@@ -55,22 +104,28 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   }
   const shell = process.env.SHELL || "/bin/zsh";
 
+  // Resolve effective agent mode (see resolveBypass for the trust model).
+  const bypass = resolveBypass({
+    isNewStory,
+    optBypass: opts?.bypass,
+    sessionMode: agentModeBySession.get(storyName),
+    storedMode: isNewStory ? undefined : readStoryMeta(storyDir).agentMode,
+  });
+  agentModeBySession.set(storyName, bypass ? "bypass" : "normal");
+
   // Determine session ID
   const sessionMap = loadSessionMap();
   let sessionId: string;
-
-  // Build Claude CLI command with session flags
-  // Note: no --cwd flag — Claude CLI uses process cwd, set via pty.spawn({ cwd: storyDir })
-  let claudeCmd = "claude";
-  if (opts?.resume && sessionMap[storyName]) {
-    // Resume: reuse stored session
+  const doResume = !!(opts?.resume && sessionMap[storyName]);
+  if (doResume) {
     sessionId = sessionMap[storyName];
-    claudeCmd += ` --resume "${sessionId}"`;
   } else {
-    // Fresh: always generate new UUID
     sessionId = opts?.sessionId || randomUUID();
-    claudeCmd += ` --session-id "${sessionId}"`;
   }
+
+  // Build Claude CLI command. No --cwd flag — Claude uses process cwd, set via
+  // pty.spawn({ cwd: storyDir }).
+  const claudeCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
 
   const term = pty.spawn(shell, ["-l", "-c", claudeCmd], {
     name: "xterm-256color",
@@ -221,6 +276,13 @@ terminal.post("/rename", async (c) => {
   ptySessions.delete(oldName);
   ptySessions.set(newName, session);
 
+  // Carry the in-memory agent mode across the rename so reconnects stay consistent
+  const oldMode = agentModeBySession.get(oldName);
+  if (oldMode) {
+    agentModeBySession.set(newName, oldMode);
+    agentModeBySession.delete(oldName);
+  }
+
   // Update persisted session map: remove old key, store under new key
   const sessionMap = loadSessionMap();
   delete sessionMap[oldName];
@@ -258,7 +320,7 @@ terminal.get("/status", (c) => {
  * Attach a raw WebSocket to a story's PTY session.
  * Called from server.ts WebSocket upgrade handler.
  */
-export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boolean) {
+export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boolean, bypass?: boolean) {
   const name = storyName && safeName(storyName) ? storyName : "default";
   let session = ptySessions.get(name);
 
@@ -272,7 +334,7 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boo
     }
 
     try {
-      session = spawnPty(name, { resume });
+      session = spawnPty(name, { resume, bypass });
     } catch (err) {
       console.error("PTY spawn failed:", err);
       ws.close(1011, "pty-spawn-failed");

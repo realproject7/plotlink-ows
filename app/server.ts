@@ -159,8 +159,9 @@ async function start() {
         if (!session || session.expiresAt < new Date()) { socket.destroy(); return; }
         const story = url.searchParams.get("story") || undefined;
         const resume = url.searchParams.get("resume") === "true";
+        const bypass = url.searchParams.get("bypass") === "true";
         wss.handleUpgrade(req, socket, head, (ws) => {
-          attachTerminalWs(ws as unknown as WebSocket, story, resume);
+          attachTerminalWs(ws as unknown as WebSocket, story, resume, bypass);
         });
       }).catch(() => socket.destroy());
     }

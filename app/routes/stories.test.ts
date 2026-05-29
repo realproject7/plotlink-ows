@@ -82,6 +82,24 @@ describe("story metadata (.story.json)", () => {
     expect(meta.language).toBeUndefined();
   });
 
+  it("persists agentMode bypass in .story.json", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon", agentMode: "bypass" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentMode).toBe("bypass");
+  });
+
+  it("defaults agentMode to undefined (normal) when not set", () => {
+    writeStoryMeta(tmpDir, { contentType: "fiction" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentMode).toBeUndefined();
+  });
+
+  it("ignores invalid agentMode values", () => {
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "cartoon", agentMode: "yolo" }));
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentMode).toBeUndefined();
+  });
+
   it("writeStoryMeta overwrites existing .story.json", () => {
     writeStoryMeta(tmpDir, { contentType: "fiction" });
     writeStoryMeta(tmpDir, { contentType: "cartoon" });
