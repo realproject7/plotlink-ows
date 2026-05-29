@@ -9,6 +9,7 @@ import { writeStoryInstructions } from "../lib/generate-story-instructions";
 
 const MAX_SESSIONS = 5;
 const SESSION_FILE = path.join(DATA_DIR, "terminal-sessions.json");
+const WS_OPEN = 1;
 
 const terminal = new Hono();
 
@@ -64,6 +65,10 @@ export function buildClaudeCommand(opts: {
     cmd += " --dangerously-skip-permissions";
   }
   return cmd;
+}
+
+export function isTerminalSocketOpen(ws: Pick<WebSocket, "readyState">): boolean {
+  return ws.readyState === WS_OPEN;
 }
 
 // In-memory agent mode per active session name (covers _new_ sessions and
@@ -350,7 +355,7 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boo
 
   // PTY output → browser
   const dataDisposable = session.term.onData((data: string) => {
-    if (ws.readyState === WebSocket.OPEN) {
+    if (isTerminalSocketOpen(ws)) {
       ws.send(data);
     }
   });
