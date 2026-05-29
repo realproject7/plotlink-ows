@@ -6,7 +6,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CutListPanel } from "./CutListPanel";
-import { checkMarkdownReadiness } from "@app-lib/cartoon-readiness";
+import { checkMarkdownReadiness, isCartoonPlanningStage } from "@app-lib/cartoon-readiness";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -85,6 +85,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [isNsfw, setIsNsfw] = useState(false);
   const [cartoonIssues, setCartoonIssues] = useState<string[]>([]);
+  const [cartoonPlanning, setCartoonPlanning] = useState(false);
+  const [cartoonGenerating, setCartoonGenerating] = useState(false);
+  const [cartoonGenWarnings, setCartoonGenWarnings] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -152,6 +155,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   useEffect(() => {
     if (!cartoonPlotForReadiness || !storyName || !fileName) {
       setCartoonIssues([]);
+      setCartoonPlanning(false);
       return;
     }
     let cancelled = false;
@@ -165,14 +169,22 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         if (cancelled) return;
         if (!cutsRes.ok) {
           setCartoonIssues(["Cuts file missing or invalid — generate cuts and upload images first"]);
+          setCartoonPlanning(false);
           return;
         }
         const cutsData = await cutsRes.json();
+        const cuts = cutsData.cuts || [];
         const content = fileRes.ok ? (await fileRes.json()).content ?? "" : "";
-        const { issues } = checkMarkdownReadiness(content, cutsData.cuts || []);
-        if (!cancelled) setCartoonIssues(issues);
+        const { issues } = checkMarkdownReadiness(content, cuts);
+        if (!cancelled) {
+          setCartoonIssues(issues);
+          setCartoonPlanning(isCartoonPlanningStage(content, cuts));
+        }
       } catch {
-        if (!cancelled) setCartoonIssues(["Could not verify publish readiness"]);
+        if (!cancelled) {
+          setCartoonIssues(["Could not verify publish readiness"]);
+          setCartoonPlanning(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -219,6 +231,24 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     } catch { /* ignore */ }
     setSaving(false);
   }, [storyName, fileName, authFetch, editContent]);
+
+  // Generate the cartoon markdown skeleton from the cut plan, then refresh
+  // preview/readiness so the planning callout gives way to the upload-stage state.
+  const handleGenerateMarkdown = useCallback(async () => {
+    if (!storyName || !fileName) return;
+    const plotFile = fileName.replace(/\.md$/, "");
+    setCartoonGenerating(true);
+    setCartoonGenWarnings([]);
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCartoonGenWarnings(data.warnings || []);
+        await loadFile();
+      }
+    } catch { /* ignore */ }
+    setCartoonGenerating(false);
+  }, [storyName, fileName, authFetch, loadFile]);
 
   // Handle cover image selection
   const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -753,8 +783,36 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {/* Cartoon planning-stage callout: cut plan exists but markdown skeleton
+                is missing. Surface Generate MD as the next action instead of red errors. */}
+            {isCartoonPlot && cartoonPlanning && (
+              <div
+                className="flex flex-col gap-2 border border-accent/30 bg-accent/5 rounded p-3"
+                data-testid="cartoon-planning-callout"
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Cut plan ready — generate the episode markdown</span>
+                  <span className="text-xs text-muted">
+                    A valid cut plan exists, but the episode markdown skeleton hasn&apos;t been generated yet. Generate it before lettering and uploading images.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleGenerateMarkdown}
+                    disabled={cartoonGenerating}
+                    className="px-3 py-1.5 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="generate-md-preview-btn"
+                  >
+                    {cartoonGenerating ? "Generating..." : "Generate MD"}
+                  </button>
+                  {cartoonGenWarnings.length > 0 && (
+                    <span className="text-amber-600 text-xs">{cartoonGenWarnings.length} cut(s) still need images</span>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Inline illustration upload for plot files (Preview tab only) */}
-            {isPlot && activeTab === "preview" && (
+            {isPlot && !isCartoonPlot && activeTab === "preview" && (
               <div>
                 <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
                   <input
@@ -858,10 +916,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <span className="text-error text-xs">Reduce content to publish</span>
               )}
               {cartoonIssues.length > 0 && (
-                <span className="text-error text-xs">Not ready to publish</span>
+                <span className="text-error text-xs">
+                  {cartoonPlanning ? "Generate markdown to continue" : "Not ready to publish"}
+                </span>
               )}
             </div>
-            {cartoonIssues.length > 0 && (
+            {!cartoonPlanning && cartoonIssues.length > 0 && (
               <div className="flex flex-col gap-0.5" data-testid="cartoon-publish-issues">
                 {cartoonIssues.map((issue, i) => (
                   <span key={i} className="text-error text-xs">{issue}</span>

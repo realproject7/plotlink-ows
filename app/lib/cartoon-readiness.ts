@@ -46,6 +46,21 @@ function extractCutBlock(markdown: string, id: string): string | null {
   return markdown.slice(startIdx + start.length, endIdx);
 }
 
+/**
+ * Planning stage = a valid cut plan exists but the publish-facing markdown is
+ * still missing the `ows:cartoon-cut` marker block for one or more cuts. In this
+ * state the next action is simply "Generate MD" to lay down the skeleton, so the
+ * UI should surface that action rather than alarming missing-block publish errors.
+ */
+export function isCartoonPlanningStage(markdown: string, cuts: Cut[]): boolean {
+  if (cuts.length === 0) return false;
+  for (let i = 0; i < cuts.length; i++) {
+    const id = `cut-${String(i + 1).padStart(3, "0")}`;
+    if (extractCutBlock(markdown, id) === null) return true;
+  }
+  return false;
+}
+
 export function checkMarkdownReadiness(
   markdown: string,
   cuts: Cut[],

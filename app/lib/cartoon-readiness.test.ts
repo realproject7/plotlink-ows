@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -232,6 +232,35 @@ describe("checkMarkdownReadiness", () => {
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
     expect(issues.some((i) => i.includes("not a recorded uploaded cut URL"))).toBe(true);
+  });
+});
+
+describe("isCartoonPlanningStage", () => {
+  const block = (id: string, body: string) =>
+    `<!-- ows:cartoon-cut ${id} start -->\n${body}\n<!-- ows:cartoon-cut ${id} end -->`;
+
+  it("is true when cuts exist but markdown has no marker blocks", () => {
+    const cuts = [makeCut(), makeCut({ id: 2 })];
+    expect(isCartoonPlanningStage("# Episode 1\n\nplaceholder", cuts)).toBe(true);
+  });
+
+  it("is true when only some cuts have marker blocks", () => {
+    const cuts = [makeCut(), makeCut({ id: 2 })];
+    const md = block("cut-001", "<!-- Cut 1: awaiting upload -->");
+    expect(isCartoonPlanningStage(md, cuts)).toBe(true);
+  });
+
+  it("is false when every cut has a marker block (even if not uploaded yet)", () => {
+    const cuts = [makeCut(), makeCut({ id: 2 })];
+    const md = [
+      block("cut-001", "<!-- Cut 1: awaiting upload -->"),
+      block("cut-002", "<!-- Cut 2: awaiting upload -->"),
+    ].join("\n\n");
+    expect(isCartoonPlanningStage(md, cuts)).toBe(false);
+  });
+
+  it("is false when there are no cuts", () => {
+    expect(isCartoonPlanningStage("", [])).toBe(false);
   });
 });
 

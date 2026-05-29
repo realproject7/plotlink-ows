@@ -12,23 +12,13 @@ export function generateCutBlock(cut: Cut, index: number): string {
   const id = cutId(index);
   const desc = cut.description || `Cut ${index}`;
 
-  let content: string;
-  if (cut.uploadedUrl) {
-    content = `![${desc}](${cut.uploadedUrl})`;
-  } else if (cut.cleanImagePath || cut.finalImagePath) {
-    content = `<!-- Cut ${index}: awaiting upload -->`;
-  } else if (!cut.cleanImagePath && !cut.finalImagePath) {
-    const lines: string[] = [];
-    if (cut.dialogue.length > 0) {
-      for (const d of cut.dialogue) {
-        lines.push(`**${d.speaker}:** ${d.text}`);
-      }
-    }
-    if (cut.narration) {
-      lines.push(`*${cut.narration}*`);
-    }
-    content = lines.length > 0 ? lines.join("\n\n") : `*[Narration cut ${index}]*`;
-  }
+  // Every cut is a planned image cut. The publish-facing markdown only carries
+  // the uploaded image once it exists; before that we emit a safe awaiting-upload
+  // marker comment. We never copy dialogue/narration prose from cuts.json into
+  // the skeleton — those texts are lettered onto the image, not published as text.
+  const content = cut.uploadedUrl
+    ? `![${desc}](${cut.uploadedUrl})`
+    : `<!-- Cut ${index}: awaiting upload -->`;
 
   return `${MARKER_START(id)}\n${content}\n${MARKER_END(id)}`;
 }
@@ -48,7 +38,7 @@ export function mergeCartoonMarkdown(
     const id = cutId(i + 1);
     newBlocks.set(id, generateCutBlock(cuts[i], i + 1));
 
-    if (!cuts[i].uploadedUrl && (cuts[i].cleanImagePath || cuts[i].finalImagePath)) {
+    if (!cuts[i].uploadedUrl) {
       warnings.push(`Cut ${i + 1}: missing upload URL`);
     }
   }

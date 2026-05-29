@@ -86,7 +86,10 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
   const hasFinal = !!cut.finalImagePath;
   const hasClean = !!cut.cleanImagePath;
   const hasImage = hasFinal || hasClean;
-  const isNarrationOnly = !hasImage && (cut.narration || cut.dialogue.length > 0);
+  // A cut with no clean/final image is a planned image cut whose art is still
+  // pending — even if narration/dialogue text already exists in cuts.json. It is
+  // NOT a finished narration-only card.
+  const hasPlannedText = cut.dialogue.length > 0 || !!cut.narration || !!cut.sfx;
 
   return (
     <div className="space-y-2">
@@ -124,18 +127,22 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
         </div>
       )}
 
-      {/* Narration-only placeholder */}
-      {isNarrationOnly && (
-        <div className="w-full bg-surface border border-border rounded p-4 space-y-2">
-          <span className="text-[10px] font-mono text-muted">Narration cut</span>
-          <TextOverlay cut={cut} />
-        </div>
-      )}
-
-      {/* No content placeholder */}
-      {!hasImage && !isNarrationOnly && (
-        <div className="w-full aspect-video bg-surface border border-dashed border-border rounded flex items-center justify-center">
-          <span className="text-xs text-muted">No image yet</span>
+      {/* Planned image cut — art not generated/uploaded yet */}
+      {!hasImage && (
+        <div
+          className="w-full bg-surface border border-dashed border-border rounded p-4 space-y-2"
+          data-testid={`cut-${cut.id}-pending`}
+        >
+          <div className="aspect-video flex flex-col items-center justify-center gap-1 text-center">
+            <span className="text-xs text-muted font-medium">Image pending</span>
+            <span className="text-[10px] text-muted">Planned image cut — generate &amp; upload the art</span>
+          </div>
+          {hasPlannedText && (
+            <div className="border-t border-dashed border-border pt-2 space-y-1">
+              <span className="text-[10px] font-mono text-muted">Planned text (will be lettered onto the image)</span>
+              <TextOverlay cut={cut} />
+            </div>
+          )}
         </div>
       )}
 
