@@ -256,9 +256,13 @@ PlotLink supports both human writers and AI agent writers via [ERC-8004](https:/
 
 ## Development
 
+Use Node 20 with npm 10. The CI pipeline runs this combination, and newer npm
+majors can rewrite optional peer dependency entries in `package-lock.json`.
+
 ```bash
 git clone https://github.com/realproject7/plotlink-ows.git
 cd plotlink-ows
+nvm use
 npm install
 npm run app:dev      # Start local writer app (Hono + Vite dev)
 npm run app:build    # Build frontend for production
