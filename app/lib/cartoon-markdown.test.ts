@@ -44,14 +44,25 @@ describe("generateCutBlock", () => {
     expect(block).not.toMatch(/\.webp|\.jpg|\.jpeg/);
   });
 
-  it("generates narration text for blank narration cut", () => {
+  it("emits awaiting-upload comment for a planned cut, never dialogue/narration prose", () => {
     const cut = makeCut({
       cleanImagePath: null, finalImagePath: null,
       narration: "Time passed.", dialogue: [{ speaker: "Mira", text: "Hello." }],
     });
     const block = generateCutBlock(cut, 3);
-    expect(block).toContain("**Mira:** Hello.");
-    expect(block).toContain("*Time passed.*");
+    expect(block).toContain("cut-003");
+    expect(block).toContain("<!-- Cut 3: awaiting upload -->");
+    // Publish-facing markdown must not become a text script before images exist.
+    expect(block).not.toContain("**Mira:** Hello.");
+    expect(block).not.toContain("Time passed.");
+    expect(block).not.toContain("![");
+  });
+
+  it("emits awaiting-upload comment for an empty planned cut (no text, no image)", () => {
+    const cut = makeCut({ cleanImagePath: null, finalImagePath: null });
+    const block = generateCutBlock(cut, 4);
+    expect(block).toContain("<!-- Cut 4: awaiting upload -->");
+    expect(block).not.toContain("Narration");
     expect(block).not.toContain("![");
   });
 });
@@ -148,6 +159,14 @@ describe("mergeCartoonMarkdown", () => {
     const cuts = [makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp" })];
     const { warnings } = mergeCartoonMarkdown("", cuts);
     expect(warnings).toContain("Cut 1: missing upload URL");
+  });
+
+  it("warns for a planned text cut with no image yet (treated as image pending)", () => {
+    const cuts = [makeCut({ cleanImagePath: null, finalImagePath: null, narration: "A quiet street." })];
+    const { markdown, warnings } = mergeCartoonMarkdown("", cuts);
+    expect(warnings).toContain("Cut 1: missing upload URL");
+    expect(markdown).toContain("<!-- Cut 1: awaiting upload -->");
+    expect(markdown).not.toContain("A quiet street.");
   });
 
   it("fiction markdown is unaffected (no markers)", () => {

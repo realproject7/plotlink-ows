@@ -129,7 +129,7 @@ describe("CartoonPreview", () => {
     });
   });
 
-  it("renders blank narration cut without image", async () => {
+  it("renders a planned text cut without image as image-pending (not a finished narration card)", async () => {
     const cutsData = {
       version: 1,
       plotFile: "plot-01",
@@ -145,14 +145,17 @@ describe("CartoonPreview", () => {
     render(<CartoonPreview storyName="test-story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Narration cut")).toBeInTheDocument();
+      expect(screen.getByTestId("cut-2-pending")).toBeInTheDocument();
+      expect(screen.getByText("Image pending")).toBeInTheDocument();
+      // Planned text is still shown, but clearly labeled as a plan, not a finished card.
+      expect(screen.queryByText("Narration cut")).not.toBeInTheDocument();
       expect(screen.getByText("Jin:")).toBeInTheDocument();
       expect(screen.getByText("We need to go.")).toBeInTheDocument();
       expect(screen.getByText("The rain continued to fall.")).toBeInTheDocument();
     });
   });
 
-  it("renders empty image placeholder for cut with no content", async () => {
+  it("renders image-pending placeholder for a planned cut with no content", async () => {
     const cutsData = {
       version: 1,
       plotFile: "plot-01",
@@ -167,7 +170,8 @@ describe("CartoonPreview", () => {
     render(<CartoonPreview storyName="test-story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("No image yet")).toBeInTheDocument();
+      expect(screen.getByTestId("cut-1-pending")).toBeInTheDocument();
+      expect(screen.getByText("Image pending")).toBeInTheDocument();
     });
   });
 
