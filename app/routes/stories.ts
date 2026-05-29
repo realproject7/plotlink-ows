@@ -59,6 +59,7 @@ function writePublishStatus(storyDir: string, status: Record<string, FileStatus>
 interface StoryMeta {
   contentType: "fiction" | "cartoon";
   language?: string;
+  agentMode?: "normal" | "bypass";
 }
 
 function readStoryMeta(storyDir: string): StoryMeta {
@@ -70,6 +71,7 @@ function readStoryMeta(storyDir: string): StoryMeta {
         return {
           contentType: raw.contentType,
           ...(typeof raw.language === "string" ? { language: raw.language } : {}),
+          ...(raw.agentMode === "bypass" || raw.agentMode === "normal" ? { agentMode: raw.agentMode } : {}),
         };
       }
     }
@@ -243,7 +245,7 @@ stories.post("/:name/metadata", async (c) => {
     return c.json({ error: "Story not found" }, 404);
   }
 
-  const body = await c.req.json<{ contentType?: string; language?: string }>();
+  const body = await c.req.json<{ contentType?: string; language?: string; agentMode?: string }>();
   if (body.contentType !== "fiction" && body.contentType !== "cartoon") {
     return c.json({ error: "contentType must be 'fiction' or 'cartoon'" }, 400);
   }
@@ -253,6 +255,7 @@ stories.post("/:name/metadata", async (c) => {
     ...existing,
     contentType: body.contentType,
     ...(typeof body.language === "string" ? { language: body.language } : {}),
+    ...(body.agentMode === "bypass" || body.agentMode === "normal" ? { agentMode: body.agentMode } : {}),
   };
   writeStoryMeta(storyDir, meta);
   writeStoryInstructions(storyDir, meta.contentType);

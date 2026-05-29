@@ -13,6 +13,7 @@ interface TerminalPanelProps {
   onArchiveStory?: (storyName: string) => void;
   confirmedStories?: Set<string>;
   renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
+  bypassStories?: Record<string, boolean>;
 }
 
 interface TerminalSession {
@@ -106,7 +107,7 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -142,10 +143,14 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     }
   }, [safeFit]);
 
+  const bypassRef = useRef<Record<string, boolean>>({});
+  useEffect(() => { bypassRef.current = bypassStories || {}; }, [bypassStories]);
+
   const connectWs = useCallback((name: string, session: TerminalSession, resume: boolean) => {
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const bypass = bypassRef.current[name] ? "&bypass=true" : "";
     const ws = new WebSocket(
-      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}&resume=${resume}`
+      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}&resume=${resume}${bypass}`
     );
 
     ws.onopen = () => {
