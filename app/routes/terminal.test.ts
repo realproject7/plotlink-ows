@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeCommand, resolveBypass } from "./terminal";
+import { buildClaudeCommand, isTerminalSocketOpen, resolveBypass } from "./terminal";
 
 describe("buildClaudeCommand", () => {
   it("normal fresh session: --session-id, no bypass flag", () => {
@@ -58,5 +58,14 @@ describe("resolveBypass", () => {
   it("existing story prefers in-memory session mode over stored", () => {
     // Already-spawned session mode wins; client flag still ignored.
     expect(resolveBypass({ isNewStory: false, optBypass: false, sessionMode: "bypass", storedMode: "normal" })).toBe(true);
+  });
+});
+
+describe("isTerminalSocketOpen", () => {
+  it("uses the numeric readyState value instead of browser WebSocket.OPEN", () => {
+    expect(isTerminalSocketOpen({ readyState: 1 })).toBe(true);
+    expect(isTerminalSocketOpen({ readyState: 0 })).toBe(false);
+    expect(isTerminalSocketOpen({ readyState: 2 })).toBe(false);
+    expect(isTerminalSocketOpen({ readyState: 3 })).toBe(false);
   });
 });
