@@ -86,6 +86,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   const handleNewStory = useCallback(() => {
+    setNewStoryAgentMode("normal");
     setShowNewStoryModal(true);
   }, []);
 

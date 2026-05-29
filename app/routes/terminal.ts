@@ -70,6 +70,29 @@ export function buildClaudeCommand(opts: {
 // reconnects before a story directory / .story.json exists).
 const agentModeBySession = new Map<string, "normal" | "bypass">();
 
+/**
+ * Resolve effective permissions-bypass for a spawn.
+ *
+ * The client-supplied bypass flag is only trusted for a brand-new (_new_)
+ * story's first spawn. For existing stories, bypass derives strictly from
+ * server-side state (already-spawned session mode, then stored .story.json),
+ * so a direct WS URL cannot force bypass on a story whose metadata says normal.
+ */
+export function resolveBypass(args: {
+  isNewStory: boolean;
+  optBypass?: boolean;
+  sessionMode?: "normal" | "bypass";
+  storedMode?: "normal" | "bypass";
+}): boolean {
+  if (args.isNewStory) {
+    return args.optBypass ?? args.sessionMode === "bypass";
+  }
+  if (args.sessionMode !== undefined) {
+    return args.sessionMode === "bypass";
+  }
+  return args.storedMode === "bypass";
+}
+
 function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean; bypass?: boolean }) {
   // New story sessions spawn in the stories root so Claude can create any folder
   const isNewStory = storyName.startsWith("_new_");
@@ -81,16 +104,13 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   }
   const shell = process.env.SHELL || "/bin/zsh";
 
-  // Resolve effective agent mode: explicit opt → in-memory map → stored
-  // .story.json (existing stories) → normal. Persist the choice in-memory.
-  let bypass = opts?.bypass;
-  if (bypass === undefined) {
-    if (agentModeBySession.has(storyName)) {
-      bypass = agentModeBySession.get(storyName) === "bypass";
-    } else if (!isNewStory) {
-      bypass = readStoryMeta(storyDir).agentMode === "bypass";
-    }
-  }
+  // Resolve effective agent mode (see resolveBypass for the trust model).
+  const bypass = resolveBypass({
+    isNewStory,
+    optBypass: opts?.bypass,
+    sessionMode: agentModeBySession.get(storyName),
+    storedMode: isNewStory ? undefined : readStoryMeta(storyDir).agentMode,
+  });
   agentModeBySession.set(storyName, bypass ? "bypass" : "normal");
 
   // Determine session ID

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeCommand } from "./terminal";
+import { buildClaudeCommand, resolveBypass } from "./terminal";
 
 describe("buildClaudeCommand", () => {
   it("normal fresh session: --session-id, no bypass flag", () => {
@@ -28,5 +28,35 @@ describe("buildClaudeCommand", () => {
     const normal = buildClaudeCommand({ resume: false, sessionId: "x" });
     const explicitFalse = buildClaudeCommand({ resume: false, sessionId: "x", bypass: false });
     expect(explicitFalse).toBe(normal);
+  });
+});
+
+describe("resolveBypass", () => {
+  it("new story honors explicit bypass=true", () => {
+    expect(resolveBypass({ isNewStory: true, optBypass: true })).toBe(true);
+  });
+
+  it("new story defaults to normal without explicit flag", () => {
+    expect(resolveBypass({ isNewStory: true })).toBe(false);
+  });
+
+  it("new story falls back to session mode when no explicit flag", () => {
+    expect(resolveBypass({ isNewStory: true, sessionMode: "bypass" })).toBe(true);
+  });
+
+  it("existing story IGNORES client bypass flag (security)", () => {
+    // Malicious WS sends bypass=true, but stored metadata is normal.
+    expect(resolveBypass({ isNewStory: false, optBypass: true, storedMode: "normal" })).toBe(false);
+    expect(resolveBypass({ isNewStory: false, optBypass: true })).toBe(false);
+  });
+
+  it("existing story derives bypass from stored .story.json mode", () => {
+    expect(resolveBypass({ isNewStory: false, storedMode: "bypass" })).toBe(true);
+    expect(resolveBypass({ isNewStory: false, storedMode: "normal" })).toBe(false);
+  });
+
+  it("existing story prefers in-memory session mode over stored", () => {
+    // Already-spawned session mode wins; client flag still ignored.
+    expect(resolveBypass({ isNewStory: false, optBypass: false, sessionMode: "bypass", storedMode: "normal" })).toBe(true);
   });
 });
