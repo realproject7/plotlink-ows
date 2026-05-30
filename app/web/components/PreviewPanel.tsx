@@ -6,7 +6,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CutListPanel } from "./CutListPanel";
-import { classifyCartoonReadiness, type CartoonStage } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {

@@ -61,71 +61,6 @@ export function isCartoonPlanningStage(markdown: string, cuts: Cut[]): boolean {
   return false;
 }
 
-export type CartoonStage = "planning" | "awaiting-upload" | "error" | "ready";
-
-export interface CartoonClassification {
-  stage: CartoonStage;
-  issues: string[];
-  awaitingCount: number;
-  totalCuts: number;
-}
-
-const IMAGE_REF_RE = /!\[[^\]]*\]\([^)]*\)/;
-
-/**
- * Classify cartoon publish readiness, distinguishing the intentional
- * "awaiting-upload" skeleton state (calm/pending — the user just ran Generate
- * MD and now needs to generate/letter/export/upload images) from genuinely
- * malformed markdown (red/actionable errors). The underlying
- * `checkMarkdownReadiness` gate is left unchanged so the server publish path
- * keeps blocking awaiting-upload markdown.
- */
-export function classifyCartoonReadiness(
-  markdown: string,
-  cuts: Cut[],
-): CartoonClassification {
-  const totalCuts = cuts.length;
-
-  if (isCartoonPlanningStage(markdown, cuts)) {
-    return { stage: "planning", issues: [], awaitingCount: 0, totalCuts };
-  }
-
-  const { ready, issues } = checkMarkdownReadiness(markdown, cuts);
-  if (ready) {
-    return { stage: "ready", issues: [], awaitingCount: 0, totalCuts };
-  }
-
-  // An "awaiting" cut has its marker block present but no image reference yet,
-  // and no recorded uploadedUrl — i.e. the intentional skeleton placeholder.
-  const awaitingLabels: string[] = [];
-  for (let i = 0; i < cuts.length; i++) {
-    const cut = cuts[i];
-    const id = `cut-${String(i + 1).padStart(3, "0")}`;
-    const block = extractCutBlock(markdown, id);
-    if (block === null) continue;
-    if (IMAGE_REF_RE.test(block)) continue;
-    if (cut.uploadedUrl) continue;
-    awaitingLabels.push(`Cut ${i + 1}`);
-  }
-  const awaitingCount = awaitingLabels.length;
-
-  // Strip the expected awaiting-upload noise; whatever remains is a real error.
-  const expectedNoise = new Set<string>([
-    "Markdown contains awaiting-upload placeholders",
-  ]);
-  for (const label of awaitingLabels) {
-    expectedNoise.add(`${label}: not uploaded (no recorded uploaded URL)`);
-    expectedNoise.add(`${label}: block has no image reference`);
-  }
-  const realIssues = issues.filter((issue) => !expectedNoise.has(issue));
-
-  if (realIssues.length > 0) {
-    return { stage: "error", issues: realIssues, awaitingCount, totalCuts };
-  }
-
-  return { stage: "awaiting-upload", issues: [], awaitingCount, totalCuts };
-}
-
 export function checkMarkdownReadiness(
   markdown: string,
   cuts: Cut[],
@@ -187,4 +122,88 @@ export function checkMarkdownReadiness(
   }
 
   return { ready: issues.length === 0, issues };
+}
+
+export type CartoonReadinessStage =
+  | "planning"
+  | "awaiting-upload"
+  | "error"
+  | "ready";
+
+export interface CartoonReadinessReport {
+  stage: CartoonReadinessStage;
+  issues: string[];
+  awaitingCount: number;
+  totalCuts: number;
+}
+
+/**
+ * Classify cartoon publish readiness into a single stage so the UI can render
+ * the right affordance instead of dumping every gating reason as a red error.
+ *
+ * - "planning": one or more cut marker blocks are not generated yet → Generate MD.
+ * - "awaiting-upload": every cut block exists but images are not uploaded yet.
+ *   This is the normal post-`Generate MD` intermediate state, NOT an error.
+ * - "error": genuinely malformed markdown / invalid references / size, etc.
+ * - "ready": fully publishable.
+ *
+ * This does NOT relax the publish gate: `checkMarkdownReadiness` (used by the
+ * server in routes/publish.ts) is unchanged, so awaiting-upload markdown still
+ * cannot be published. We only reclassify how it is presented.
+ */
+export function classifyCartoonReadiness(
+  markdown: string,
+  cuts: Cut[],
+): CartoonReadinessReport {
+  const totalCuts = cuts.length;
+
+  if (isCartoonPlanningStage(markdown, cuts)) {
+    return { stage: "planning", issues: [], awaitingCount: 0, totalCuts };
+  }
+
+  const { ready, issues } = checkMarkdownReadiness(markdown, cuts);
+  if (ready) {
+    return { stage: "ready", issues: [], awaitingCount: 0, totalCuts };
+  }
+
+  // A cut is "awaiting upload" when its marker block exists, contains no image
+  // reference, and the cut has no recorded uploaded URL — i.e. the intentional
+  // skeleton placeholder produced by Generate MD.
+  const awaitingLabels = new Set<string>();
+  for (let i = 0; i < cuts.length; i++) {
+    const label = `Cut ${i + 1}`;
+    const id = `cut-${String(i + 1).padStart(3, "0")}`;
+    const block = extractCutBlock(markdown, id);
+    if (block === null) continue;
+    const hasImage = /!\[[^\]]*\]\([^)]*\)/.test(block);
+    if (!hasImage && !cuts[i].uploadedUrl) {
+      awaitingLabels.add(label);
+    }
+  }
+
+  // Filter out the expected awaiting-upload "noise" so only genuine problems
+  // remain. Anything left means the markdown is actually malformed.
+  const awaitingNoise = new Set<string>(["Markdown contains awaiting-upload placeholders"]);
+  for (const label of awaitingLabels) {
+    awaitingNoise.add(`${label}: not uploaded (no recorded uploaded URL)`);
+    awaitingNoise.add(`${label}: block has no image reference`);
+  }
+
+  const realIssues = issues.filter((issue) => !awaitingNoise.has(issue));
+
+  if (realIssues.length > 0) {
+    return {
+      stage: "error",
+      issues: realIssues,
+      awaitingCount: awaitingLabels.size,
+      totalCuts,
+    };
+  }
+
+  return {
+    stage: "awaiting-upload",
+    issues: [],
+    awaitingCount: awaitingLabels.size,
+    totalCuts,
+  };
 }
