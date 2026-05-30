@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
+import { buildCleanImagePrompt } from "@app-lib/cartoon-prompt";
+import type { Cut as LibCut } from "@app-lib/cuts";
 
 interface Overlay {
   id: string;
@@ -103,6 +105,7 @@ function CutRow({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const status = getCutStatus(cut);
 
   const handleUpload = useCallback(async (file: File) => {
@@ -168,8 +171,20 @@ function CutRow({
             </div>
           )}
 
-          {/* Upload area */}
-          <div className="mt-2">
+          {/* Clean image: copy generation prompt + upload the generated file */}
+          <div className="mt-2 space-y-2">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(buildCleanImagePrompt(cut as unknown as LibCut));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              data-testid={`copy-prompt-${cut.id}`}
+              className="px-3 py-1.5 text-xs border border-border rounded hover:border-accent hover:bg-accent/5"
+            >
+              {copied ? "Copied!" : "Copy prompt"}
+            </button>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -181,13 +196,20 @@ function CutRow({
                 e.target.value = "";
               }}
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="px-3 py-1.5 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
-            >
-              {uploading ? "Uploading..." : cut.cleanImagePath ? "Replace clean image" : "Upload clean image"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
+              >
+                {uploading ? "Uploading..." : cut.cleanImagePath ? "Replace clean image" : "Upload clean image"}
+              </button>
+            </div>
+            {!cut.cleanImagePath && (
+              <p className="text-xs text-muted" data-testid={`clean-image-handoff-${cut.id}`}>
+                Generate externally, then upload clean image
+              </p>
+            )}
             {uploadError && (
               <p className="text-xs text-error mt-1">{uploadError}</p>
             )}
