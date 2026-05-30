@@ -934,7 +934,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   }
                   onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                 }}
-                disabled={!!publishingFile || overLimit || (isCartoonPlot && cartoonStage !== null && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
