@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -261,6 +261,63 @@ describe("isCartoonPlanningStage", () => {
 
   it("is false when there are no cuts", () => {
     expect(isCartoonPlanningStage("", [])).toBe(false);
+  });
+});
+
+describe("classifyCartoonReadiness", () => {
+  const block = (id: string, body: string) =>
+    `<!-- ows:cartoon-cut ${id} start -->\n${body}\n<!-- ows:cartoon-cut ${id} end -->`;
+
+  it("classifies all-awaiting blocks as awaiting-upload (no issues)", () => {
+    const cuts = [makeCut(), makeCut({ id: 2 })];
+    const md = [
+      block("cut-001", "<!-- Cut 1: awaiting upload -->"),
+      block("cut-002", "<!-- Cut 2: awaiting upload -->"),
+    ].join("\n\n");
+    const result = classifyCartoonReadiness(md, cuts);
+    expect(result.stage).toBe("awaiting-upload");
+    expect(result.issues).toEqual([]);
+    expect(result.awaitingCount).toBe(2);
+    expect(result.totalCuts).toBe(2);
+  });
+
+  it("classifies malformed markdown as error with the real issue present", () => {
+    const url = "https://ipfs/QmA";
+    const md = block("cut-001", `![A](${url})\n![B](${url})`);
+    const result = classifyCartoonReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(result.stage).toBe("error");
+    expect(result.issues.some((i) => i.includes("exactly one image reference"))).toBe(true);
+  });
+
+  it("classifies fully uploaded markdown as ready", () => {
+    const url = "https://ipfs/Qm";
+    const md = block("cut-001", `![Scene](${url})`);
+    const result = classifyCartoonReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(result.stage).toBe("ready");
+    expect(result.issues).toEqual([]);
+  });
+
+  it("classifies a missing cut block as planning", () => {
+    const cuts = [makeCut(), makeCut({ id: 2 })];
+    const md = block("cut-001", "<!-- Cut 1: awaiting upload -->");
+    const result = classifyCartoonReadiness(md, cuts);
+    expect(result.stage).toBe("planning");
+    expect(result.issues).toEqual([]);
+    expect(result.awaitingCount).toBe(0);
+  });
+
+  it("reports only the real issue when awaiting mixes with a malformed cut", () => {
+    const url = "https://ipfs/QmB";
+    const cuts = [makeCut(), makeCut({ id: 2, uploadedUrl: url })];
+    const md = [
+      block("cut-001", "<!-- Cut 1: awaiting upload -->"),
+      block("cut-002", `![A](${url})\n![B](${url})`),
+    ].join("\n\n");
+    const result = classifyCartoonReadiness(md, cuts);
+    expect(result.stage).toBe("error");
+    expect(result.issues).toEqual([
+      "Cut 2: block must contain exactly one image reference",
+    ]);
   });
 });
 

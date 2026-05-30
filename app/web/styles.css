@@ -62,6 +62,15 @@ code, pre {
   font-family: "Geist Mono", ui-monospace, monospace;
 }
 
+/* Cartoon awaiting-upload pending panel — calm, info-toned (NOT red). Shown
+   after Generate MD lays down the skeleton but before final images are
+   uploaded. Mirrors the planning-callout treatment so the two pending states
+   feel related rather than alarming. */
+.cartoon-awaiting-upload {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
 /* Ensure dim/faint terminal text (SGR 2) stays readable on cream bg */
 .xterm .xterm-dim {
   opacity: 1 !important;

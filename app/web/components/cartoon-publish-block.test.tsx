@@ -40,15 +40,19 @@ const uploadedCut = {
 };
 
 describe("cartoon publish blocking in PreviewPanel", () => {
-  it("shows publish issues when cartoon markdown has awaiting-upload placeholder", async () => {
+  it("shows the calm awaiting-upload panel (not red errors) for awaiting-upload skeleton", async () => {
+    // Block exists for every cut, but the cut has no uploaded image yet.
+    const awaitingCut = { ...uploadedCut, finalImagePath: null, exportedAt: null, uploadedCid: null, uploadedUrl: null };
     const md = "<!-- ows:cartoon-cut cut-001 start -->\n<!-- Cut 1: awaiting upload -->\n<!-- ows:cartoon-cut cut-001 end -->";
-    const authFetch = makeAuthFetch({ content: md, cuts: { version: 1, plotFile: "plot-01", cuts: [uploadedCut] } });
+    const authFetch = makeAuthFetch({ content: md, cuts: { version: 1, plotFile: "plot-01", cuts: [awaitingCut] } });
 
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} contentType="cartoon" onPublish={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("cartoon-publish-issues")).toBeInTheDocument();
+      expect(screen.getByTestId("cartoon-awaiting-upload")).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink")).toBeDisabled();
   });
 
   it("shows issues when cuts file is invalid/missing", async () => {

@@ -74,12 +74,14 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
       );
     });
 
-    // After generation the skeleton has marker blocks, so planning ends and the
-    // expected upload-stage issues surface (publish stays blocked).
+    // After generation the skeleton has marker blocks for every cut but no
+    // uploaded images yet, so planning ends and the calm awaiting-upload state
+    // appears (not a red error wall). Publish stays blocked.
     await waitFor(() => {
       expect(screen.queryByTestId("cartoon-planning-callout")).not.toBeInTheDocument();
-      expect(screen.getByTestId("cartoon-publish-issues")).toBeInTheDocument();
+      expect(screen.getByTestId("cartoon-awaiting-upload")).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
   });
 
   it("does not show the planning callout for fiction plots", async () => {

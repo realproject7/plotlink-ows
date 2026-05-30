@@ -61,6 +61,71 @@ export function isCartoonPlanningStage(markdown: string, cuts: Cut[]): boolean {
   return false;
 }
 
+export type CartoonStage = "planning" | "awaiting-upload" | "error" | "ready";
+
+export interface CartoonClassification {
+  stage: CartoonStage;
+  issues: string[];
+  awaitingCount: number;
+  totalCuts: number;
+}
+
+const IMAGE_REF_RE = /!\[[^\]]*\]\([^)]*\)/;
+
+/**
+ * Classify cartoon publish readiness, distinguishing the intentional
+ * "awaiting-upload" skeleton state (calm/pending — the user just ran Generate
+ * MD and now needs to generate/letter/export/upload images) from genuinely
+ * malformed markdown (red/actionable errors). The underlying
+ * `checkMarkdownReadiness` gate is left unchanged so the server publish path
+ * keeps blocking awaiting-upload markdown.
+ */
+export function classifyCartoonReadiness(
+  markdown: string,
+  cuts: Cut[],
+): CartoonClassification {
+  const totalCuts = cuts.length;
+
+  if (isCartoonPlanningStage(markdown, cuts)) {
+    return { stage: "planning", issues: [], awaitingCount: 0, totalCuts };
+  }
+
+  const { ready, issues } = checkMarkdownReadiness(markdown, cuts);
+  if (ready) {
+    return { stage: "ready", issues: [], awaitingCount: 0, totalCuts };
+  }
+
+  // An "awaiting" cut has its marker block present but no image reference yet,
+  // and no recorded uploadedUrl — i.e. the intentional skeleton placeholder.
+  const awaitingLabels: string[] = [];
+  for (let i = 0; i < cuts.length; i++) {
+    const cut = cuts[i];
+    const id = `cut-${String(i + 1).padStart(3, "0")}`;
+    const block = extractCutBlock(markdown, id);
+    if (block === null) continue;
+    if (IMAGE_REF_RE.test(block)) continue;
+    if (cut.uploadedUrl) continue;
+    awaitingLabels.push(`Cut ${i + 1}`);
+  }
+  const awaitingCount = awaitingLabels.length;
+
+  // Strip the expected awaiting-upload noise; whatever remains is a real error.
+  const expectedNoise = new Set<string>([
+    "Markdown contains awaiting-upload placeholders",
+  ]);
+  for (const label of awaitingLabels) {
+    expectedNoise.add(`${label}: not uploaded (no recorded uploaded URL)`);
+    expectedNoise.add(`${label}: block has no image reference`);
+  }
+  const realIssues = issues.filter((issue) => !expectedNoise.has(issue));
+
+  if (realIssues.length > 0) {
+    return { stage: "error", issues: realIssues, awaitingCount, totalCuts };
+  }
+
+  return { stage: "awaiting-upload", issues: [], awaitingCount, totalCuts };
+}
+
 export function checkMarkdownReadiness(
   markdown: string,
   cuts: Cut[],
