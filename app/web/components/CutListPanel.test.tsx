@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
 
@@ -14,6 +14,10 @@ beforeAll(() => {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+});
+
+beforeEach(() => {
+  Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
 });
 
 afterEach(cleanup);
@@ -123,6 +127,63 @@ describe("CutListPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Upload clean image")).toBeInTheDocument();
     });
+  });
+
+  it("shows the clean-image handoff helper and Copy prompt button for a cut with no clean image", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, description: "Wide city shot" })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Wide city shot")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Wide city shot"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clean-image-handoff-1")).toBeInTheDocument();
+      expect(screen.getByText("Generate externally, then upload clean image")).toBeInTheDocument();
+      expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
+      // existing upload control still renders
+      expect(screen.getByText("Upload clean image")).toBeInTheDocument();
+    });
+  });
+
+  it("Copy prompt copies the clean-image prompt to the clipboard", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, shotType: "wide", description: "Rainy alley", characters: ["Mira"] })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Rainy alley")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Rainy alley"));
+
+    await waitFor(() => expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("copy-prompt-1"));
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+    const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(copied).toContain("Wide shot. Rainy alley");
+    expect(copied).toContain("Characters: Mira.");
+    expect(copied).toContain("No speech bubbles");
+    await waitFor(() => expect(screen.getByText("Copied!")).toBeInTheDocument());
+  });
+
+  it("does not show the handoff helper once a clean image exists", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", description: "Has image" })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Has image")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Has image"));
+
+    await waitFor(() => expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument());
+    expect(screen.queryByTestId("clean-image-handoff-1")).not.toBeInTheDocument();
   });
 
   it("shows replace button when clean image exists", async () => {

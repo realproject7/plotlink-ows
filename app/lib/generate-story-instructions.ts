@@ -181,14 +181,36 @@ Valid \`plot-01.cuts.json\`:
 
 **Do NOT bake dialogue, speech bubbles, sound effects, or any text into generated images.**
 
-Generate clean images only:
+Clean images must contain:
 - No speech bubbles
 - No text overlays
 - No sound effect text
 - No narration captions
 - No lettering of any kind
 
-Save clean images as: \`assets/plot-NN/cut-XX-clean.webp\`
+### You cannot create image files yourself — hand the prompt to the writer
+
+You (Claude) do **not** generate image files in this terminal. You produce the
+exact clean-image PROMPT for each cut; the writer (or a configured image tool, if
+any) generates the actual image externally and imports it back into OWS.
+
+If no image-generation tool is available in the terminal, for each cut:
+1. PREPARE THE EXACT CLEAN-IMAGE PROMPT (shot type + description + characters +
+   the no-text constraint). This is the same prompt the OWS UI exposes per cut.
+2. Tell the writer to generate it externally (any provider/tool they prefer) and
+   then upload/import the resulting WebP/JPEG into OWS using the per-cut
+   "Copy prompt" + "Upload clean image" controls.
+3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
+   file actually exists.** Never report an image as generated when you only
+   produced a prompt.
+4. After a clean image file exists, update/verify the cut's \`cleanImagePath\`
+   through the OWS import flow or the cuts API — do not invent the path.
+
+If a configured image tool exists, it may generate the clean image directly;
+otherwise the manual prompt + import path above is the safe baseline.
+
+Saved clean images live at: \`assets/plot-NN/cut-XX-clean.webp\` (OWS records the
+path; you do not hand-write it unless the file is really there).
 
 **Only exception:** Include text in images when it is part of the physical scene
 (a sign on a building, text on a screen, a letter being read) AND the writer
@@ -244,7 +266,9 @@ Correct flow:
 ## Episode Workflow
 
 1. **Plan** — Create plot-NN.cuts.json with shot-by-shot breakdown
-2. **Generate** — Create clean images for each cut (no text in images)
+2. **Prompt & import** — Prepare the clean-image prompt for each cut; the writer
+   generates it externally (or a configured image tool, if any) and uploads/
+   imports the clean image via OWS. You do not create the image file yourself.
 3. **Review** — Writer reviews clean images, requests adjustments
 4. **Letter** — Writer adds speech bubbles and text via lettering editor
 5. **Upload** — Upload final lettered images to get IPFS URLs (recorded in cuts.json)

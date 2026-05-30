@@ -44,6 +44,21 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("No text overlays");
   });
 
+  it("cartoon output explains the clean-image prompt handoff and never claims it created files", () => {
+    const out = generateStoryInstructions("cartoon");
+    // Claude must not claim a clean image file was created when it only made a prompt
+    expect(out).toContain("Do NOT claim that");
+    expect(out).toContain("cut-XX-clean.webp");
+    // It must instruct preparing the prompt and external generation + upload/import
+    expect(out).toContain("PREPARE THE EXACT CLEAN-IMAGE PROMPT");
+    expect(out).toContain("generate it externally");
+    expect(out).toContain("upload/import");
+    expect(out).toContain("Copy prompt");
+    expect(out).toContain("Upload clean image");
+    // After a real file exists, cleanImagePath is updated via OWS/cuts API
+    expect(out).toContain("cleanImagePath");
+  });
+
   it("fiction and cartoon outputs are different", () => {
     const fiction = generateStoryInstructions("fiction");
     const cartoon = generateStoryInstructions("cartoon");
