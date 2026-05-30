@@ -5,7 +5,32 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { STORIES_DIR, DATA_DIR } from "../lib/paths";
 import { readStoryMeta } from "./stories";
+import type { AgentProvider } from "./stories";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
+import { buildAgentCommand } from "../lib/agent-command";
+
+/**
+ * Provider-aware session record (new shape). Written ONLY for Codex sessions.
+ * Claude sessions keep being persisted as a bare string (legacy shape) so a
+ * rollback to an older app version still resumes fiction/Claude stories.
+ */
+export interface SessionRecord {
+  provider: AgentProvider;
+  sessionId: string | null;
+  lastStartedAt?: number;
+}
+export type StoredValue = string | SessionRecord;
+
+export function isSessionRecord(v: StoredValue | undefined): v is SessionRecord {
+  return typeof v === "object" && v !== null && "provider" in v;
+}
+
+/** Resolve a resume id from either stored shape (string → itself, record → .sessionId). */
+export function resumeIdFrom(v: StoredValue | undefined): string | null {
+  if (typeof v === "string") return v;
+  if (isSessionRecord(v)) return typeof v.sessionId === "string" ? v.sessionId : null;
+  return null;
+}
 
 const MAX_SESSIONS = 5;
 const SESSION_FILE = path.join(DATA_DIR, "terminal-sessions.json");
@@ -26,8 +51,12 @@ function safeName(name: string): string | null {
   return name;
 }
 
-/** Load stored session UUIDs from disk */
-function loadSessionMap(): Record<string, string> {
+/**
+ * Load stored sessions from disk. Values may be legacy bare strings (Claude
+ * UUIDs) OR new provider-aware records. The file is NEVER migrated wholesale —
+ * only the touched key changes shape when actively updated.
+ */
+function loadSessionMap(): Record<string, StoredValue> {
   try {
     if (fs.existsSync(SESSION_FILE)) {
       return JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
@@ -36,8 +65,8 @@ function loadSessionMap(): Record<string, string> {
   return {};
 }
 
-/** Save session UUIDs to disk */
-function saveSessionMap(map: Record<string, string>) {
+/** Save sessions to disk (mixed legacy-string / record values). */
+function saveSessionMap(map: Record<string, StoredValue>) {
   try {
     const dir = path.dirname(SESSION_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -118,21 +147,38 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   });
   agentModeBySession.set(storyName, bypass ? "bypass" : "normal");
 
-  // Determine session ID
+  // Resolve provider from stored .story.json. Absent ⇒ Claude (no migration).
+  const provider: AgentProvider = isNewStory
+    ? "claude"
+    : readStoryMeta(storyDir).agentProvider ?? "claude";
+
+  // Determine resume id (accepts both legacy-string and record shapes).
   const sessionMap = loadSessionMap();
-  let sessionId: string;
-  const doResume = !!(opts?.resume && sessionMap[storyName]);
-  if (doResume) {
-    sessionId = sessionMap[storyName];
+  const stored = sessionMap[storyName];
+  const storedResumeId = resumeIdFrom(stored);
+  const doResume = !!(opts?.resume && storedResumeId);
+  // Fresh Claude reuses any explicit opts.sessionId (back-compat) else a new UUID.
+  const sessionId = doResume ? (storedResumeId as string) : (opts?.sessionId || randomUUID());
+
+  let agentCmd: string;
+  if (provider === "claude") {
+    // KEEP BYTE-IDENTICAL: same buildClaudeCommand output as before.
+    agentCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
   } else {
-    sessionId = opts?.sessionId || randomUUID();
+    // Codex: render argv from the pure builder into a quoted shell string.
+    const { command, args } = buildAgentCommand({
+      provider,
+      mode: bypass ? "bypass" : "normal",
+      resume: doResume,
+      sessionId: doResume ? sessionId : null,
+      newSessionId: sessionId,
+      storyDir,
+    });
+    agentCmd = [command, ...args.map((a) => `"${a}"`)].join(" ");
   }
 
-  // Build Claude CLI command. No --cwd flag — Claude uses process cwd, set via
-  // pty.spawn({ cwd: storyDir }).
-  const claudeCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
-
-  const term = pty.spawn(shell, ["-l", "-c", claudeCmd], {
+  // No --cwd flag for Claude — it uses process cwd, set via pty.spawn({ cwd }).
+  const term = pty.spawn(shell, ["-l", "-c", agentCmd], {
     name: "xterm-256color",
     cols: 120,
     rows: 30,
@@ -140,8 +186,17 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
     env: process.env as Record<string, string>,
   });
 
-  // Persist session ID
-  sessionMap[storyName] = sessionId;
+  // Persist session info. Claude keeps the legacy bare-string shape (rollback
+  // safe); Codex writes a provider-aware record (its own id resolves later).
+  if (provider === "claude") {
+    sessionMap[storyName] = sessionId;
+  } else {
+    sessionMap[storyName] = {
+      provider,
+      sessionId: doResume ? sessionId : null,
+      lastStartedAt: Date.now(),
+    };
+  }
   saveSessionMap(sessionMap);
 
   const isResume = !!opts?.resume;
@@ -213,7 +268,7 @@ terminal.get("/session/:storyName", (c) => {
   if (!storyName) return c.json({ error: "Invalid story name" }, 400);
 
   const sessionMap = loadSessionMap();
-  const sessionId = sessionMap[storyName] || null;
+  const sessionId = resumeIdFrom(sessionMap[storyName]);
   const active = ptySessions.get(storyName);
 
   return c.json({
