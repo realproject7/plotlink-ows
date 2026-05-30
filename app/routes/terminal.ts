@@ -100,6 +100,20 @@ export function isTerminalSocketOpen(ws: Pick<WebSocket, "readyState">): boolean
   return ws.readyState === WS_OPEN;
 }
 
+/**
+ * POSIX single-quote escape for embedding an arbitrary value in a shell string.
+ *
+ * We invoke the agent via a login shell (`pty.spawn(shell, ["-l","-c", cmd])`)
+ * so the user's PATH resolves the `claude`/`codex` binary. That means the argv
+ * is assembled into a single shell-parsed string, so every token must be quoted
+ * safely. Single-quoting (with the `'\''` trick for embedded quotes) is the only
+ * shell quoting that disables ALL special characters ($, `, ", \, spaces), so a
+ * value containing `"`, `$`, or a backtick cannot break out of its token.
+ */
+export function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 // In-memory agent mode per active session name (covers _new_ sessions and
 // reconnects before a story directory / .story.json exists).
 const agentModeBySession = new Map<string, "normal" | "bypass">();
@@ -174,7 +188,9 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
       newSessionId: sessionId,
       storyDir,
     });
-    agentCmd = [command, ...args.map((a) => `"${a}"`)].join(" ");
+    // Injection-safe assembly: single-quote-escape the command and every arg so
+    // a value containing ", $, or backtick cannot break out of the shell string.
+    agentCmd = [command, ...args].map(shellQuote).join(" ");
   }
 
   // No --cwd flag for Claude — it uses process cwd, set via pty.spawn({ cwd }).

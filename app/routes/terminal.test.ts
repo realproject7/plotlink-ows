@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildClaudeCommand, isTerminalSocketOpen, resolveBypass } from "./terminal";
+import { execFileSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { buildClaudeCommand, isTerminalSocketOpen, resolveBypass, shellQuote } from "./terminal";
 
 describe("buildClaudeCommand", () => {
   it("normal fresh session: --session-id, no bypass flag", () => {
@@ -58,6 +62,67 @@ describe("resolveBypass", () => {
   it("existing story prefers in-memory session mode over stored", () => {
     // Already-spawned session mode wins; client flag still ignored.
     expect(resolveBypass({ isNewStory: false, optBypass: false, sessionMode: "bypass", storedMode: "normal" })).toBe(true);
+  });
+});
+
+describe("shellQuote (command-injection safety)", () => {
+  it("wraps plain values in single quotes", () => {
+    expect(shellQuote("abc-123")).toBe("'abc-123'");
+  });
+
+  it("neutralizes double quotes so they cannot break out", () => {
+    // Naive `"${a}"` wrapping would let a `"` close the quote and inject.
+    const quoted = shellQuote('a"; rm -rf /; echo "');
+    // Whole value stays inside the outer single quotes; no unescaped `"` ends a token.
+    expect(quoted.startsWith("'")).toBe(true);
+    expect(quoted.endsWith("'")).toBe(true);
+    expect(quoted).toBe(`'a"; rm -rf /; echo "'`);
+  });
+
+  it("neutralizes $ and backtick (no expansion / command substitution)", () => {
+    expect(shellQuote("$(touch pwned)")).toBe("'$(touch pwned)'");
+    expect(shellQuote("`touch pwned`")).toBe("'`touch pwned`'");
+    expect(shellQuote("$HOME")).toBe("'$HOME'");
+  });
+
+  it("escapes embedded single quotes with the '\\'' trick", () => {
+    // A value containing a single quote must close, escape, and reopen the quote.
+    expect(shellQuote("a'b")).toBe("'a'\\''b'");
+    // The escape itself cannot be used to break out: the only unquoted char is
+    // the backslash-escaped quote, which the shell reads as a literal '.
+    const evil = "'; rm -rf / #";
+    expect(shellQuote(evil)).toBe("''\\''; rm -rf / #'");
+  });
+
+  it("assembles a command + args into the expected quoted string", () => {
+    const command = "codex";
+    const args = ["resume", "id-with-\"-and-$-and-`", "--cwd", "/path/it's here"];
+    const assembled = [command, ...args].map(shellQuote).join(" ");
+    expect(assembled).toBe(
+      "'codex' 'resume' 'id-with-\"-and-$-and-`' '--cwd' '/path/it'\\''s here'"
+    );
+  });
+
+  it("round-trips through a real shell with NO injection (definitive proof)", () => {
+    // The strongest possible assertion: feed the assembled quoted args to a real
+    // POSIX shell via `printf '%s\n'` and confirm the shell parses back EXACTLY
+    // the original argv — no extra tokens, no command substitution, no breakout.
+    // A side-effect canary file would exist if substitution ran; assert it never does.
+    const canary = path.join(os.tmpdir(), `shellquote-canary-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const malicious = [
+      `x"; touch ${canary}; echo "`, // double-quote breakout attempt
+      `$(touch ${canary})`, // command substitution attempt
+      `\`touch ${canary}\``, // backtick substitution attempt
+      "it's a 'quoted' value", // embedded single quotes
+      "$HOME and \\ and spaces", // var expansion + backslash + spaces
+    ];
+    const quoted = malicious.map(shellQuote).join(" ");
+    // Print each parsed token on its own line so we can compare to the input argv.
+    const out = execFileSync("/bin/sh", ["-c", `printf '%s\\n' ${quoted}`], { encoding: "utf-8" });
+    const parsed = out.split("\n").slice(0, -1); // drop trailing empty
+    expect(parsed).toEqual(malicious);
+    // No substitution executed → canary must NOT exist.
+    expect(fs.existsSync(canary)).toBe(false);
   });
 });
 
