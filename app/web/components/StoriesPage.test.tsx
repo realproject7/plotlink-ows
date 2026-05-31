@@ -107,9 +107,30 @@ describe("StoriesPage new-story provider selection", () => {
     expect(body).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
   }, 10000);
 
-  it("defaults agentProvider to 'claude' when the provider control is untouched", async () => {
+  it("forces agentProvider 'codex' for cartoon even when the dropdown shows Claude", async () => {
+    // No provider override → dropdown stays on its Claude default.
+    const body = await createStory({ contentTypeLabel: "Cartoon" });
+    expect(body).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
+  }, 10000);
+
+  it("explains why cartoon requires Codex while the modal is open", () => {
+    render(<StoriesPage token="t" authFetch={makeAuthFetch().fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    expect(
+      screen.getByText(
+        "Cartoon mode requires Codex because the clean-image step needs image generation support.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults agentProvider to 'claude' when the provider control is untouched (fiction)", async () => {
     const body = await createStory({ contentTypeLabel: "Fiction" });
     expect(body).toMatchObject({ contentType: "fiction", agentProvider: "claude" });
+  }, 10000);
+
+  it("lets fiction opt into Codex via the dropdown", async () => {
+    const body = await createStory({ provider: "codex", contentTypeLabel: "Fiction" });
+    expect(body).toMatchObject({ contentType: "fiction", agentProvider: "codex" });
   }, 10000);
 
   it("toggles provider helper text when switching to Codex", () => {

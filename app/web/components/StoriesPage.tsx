@@ -96,10 +96,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass", agentProvider: "claude" | "codex") => {
     setShowNewStoryModal(false);
     const id = `_new_${Date.now()}`;
+    // Cartoon always uses Codex: the clean-image step needs image generation.
+    const provider = contentType === "cartoon" ? "codex" : agentProvider;
     contentTypeMap.current.set(id, contentType);
     languageMap.current.set(id, language);
     agentModeMap.current.set(id, agentMode);
-    agentProviderMap.current.set(id, agentProvider);
+    agentProviderMap.current.set(id, provider);
     if (agentMode === "bypass") {
       setBypassStories((prev) => ({ ...prev, [id]: true }));
     }
@@ -491,11 +493,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
               </button>
               <button
-                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, newStoryAgentProvider)}
+                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, "codex")}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>
                 <p className="text-[11px] text-muted">Comics, manga, webtoons</p>
+                <p className="text-[11px] text-muted" data-testid="cartoon-codex-note">
+                  Cartoon mode requires Codex because the clean-image step needs image generation support.
+                </p>
               </button>
             </div>
             <button
