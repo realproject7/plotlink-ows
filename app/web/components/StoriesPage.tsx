@@ -46,6 +46,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
   const [newStoryLanguage, setNewStoryLanguage] = useState("English");
   const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
+  const [newStoryAgentProvider, setNewStoryAgentProvider] = useState<"claude" | "codex">("claude");
   const [bypassStories, setBypassStories] = useState<Record<string, boolean>>({});
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
@@ -54,6 +55,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
+  const agentProviderMap = useRef<Map<string, "claude" | "codex">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
   const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -87,15 +89,17 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
   const handleNewStory = useCallback(() => {
     setNewStoryAgentMode("normal");
+    setNewStoryAgentProvider("claude");
     setShowNewStoryModal(true);
   }, []);
 
-  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass") => {
+  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass", agentProvider: "claude" | "codex") => {
     setShowNewStoryModal(false);
     const id = `_new_${Date.now()}`;
     contentTypeMap.current.set(id, contentType);
     languageMap.current.set(id, language);
     agentModeMap.current.set(id, agentMode);
+    agentProviderMap.current.set(id, agentProvider);
     if (agentMode === "bypass") {
       setBypassStories((prev) => ({ ...prev, [id]: true }));
     }
@@ -131,9 +135,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               const ct = contentTypeMap.current.get(oldName) || "fiction";
               const lang = languageMap.current.get(oldName) || "English";
               const mode = agentModeMap.current.get(oldName) || "normal";
+              const provider = agentProviderMap.current.get(oldName) || "claude";
               contentTypeMap.current.delete(oldName);
               languageMap.current.delete(oldName);
               agentModeMap.current.delete(oldName);
+              agentProviderMap.current.delete(oldName);
               if (mode === "bypass") {
                 setBypassStories((prev) => {
                   const next = { ...prev, [name]: true };
@@ -144,7 +150,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               authFetch(`/api/stories/${name}/metadata`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contentType: ct, language: lang, agentMode: mode }),
+                body: JSON.stringify({ contentType: ct, language: lang, agentMode: mode, agentProvider: provider }),
               }).catch(() => {});
             }
             setSelectedStory(name);
@@ -331,6 +337,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       contentTypeMap.current.delete(name);
       languageMap.current.delete(name);
       agentModeMap.current.delete(name);
+      agentProviderMap.current.delete(name);
       setBypassStories((prev) => {
         if (!(name in prev)) return prev;
         const next = { ...prev };
@@ -457,17 +464,34 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 </p>
               )}
             </label>
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Provider</span>
+              <select
+                value={newStoryAgentProvider}
+                onChange={(e) => setNewStoryAgentProvider(e.target.value as "claude" | "codex")}
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                data-testid="agent-provider-select"
+              >
+                <option value="claude">🤖 Claude (default)</option>
+                <option value="codex">🎨 Codex</option>
+              </select>
+              <p className="text-[10px] text-muted" data-testid="agent-provider-helper">
+                {newStoryAgentProvider === "codex"
+                  ? "Codex can generate clean cartoon images directly in the terminal."
+                  : "Claude prepares image prompts; you generate and upload clean images externally."}
+              </p>
+            </label>
             <p className="text-xs text-muted text-center">Choose a content type</p>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => handleCreateStory("fiction", newStoryLanguage, newStoryAgentMode)}
+                onClick={() => handleCreateStory("fiction", newStoryLanguage, newStoryAgentMode, newStoryAgentProvider)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
               </button>
               <button
-                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode)}
+                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, newStoryAgentProvider)}
                 className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>
