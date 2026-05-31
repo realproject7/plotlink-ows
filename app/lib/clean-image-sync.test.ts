@@ -1,19 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { syncCleanImages, cleanImageCandidates, sniffImageType } from "./clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
 import { createDefaultCut } from "./cuts";
 
 function cut(id: number, overrides: Partial<ReturnType<typeof createDefaultCut>> = {}) {
   return { ...createDefaultCut(id, "plot-01"), ...overrides };
 }
 
+describe("CLEAN_IMAGE_EXTENSIONS", () => {
+  it("is WebP/JPEG only and no longer includes png", () => {
+    expect(CLEAN_IMAGE_EXTENSIONS).toEqual(["webp", "jpg", "jpeg"]);
+    expect((CLEAN_IMAGE_EXTENSIONS as readonly string[]).includes("png")).toBe(false);
+  });
+});
+
 describe("cleanImageCandidates", () => {
-  it("lists canonical paths in preference order with zero-padded id", () => {
+  it("lists canonical paths in preference order with zero-padded id (no png)", () => {
     expect(cleanImageCandidates("plot-01", 3)).toEqual([
       "assets/plot-01/cut-03-clean.webp",
       "assets/plot-01/cut-03-clean.jpg",
       "assets/plot-01/cut-03-clean.jpeg",
-      "assets/plot-01/cut-03-clean.png",
     ]);
+  });
+
+  it("never produces a .png candidate", () => {
+    const cands = cleanImageCandidates("plot-01", 1);
+    expect(cands.some((p) => p.endsWith(".png"))).toBe(false);
   });
 });
 

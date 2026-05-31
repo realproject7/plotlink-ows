@@ -7,7 +7,7 @@ export interface CleanImageSyncResult {
 }
 
 /** Preference order for clean-image extensions when several files exist. */
-export const CLEAN_IMAGE_EXTENSIONS = ["webp", "jpg", "jpeg", "png"] as const;
+export const CLEAN_IMAGE_EXTENSIONS = ["webp", "jpg", "jpeg"] as const;
 
 /** Image type detected from a file's leading magic bytes. */
 export type SniffedType = "webp" | "jpeg" | "png" | "unknown";

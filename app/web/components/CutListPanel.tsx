@@ -92,6 +92,9 @@ function CutRow({
   authFetch,
   onUpdated,
   onOpenEditor,
+  detectedLocalClean,
+  onSyncClean,
+  syncing,
 }: {
   cut: Cut;
   storyName: string;
@@ -101,6 +104,9 @@ function CutRow({
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onUpdated: () => void;
   onOpenEditor: () => void;
+  detectedLocalClean: boolean;
+  onSyncClean: () => void;
+  syncing: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -235,6 +241,16 @@ function CutRow({
                 </button>
               </div>
             )}
+            {status === "missing" && detectedLocalClean && (
+              <button
+                onClick={onSyncClean}
+                disabled={syncing}
+                data-testid={`found-local-clean-${cut.id}`}
+                className="px-3 py-1.5 text-xs border border-green-700/40 text-green-700 rounded hover:bg-green-700/5 disabled:opacity-50"
+              >
+                {syncing ? "Syncing..." : "Found local clean image — sync to cut plan"}
+              </button>
+            )}
             {uploadError && (
               <p className="text-xs text-error mt-1">{uploadError}</p>
             )}
@@ -282,6 +298,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
   const [uploadProgress, setUploadProgress] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [detected, setDetected] = useState<Set<number>>(new Set());
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -306,9 +323,48 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
     }
   }, [authFetch, storyName, plotFile]);
 
+  // Server-confirmed detection of local clean files for cuts whose cleanImagePath
+  // is still null. Best-effort: failures leave the detected set unchanged.
+  const loadDetect = useCallback(async () => {
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/detect-clean-images`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDetected(new Set<number>(Array.isArray(data.detected) ? data.detected : []));
+    } catch {
+      /* ignore — affordance simply will not show */
+    }
+  }, [authFetch, storyName, plotFile]);
+
+  const syncCleanImages = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setGenWarnings([]);
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/sync-clean-images`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncResult(data.error || "Sync failed");
+      } else {
+        const syncedCount = Array.isArray(data.synced) ? data.synced.length : 0;
+        const rejected = Array.isArray(data.rejected) ? data.rejected : [];
+        if (rejected.length > 0) {
+          setGenWarnings(rejected.map((r: { cutId: number; reason: string }) => `Cut ${r.cutId}: ${r.reason}`));
+        }
+        setSyncResult(syncedCount > 0 ? `Synced ${syncedCount}` : "No new clean images");
+        await loadCuts();
+        await loadDetect();
+      }
+    } catch {
+      setSyncResult("Sync failed");
+    }
+    setSyncing(false);
+  }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
+
   useEffect(() => {
     loadCuts();
-  }, [loadCuts]);
+    loadDetect();
+  }, [loadCuts, loadDetect]);
 
   if (loading) {
     return <div className="p-4 text-sm text-muted">Loading cuts...</div>;
@@ -402,29 +458,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
           {generating ? "Generating..." : "Generate MD"}
         </button>
         <button
-          onClick={async () => {
-            setSyncing(true);
-            setSyncResult(null);
-            setGenWarnings([]);
-            try {
-              const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/sync-clean-images`, { method: "POST" });
-              const data = await res.json().catch(() => ({}));
-              if (!res.ok) {
-                setSyncResult(data.error || "Sync failed");
-              } else {
-                const syncedCount = Array.isArray(data.synced) ? data.synced.length : 0;
-                const rejected = Array.isArray(data.rejected) ? data.rejected : [];
-                if (rejected.length > 0) {
-                  setGenWarnings(rejected.map((r: { cutId: number; reason: string }) => `Cut ${r.cutId}: ${r.reason}`));
-                }
-                setSyncResult(syncedCount > 0 ? `Synced ${syncedCount}` : "No new clean images");
-                await loadCuts();
-              }
-            } catch {
-              setSyncResult("Sync failed");
-            }
-            setSyncing(false);
-          }}
+          onClick={syncCleanImages}
           disabled={syncing}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="sync-clean-btn"
@@ -508,8 +542,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
             expanded={expandedCut === cut.id}
             onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
             authFetch={authFetch}
-            onUpdated={loadCuts}
+            onUpdated={() => { loadCuts(); loadDetect(); }}
             onOpenEditor={() => setEditingCutId(cut.id)}
+            detectedLocalClean={detected.has(cut.id)}
+            onSyncClean={syncCleanImages}
+            syncing={syncing}
           />
         ))}
       </div>

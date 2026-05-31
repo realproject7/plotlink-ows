@@ -100,10 +100,12 @@ describe("Upload & Generate failure visibility", () => {
       cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp" })],
     };
 
-    const authFetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
-      .mockResolvedValueOnce({ ok: false, status: 404 })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    // URL-aware: a detect-clean-images fetch also fires on mount.
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: false, status: 404 });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
 
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
@@ -121,11 +123,12 @@ describe("Upload & Generate failure visibility", () => {
       cuts: [makeCut({ id: 2, finalImagePath: "assets/plot-01/cut-02-final.webp" })],
     };
 
-    const authFetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
-      .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) })
-      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: "Server error" }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: "Server error" }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
 
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
@@ -143,10 +146,11 @@ describe("Upload & Generate failure visibility", () => {
       cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp" })],
     };
 
-    const authFetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
-      .mockResolvedValueOnce({ ok: false, status: 404 })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: false, status: 404 });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
 
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
@@ -167,13 +171,14 @@ describe("Upload & Generate failure visibility", () => {
       cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp" })],
     };
 
-    const authFetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
-      .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ cid: "Qm1", url: "https://ipfs/Qm1" }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: ["Cut 1: missing upload URL"] }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: "Qm1", url: "https://ipfs/Qm1" }) });
+      if (url.includes("set-uploaded")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      if (url.includes("generate-markdown")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: ["Cut 1: missing upload URL"] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
 
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 

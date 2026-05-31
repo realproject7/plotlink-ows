@@ -497,14 +497,13 @@ stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
 });
 
 const CLEAN_IMAGE_MAX_BYTES = 1024 * 1024;
-const CLEAN_IMAGE_VALID_EXT = new Set(["webp", "jpg", "jpeg", "png"]);
+const CLEAN_IMAGE_VALID_EXT = new Set(["webp", "jpg", "jpeg"]);
 
 /** Map an allowed file extension to the image type its content must match. */
 const CLEAN_IMAGE_EXT_TO_TYPE: Record<string, Exclude<SniffedType, "unknown">> = {
   webp: "webp",
   jpg: "jpeg",
   jpeg: "jpeg",
-  png: "png",
 };
 
 /**
@@ -624,6 +623,78 @@ stories.post("/:name/cuts/:plotFile/sync-clean-images", (c) => {
   }
 
   return c.json({ ok: true, changed: result.changed, synced: result.synced, rejected });
+});
+
+/**
+ * GET /api/stories/:name/cuts/:plotFile/detect-clean-images — dry-run detection.
+ * Reports the cut ids that have a valid local clean image on disk (exists, ≤ 1MB,
+ * magic-byte-valid, extension matches content) AND whose cut currently has
+ * `cleanImagePath === null`. This mirrors the sync route's validation but NEVER
+ * writes cuts.json — it is read-only so the client can show a per-cut affordance.
+ */
+stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  let cutsFile;
+  try {
+    cutsFile = readCutsFile(storyDir, plotFile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  // Validate a candidate relative path exactly like the sync route's `fileExists`
+  // (exists + allowed extension + ≤ 1MB + magic-byte content match). Read-only:
+  // never records rejections, never mutates cuts.json.
+  const isValidCleanImage = (relPath: string): boolean => {
+    const abs = path.join(storyDir, relPath);
+    if (!fs.existsSync(abs)) return false;
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      return false;
+    }
+    if (!stat.isFile()) return false;
+
+    const ext = path.extname(relPath).slice(1).toLowerCase();
+    if (!CLEAN_IMAGE_VALID_EXT.has(ext)) return false;
+    if (stat.size > CLEAN_IMAGE_MAX_BYTES) return false;
+
+    let sniffed: SniffedType;
+    try {
+      const fd = fs.openSync(abs, "r");
+      try {
+        const head = Buffer.alloc(16);
+        const read = fs.readSync(fd, head, 0, 16, 0);
+        sniffed = sniffImageType(head.subarray(0, read));
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return false;
+    }
+
+    if (sniffed === "unknown") return false;
+    if (sniffed !== CLEAN_IMAGE_EXT_TO_TYPE[ext]) return false;
+    return true;
+  };
+
+  const detected: number[] = [];
+  for (const cut of cutsFile.cuts) {
+    if (cut.cleanImagePath !== null) continue;
+    const hasValid = cleanImageCandidates(plotFile, cut.id).some((rel) => isValidCleanImage(rel));
+    if (hasValid) detected.push(cut.id);
+  }
+
+  return c.json({ detected });
 });
 
 
