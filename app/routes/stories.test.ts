@@ -412,6 +412,150 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(400);
   });
 
+  // Real magic-byte payloads so content sniffing accepts them.
+  const WEBP_MAGIC = Buffer.from([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const PNG_MAGIC = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00,
+  ]);
+
+  it("sync-clean-images records cleanImagePath when a valid file exists", async () => {
+    const storyDir = path.join(tmpDir, "sync-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+
+    const res = await app.request("/api/stories/sync-story/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(true);
+    expect(body.synced).toEqual([1]);
+    expect(body.rejected).toEqual([]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(reloaded.cuts[1].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects a text file renamed to .webp (content sniff)", async () => {
+    const storyDir = path.join(tmpDir, "sync-fake-webp");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    // Valid webp for cut 1, text-content file renamed .webp for cut 2.
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+    fs.writeFileSync(path.join(assetDir, "cut-02-clean.webp"), Buffer.from("hello world"));
+
+    const res = await app.request("/api/stories/sync-fake-webp/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.synced).toEqual([1]);
+    expect(body.rejected).toEqual([
+      { cutId: 2, reason: "not a valid image (content does not match WebP/JPEG/PNG)" },
+    ]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(reloaded.cuts[1].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects a .webp whose content is PNG (extension mismatch)", async () => {
+    const storyDir = path.join(tmpDir, "sync-mismatch");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), PNG_MAGIC);
+
+    const res = await app.request("/api/stories/sync-mismatch/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([
+      { cutId: 1, reason: "content does not match .webp extension" },
+    ]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects an oversized file and does not record it", async () => {
+    const storyDir = path.join(tmpDir, "sync-big");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.alloc(1024 * 1024 + 10));
+
+    const res = await app.request("/api/stories/sync-big/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([{ cutId: 1, reason: "File must be under 1MB" }]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images ignores files with an invalid extension", async () => {
+    const storyDir = path.join(tmpDir, "sync-bad-ext");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.txt"), Buffer.from("not an image"));
+
+    const res = await app.request("/api/stories/sync-bad-ext/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([{ cutId: 1, reason: "Unsupported extension .txt" }]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images is idempotent on a second run", async () => {
+    const storyDir = path.join(tmpDir, "sync-idem");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+
+    const first = await (await app.request("/api/stories/sync-idem/cuts/plot-01/sync-clean-images", { method: "POST" })).json();
+    expect(first.changed).toBe(true);
+
+    const second = await (await app.request("/api/stories/sync-idem/cuts/plot-01/sync-clean-images", { method: "POST" })).json();
+    expect(second.changed).toBe(false);
+    expect(second.synced).toEqual([]);
+  });
+
+  it("sync-clean-images returns 404 for missing story", async () => {
+    const res = await app.request("/api/stories/nope/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
+  it("sync-clean-images returns 404 when cuts file is missing", async () => {
+    const storyDir = path.join(tmpDir, "sync-no-cuts");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const res = await app.request("/api/stories/sync-no-cuts/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
   it("defaults language to English when no CJK in title", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });
@@ -422,5 +566,123 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.language).toBe("English");
+  });
+
+  it("sync-clean-images does NOT record a .png file (png no longer accepted)", async () => {
+    const storyDir = path.join(tmpDir, "sync-png");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.png"), PNG_MAGIC);
+
+    const res = await app.request("/api/stories/sync-png/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    // .png is rejected with an unsupported-extension reason (surfaced via dir scan).
+    expect(body.rejected).toEqual([{ cutId: 1, reason: "Unsupported extension .png" }]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("detect-clean-images returns the cut id when a valid webp exists and cleanImagePath is null", async () => {
+    const storyDir = path.join(tmpDir, "detect-ok");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+
+    const cutsPath = path.join(storyDir, "plot-01.cuts.json");
+    const before = fs.readFileSync(cutsPath, "utf-8");
+
+    const res = await app.request("/api/stories/detect-ok/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([1]);
+
+    // detect must NOT mutate cuts.json.
+    const after = fs.readFileSync(cutsPath, "utf-8");
+    expect(after).toBe(before);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("detect-clean-images returns empty when no clean file exists", async () => {
+    const storyDir = path.join(tmpDir, "detect-none");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const res = await app.request("/api/stories/detect-none/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([]);
+  });
+
+  it("detect-clean-images excludes a cut that already has a cleanImagePath", async () => {
+    const storyDir = path.join(tmpDir, "detect-has-path");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].cleanImagePath = "assets/plot-01/cut-01-clean.webp";
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+
+    const res = await app.request("/api/stories/detect-has-path/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([]);
+  });
+
+  it("detect-clean-images excludes a content-mismatched (png-in-webp) file", async () => {
+    const storyDir = path.join(tmpDir, "detect-mismatch");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), PNG_MAGIC);
+
+    const res = await app.request("/api/stories/detect-mismatch/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([]);
+  });
+
+  it("detect-clean-images excludes an oversized file", async () => {
+    const storyDir = path.join(tmpDir, "detect-big");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.alloc(1024 * 1024 + 10));
+
+    const res = await app.request("/api/stories/detect-big/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([]);
+  });
+
+  it("detect-clean-images excludes a .png file (png no longer accepted)", async () => {
+    const storyDir = path.join(tmpDir, "detect-png");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.png"), PNG_MAGIC);
+
+    const res = await app.request("/api/stories/detect-png/cuts/plot-01/detect-clean-images");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.detected).toEqual([]);
   });
 });

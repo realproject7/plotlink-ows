@@ -59,6 +59,15 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("cleanImagePath");
   });
 
+  it("cartoon output includes the Codex clean-image file contract", () => {
+    const out = generateStoryInstructions("cartoon");
+    expect(out).toContain("Codex image generation");
+    expect(out).toContain("cut-XX-clean.webp");
+    expect(out).toContain("under 1MB");
+    expect(out).toContain("Do NOT claim the image was generated unless the file actually exists");
+    expect(out).toContain("Sync clean images");
+  });
+
   it("fiction and cartoon outputs are different", () => {
     const fiction = generateStoryInstructions("fiction");
     const cartoon = generateStoryInstructions("cartoon");

@@ -212,6 +212,23 @@ otherwise the manual prompt + import path above is the safe baseline.
 Saved clean images live at: \`assets/plot-NN/cut-XX-clean.webp\` (OWS records the
 path; you do not hand-write it unless the file is really there).
 
+### Codex image generation — file contract
+
+If you are running as Codex with image generation available, you MAY produce the
+clean image file directly. When you do, follow this contract exactly:
+
+1. Use Codex image generation to create the clean image for the requested cut.
+2. Save it as \`assets/plot-NN/cut-XX-clean.webp\` (WebP, or JPEG) — use the
+   episode's \`plot-NN\` folder and the cut's zero-padded id (\`cut-01\`, \`cut-02\`,
+   …).
+3. The image must contain NO text, captions, speech bubbles, SFX lettering,
+   readable signage, watermark, or signature.
+4. After saving, verify the file exists, is WebP or JPEG, and is under 1MB.
+5. Do NOT claim the image was generated unless the file actually exists; then run
+   the OWS "Sync clean images" action (or let OWS auto-detect it) to record
+   \`cleanImagePath\` — never hand-write the path for a file that is not really
+   there.
+
 **Only exception:** Include text in images when it is part of the physical scene
 (a sign on a building, text on a screen, a letter being read) AND the writer
 has explicitly requested it.

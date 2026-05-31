@@ -92,6 +92,9 @@ function CutRow({
   authFetch,
   onUpdated,
   onOpenEditor,
+  detectedLocalClean,
+  onSyncClean,
+  syncing,
 }: {
   cut: Cut;
   storyName: string;
@@ -101,11 +104,15 @@ function CutRow({
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   onUpdated: () => void;
   onOpenEditor: () => void;
+  detectedLocalClean: boolean;
+  onSyncClean: () => void;
+  syncing: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [askCopied, setAskCopied] = useState(false);
   const status = getCutStatus(cut);
 
   const handleUpload = useCallback(async (file: File) => {
@@ -210,6 +217,40 @@ function CutRow({
                 Generate externally, then upload clean image
               </p>
             )}
+            {status === "missing" && (
+              <div
+                className="rounded border border-border bg-surface/60 p-2 space-y-1"
+                data-testid={`ask-codex-${cut.id}`}
+              >
+                <p className="text-[11px] font-medium text-foreground">Ask Codex to generate clean image</p>
+                <p className="text-[10px] text-muted">
+                  Paste this prompt into the Codex terminal to generate{" "}
+                  <span className="font-mono">cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>, then use
+                  &ldquo;Sync clean images&rdquo; (or it is auto-detected).
+                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(buildCleanImagePrompt(cut as unknown as LibCut));
+                    setAskCopied(true);
+                    setTimeout(() => setAskCopied(false), 2000);
+                  }}
+                  data-testid={`ask-codex-copy-${cut.id}`}
+                  className="px-2 py-1 text-[11px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                >
+                  {askCopied ? "Copied!" : "Copy prompt for Codex"}
+                </button>
+              </div>
+            )}
+            {status === "missing" && detectedLocalClean && (
+              <button
+                onClick={onSyncClean}
+                disabled={syncing}
+                data-testid={`found-local-clean-${cut.id}`}
+                className="px-3 py-1.5 text-xs border border-green-700/40 text-green-700 rounded hover:bg-green-700/5 disabled:opacity-50"
+              >
+                {syncing ? "Syncing..." : "Found local clean image — sync to cut plan"}
+              </button>
+            )}
             {uploadError && (
               <p className="text-xs text-error mt-1">{uploadError}</p>
             )}
@@ -255,6 +296,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
   const [genWarnings, setGenWarnings] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [detected, setDetected] = useState<Set<number>>(new Set());
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -279,9 +323,48 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
     }
   }, [authFetch, storyName, plotFile]);
 
+  // Server-confirmed detection of local clean files for cuts whose cleanImagePath
+  // is still null. Best-effort: failures leave the detected set unchanged.
+  const loadDetect = useCallback(async () => {
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/detect-clean-images`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDetected(new Set<number>(Array.isArray(data.detected) ? data.detected : []));
+    } catch {
+      /* ignore — affordance simply will not show */
+    }
+  }, [authFetch, storyName, plotFile]);
+
+  const syncCleanImages = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setGenWarnings([]);
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/sync-clean-images`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncResult(data.error || "Sync failed");
+      } else {
+        const syncedCount = Array.isArray(data.synced) ? data.synced.length : 0;
+        const rejected = Array.isArray(data.rejected) ? data.rejected : [];
+        if (rejected.length > 0) {
+          setGenWarnings(rejected.map((r: { cutId: number; reason: string }) => `Cut ${r.cutId}: ${r.reason}`));
+        }
+        setSyncResult(syncedCount > 0 ? `Synced ${syncedCount}` : "No new clean images");
+        await loadCuts();
+        await loadDetect();
+      }
+    } catch {
+      setSyncResult("Sync failed");
+    }
+    setSyncing(false);
+  }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
+
   useEffect(() => {
     loadCuts();
-  }, [loadCuts]);
+    loadDetect();
+  }, [loadCuts, loadDetect]);
 
   if (loading) {
     return <div className="p-4 text-sm text-muted">Loading cuts...</div>;
@@ -375,6 +458,14 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
           {generating ? "Generating..." : "Generate MD"}
         </button>
         <button
+          onClick={syncCleanImages}
+          disabled={syncing}
+          className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+          data-testid="sync-clean-btn"
+        >
+          {syncing ? "Syncing..." : "Sync clean images"}
+        </button>
+        <button
           onClick={async () => {
             if (!cutsFile) return;
             setUploading(true);
@@ -429,6 +520,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
           {uploadProgress || "Upload & Generate"}
         </button>
       </div>
+      {syncResult && (
+        <div className="px-3 py-1 border-b border-border text-[10px] text-muted" data-testid="sync-result">
+          {syncResult}
+        </div>
+      )}
       {genWarnings.length > 0 && (
         <div className="px-3 py-1 border-b border-border text-[10px] text-amber-700">
           {genWarnings.map((w, i) => <p key={i}>{w}</p>)}
@@ -446,8 +542,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
             expanded={expandedCut === cut.id}
             onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
             authFetch={authFetch}
-            onUpdated={loadCuts}
+            onUpdated={() => { loadCuts(); loadDetect(); }}
             onOpenEditor={() => setEditingCutId(cut.id)}
+            detectedLocalClean={detected.has(cut.id)}
+            onSyncClean={syncCleanImages}
+            syncing={syncing}
           />
         ))}
       </div>
