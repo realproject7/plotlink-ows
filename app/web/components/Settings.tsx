@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { WalletCard } from "./WalletCard";
+import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 export function Settings({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [newPassphrase, setNewPassphrase] = useState("");
@@ -23,6 +24,9 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
   const [bindingError, setBindingError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"signature" | "wallet" | null>(null);
 
+  // Agent (CLI) readiness — detection only.
+  const [readiness, setReadiness] = useState<AgentReadiness | null>(null);
+
   const authFetch = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
   [token]);
@@ -33,6 +37,15 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
       .then((r) => r.json())
       .then((data) => setLinkStatus(data))
       .catch(() => setLinkStatus({ linked: false }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Probe agent readiness on mount (best-effort; failures leave readiness null).
+  useEffect(() => {
+    authFetch("/api/agent/readiness")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setReadiness(data); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -201,6 +214,27 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
             </button>
           </div>
         )}
+      </div>
+
+      {/* Agent Providers (CLI readiness — detection only) */}
+      <div className="border-border rounded border p-4" data-testid="provider-readiness">
+        <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Agent Providers</h3>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Claude</span>
+            <span className="text-muted text-xs">
+              {readiness?.claude.installed ? "Installed" : "Not detected"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Codex</span>
+            <span className="text-muted text-xs">
+              {readiness?.codex.installed
+                ? `Installed, image generation ${readiness.codex.imageGeneration}`
+                : "Not detected"}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Link to PlotLink */}

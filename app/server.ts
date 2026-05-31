@@ -22,6 +22,7 @@ import { dashboardRoutes } from "./routes/dashboard";
 import { terminalRoutes, attachTerminalWs } from "./routes/terminal";
 import { storiesRoutes } from "./routes/stories";
 import { settingsRoutes } from "./routes/settings";
+import { agentRoutes } from "./routes/agent";
 import { initDb } from "./db";
 import { generateClaudeMd } from "./lib/generate-claude-md";
 import { execSync } from "child_process";
@@ -48,6 +49,8 @@ app.use("/api/stories/*", requireAuth);
 app.route("/api/stories", storiesRoutes);
 app.use("/api/settings/*", requireAuth);
 app.route("/api/settings", settingsRoutes);
+app.use("/api/agent/*", requireAuth);
+app.route("/api/agent", agentRoutes);
 
 // App version (read once at startup)
 const appVersion = (() => {

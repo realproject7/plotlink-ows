@@ -4,6 +4,7 @@ import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
 import { getContentTypeForPublish } from "../lib/publish-helpers";
+import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
   token: string;
@@ -47,6 +48,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [newStoryLanguage, setNewStoryLanguage] = useState("English");
   const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
   const [newStoryAgentProvider, setNewStoryAgentProvider] = useState<"claude" | "codex">("claude");
+  const [readiness, setReadiness] = useState<AgentReadiness | null>(null);
   const [bypassStories, setBypassStories] = useState<Record<string, boolean>>({});
   const [agentProviders, setAgentProviders] = useState<Record<string, "claude" | "codex">>({});
   // Track confirmed stories (those with structure.md) for Archive gating
@@ -67,6 +69,15 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     authFetch("/api/wallet")
       .then((res) => res.ok ? res.json() : null)
       .then((data) => { if (data?.address) setWalletAddress(data.address); })
+      .catch(() => {});
+  }, [authFetch]);
+
+  // Best-effort agent-readiness probe for cartoon-mode guidance. Failures leave
+  // readiness null (no warning shown); this never blocks fiction or cartoon.
+  useEffect(() => {
+    authFetch("/api/agent/readiness")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setReadiness(data); })
       .catch(() => {});
   }, [authFetch]);
 
@@ -514,6 +525,20 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 <p className="text-[11px] text-muted" data-testid="cartoon-codex-note">
                   Cartoon mode requires Codex because the clean-image step needs image generation support.
                 </p>
+                {readiness &&
+                  (!readiness.codex.installed ||
+                    readiness.codex.imageGeneration === "disabled") && (
+                    <p
+                      className="text-[11px] text-amber-700"
+                      data-testid="cartoon-codex-warning"
+                    >
+                      Cartoon requires Codex with image generation.{" "}
+                      {readiness.codex.installed
+                        ? "Codex image generation appears unavailable."
+                        : "Codex was not detected."}{" "}
+                      See setup guide.
+                    </p>
+                  )}
               </button>
             </div>
             <button
