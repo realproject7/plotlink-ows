@@ -8,6 +8,7 @@ import { readStoryMeta } from "./stories";
 import type { AgentProvider } from "./stories";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { buildAgentCommand } from "../lib/agent-command";
+import type { AgentMode, AgentCommand } from "../lib/agent-command";
 
 /**
  * Provider-aware session record (new shape). Written ONLY for Codex sessions.
@@ -30,6 +31,56 @@ export function resumeIdFrom(v: StoredValue | undefined): string | null {
   if (typeof v === "string") return v;
   if (isSessionRecord(v)) return typeof v.sessionId === "string" ? v.sessionId : null;
   return null;
+}
+
+/**
+ * Resolve the concrete agent CLI invocation (argv) for a Codex spawn, given the
+ * stored session value and whether the user requested a resume.
+ *
+ * Codex decouples "resume requested" from "stored id exists" — unlike Claude:
+ * - Claude needs a CONCRETE session id to resume (`--resume <id>`); with no
+ *   stored id it must start fresh (`--session-id <new>`). So Claude resume only
+ *   happens when both resumeRequested AND a stored id exist.
+ * - Codex can resume the most recent session with no id at all
+ *   (`codex resume --last`). So a resume request alone is enough; a stored id
+ *   (when present) just picks a specific session (`codex resume <id>`).
+ *
+ * This is the single code path shared by spawnPty (codex branch) and the
+ * route/session regression tests, so they exercise identical logic.
+ */
+export function resolveAgentCommandForSession(opts: {
+  provider: AgentProvider;
+  mode: AgentMode;
+  resumeRequested: boolean;
+  stored: StoredValue | undefined;
+  newSessionId: string;
+  storyDir: string;
+}): AgentCommand {
+  const { provider, mode, resumeRequested, stored, newSessionId, storyDir } = opts;
+  const storedResumeId = resumeIdFrom(stored);
+
+  if (provider === "claude") {
+    // Claude requires a concrete id to resume; otherwise fall back to fresh.
+    const doResume = !!(resumeRequested && storedResumeId);
+    return buildAgentCommand({
+      provider,
+      mode,
+      resume: doResume,
+      sessionId: doResume ? storedResumeId : null,
+      newSessionId,
+      storyDir,
+    });
+  }
+
+  // Codex: a resume request alone is enough even with no stored id (resume --last).
+  return buildAgentCommand({
+    provider,
+    mode,
+    resume: resumeRequested,
+    sessionId: storedResumeId,
+    newSessionId,
+    storyDir,
+  });
 }
 
 const MAX_SESSIONS = 5;
@@ -170,6 +221,7 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   const sessionMap = loadSessionMap();
   const stored = sessionMap[storyName];
   const storedResumeId = resumeIdFrom(stored);
+  // Claude needs a concrete stored id to resume; with none it starts fresh.
   const doResume = !!(opts?.resume && storedResumeId);
   // Fresh Claude reuses any explicit opts.sessionId (back-compat) else a new UUID.
   const sessionId = doResume ? (storedResumeId as string) : (opts?.sessionId || randomUUID());
@@ -179,17 +231,18 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
     // KEEP BYTE-IDENTICAL: same buildClaudeCommand output as before.
     agentCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
   } else {
-    // Codex: render argv from the pure builder into a quoted shell string.
-    const { command, args } = buildAgentCommand({
+    // Codex decouples "resume requested" from "stored id exists": a resume
+    // request alone yields `codex resume --last` (no stored id needed), while a
+    // stored id picks a specific session (`codex resume <id>`). Render argv via
+    // the shared resolver, then quote it into an injection-safe shell string.
+    const { command, args } = resolveAgentCommandForSession({
       provider,
       mode: bypass ? "bypass" : "normal",
-      resume: doResume,
-      sessionId: doResume ? sessionId : null,
+      resumeRequested: !!opts?.resume,
+      stored,
       newSessionId: sessionId,
       storyDir,
     });
-    // Injection-safe assembly: single-quote-escape the command and every arg so
-    // a value containing ", $, or backtick cannot break out of the shell string.
     agentCmd = [command, ...args].map(shellQuote).join(" ");
   }
 

@@ -3,7 +3,13 @@ import { execFileSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { buildClaudeCommand, isTerminalSocketOpen, resolveBypass, shellQuote } from "./terminal";
+import {
+  buildClaudeCommand,
+  isTerminalSocketOpen,
+  resolveBypass,
+  resolveAgentCommandForSession,
+  shellQuote,
+} from "./terminal";
 
 describe("buildClaudeCommand", () => {
   it("normal fresh session: --session-id, no bypass flag", () => {
@@ -123,6 +129,89 @@ describe("shellQuote (command-injection safety)", () => {
     expect(parsed).toEqual(malicious);
     // No substitution executed → canary must NOT exist.
     expect(fs.existsSync(canary)).toBe(false);
+  });
+});
+
+describe("resolveAgentCommandForSession (resume decision)", () => {
+  const base = {
+    mode: "normal" as const,
+    newSessionId: "fresh-uuid",
+    storyDir: "/stories/my-tale",
+  };
+
+  // Regression for PR #259: a Codex record with sessionId:null + resume:true
+  // must reach native `codex resume --last`, NOT a fresh `--enable
+  // image_generation --cd` launch. The previous spawnPty logic gated resume on
+  // a stored id (correct for Claude, wrong for Codex), so this case fell back
+  // to a fresh session.
+  it("codex resume with stored {sessionId:null} => codex resume --last", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "codex",
+      resumeRequested: true,
+      stored: { provider: "codex", sessionId: null },
+    });
+    expect(result).toEqual({ command: "codex", args: ["resume", "--last"] });
+    expect(result.args).not.toContain("image_generation");
+  });
+
+  it("codex resume with stored {sessionId:'CDX'} => codex resume CDX", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "codex",
+      resumeRequested: true,
+      stored: { provider: "codex", sessionId: "CDX" },
+    });
+    expect(result).toEqual({ command: "codex", args: ["resume", "CDX"] });
+  });
+
+  it("codex resume requested with no stored record => codex resume --last", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "codex",
+      resumeRequested: true,
+      stored: undefined,
+    });
+    expect(result).toEqual({ command: "codex", args: ["resume", "--last"] });
+  });
+
+  it("codex without resume => fresh --enable image_generation --cd", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "codex",
+      resumeRequested: false,
+      stored: { provider: "codex", sessionId: null },
+    });
+    expect(result).toEqual({
+      command: "codex",
+      args: ["--enable", "image_generation", "--cd", "/stories/my-tale"],
+    });
+  });
+
+  it("claude resume with stored id => --resume <id> (unchanged)", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "claude",
+      resumeRequested: true,
+      stored: "CLAUDE-ID",
+    });
+    expect(result).toEqual({
+      command: "claude",
+      args: ["--resume", "CLAUDE-ID"],
+    });
+  });
+
+  it("claude resume with no stored id => fresh --session-id <new> (unchanged)", () => {
+    const result = resolveAgentCommandForSession({
+      ...base,
+      provider: "claude",
+      resumeRequested: true,
+      stored: undefined,
+    });
+    expect(result).toEqual({
+      command: "claude",
+      args: ["--session-id", "fresh-uuid"],
+    });
   });
 });
 
