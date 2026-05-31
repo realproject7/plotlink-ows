@@ -68,3 +68,51 @@ describe("session store map mutation (no wholesale migration)", () => {
     expect(resumeIdFrom(roundTripped["c"])).toBeNull();
   });
 });
+
+describe("carrySessionAcrossRename (rename preserves stored shape)", () => {
+  it("preserves a Codex provider-aware record (does not flatten to the fallback UUID)", () => {
+    // Regression for PR #260: a fresh cartoon _new_* Codex session stores
+    // {provider:"codex", sessionId:null}; renaming must keep that record so a
+    // later resume builds `codex resume --last`, not `codex resume <fallback-uuid>`.
+    const map: Record<string, StoredValue> = {
+      "_new_123": { provider: "codex", sessionId: null, lastStartedAt: 111 },
+    };
+    carrySessionAcrossRename(map, "_new_123", "my-toon", "fallback-pty-uuid");
+    expect(map["_new_123"]).toBeUndefined();
+    expect(map["my-toon"]).toEqual({ provider: "codex", sessionId: null, lastStartedAt: 111 });
+    expect(map["my-toon"]).not.toBe("fallback-pty-uuid");
+    expect(resumeIdFrom(map["my-toon"])).toBe(null);
+  });
+
+  it("preserves a Codex record with a real session id", () => {
+    const map: Record<string, StoredValue> = {
+      "_new_9": { provider: "codex", sessionId: "cdx-real", lastStartedAt: 5 },
+    };
+    carrySessionAcrossRename(map, "_new_9", "toon2", "fallback");
+    expect(map["toon2"]).toEqual({ provider: "codex", sessionId: "cdx-real", lastStartedAt: 5 });
+    expect(resumeIdFrom(map["toon2"])).toBe("cdx-real");
+  });
+
+  it("preserves a legacy Claude bare-string entry", () => {
+    const map: Record<string, StoredValue> = { "_new_7": "claude-uuid" };
+    carrySessionAcrossRename(map, "_new_7", "novel", "fallback");
+    expect(map["_new_7"]).toBeUndefined();
+    expect(map["novel"]).toBe("claude-uuid");
+  });
+
+  it("falls back to the live PTY session id only when no stored entry exists", () => {
+    const map: Record<string, StoredValue> = {};
+    carrySessionAcrossRename(map, "_new_x", "story", "live-uuid");
+    expect(map["story"]).toBe("live-uuid");
+  });
+
+  it("leaves unrelated entries untouched", () => {
+    const map: Record<string, StoredValue> = {
+      "_new_1": { provider: "codex", sessionId: null },
+      "other": "keep-me",
+    };
+    carrySessionAcrossRename(map, "_new_1", "renamed", "fb");
+    expect(map["other"]).toBe("keep-me");
+    expect(map["renamed"]).toEqual({ provider: "codex", sessionId: null });
+  });
+});
