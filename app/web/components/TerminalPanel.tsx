@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
+import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 interface TerminalPanelProps {
   token: string;
@@ -15,6 +16,34 @@ interface TerminalPanelProps {
   renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
   bypassStories?: Record<string, boolean>;
   agentProviders?: Record<string, "claude" | "codex">;
+  /** Local agent (Codex) readiness. null/undefined = not yet loaded (fail-open). */
+  readiness?: AgentReadiness | null;
+  /** Content type of the currently-selected story (undefined = unknown). */
+  contentType?: "fiction" | "cartoon";
+}
+
+const CODEX_ENABLE_CMD = "codex features enable image_generation";
+
+/**
+ * Pure predicate: should the cartoon agent LAUNCH be blocked?
+ *
+ * Blocked ONLY when ALL of:
+ *  - the selected story is a cartoon, AND
+ *  - readiness has loaded (non-null), AND
+ *  - Codex is NOT ready (not installed OR image generation not enabled).
+ *
+ * Fail-open: readiness null/undefined => NOT blocked (a probe failure must never
+ * brick terminals). Fiction / undefined contentType => NEVER blocked.
+ */
+export function isCartoonLaunchBlocked(
+  contentType: "fiction" | "cartoon" | undefined,
+  readiness: AgentReadiness | null | undefined,
+): boolean {
+  if (contentType !== "cartoon") return false;
+  if (!readiness) return false; // fail-open until readiness resolves
+  const codexReady =
+    readiness.codex.installed && readiness.codex.imageGeneration === "enabled";
+  return !codexReady;
 }
 
 interface TerminalSession {
@@ -108,13 +137,17 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories, agentProviders }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories, agentProviders, readiness, contentType }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
   const [disconnected, setDisconnected] = useState<Set<string>>(new Set());
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
   const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
+  const [copiedEnableCmd, setCopiedEnableCmd] = useState(false);
+
+  // Gate the cartoon agent launch for the currently-selected story.
+  const cartoonLaunchBlocked = isCartoonLaunchBlocked(contentType, readiness);
 
   const connectWsRef = useRef<(name: string, session: TerminalSession, resume: boolean) => void>(() => {});
 
@@ -386,6 +419,13 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
   // Auto-spawn + show/hide when story changes
   useEffect(() => {
     if (!storyName) return;
+    // Cartoon readiness gate: never spawn/connect a terminal for a cartoon
+    // story whose Codex/image_generation is known-not-ready. Show guidance
+    // instead (rendered below). Fail-open when readiness is null/undefined.
+    if (cartoonLaunchBlocked) {
+      showSession(null);
+      return;
+    }
     if (!sessions.has(storyName)) {
       // Check if a previous session exists — if so, show overlay instead of auto-connecting
       authFetchRef.current(`/api/terminal/session/${encodeURIComponent(storyName)}`)
@@ -406,7 +446,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     } else {
       showSession(storyName);
     }
-  }, [storyName, createSession, showSession]);
+  }, [storyName, createSession, showSession, cartoonLaunchBlocked]);
 
   // Periodic scrollback save (every 30s for active session)
   useEffect(() => {
@@ -507,11 +547,64 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
         <div ref={wrapperRef} className="h-full" />
 
         {/* Empty state overlay */}
-        {isEmpty && (
+        {isEmpty && !cartoonLaunchBlocked && (
           <div className="absolute inset-0 flex items-center justify-center text-muted">
             <div className="text-center">
               <p className="text-lg font-serif">Select a story on the left menu</p>
               <p className="text-sm mt-1">to start an AI Writer session</p>
+            </div>
+          </div>
+        )}
+
+        {/* Cartoon launch gated: Codex / image generation not ready */}
+        {cartoonLaunchBlocked && (
+          <div
+            data-testid="cartoon-launch-blocked"
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "rgba(240, 235, 225, 0.9)" }}
+          >
+            <div className="space-y-3 p-6 bg-surface border border-border rounded-lg shadow-lg max-w-md">
+              <p className="text-sm font-serif text-foreground font-medium">
+                Cartoon agent can&apos;t launch yet
+              </p>
+              <p className="text-xs text-muted">
+                This is a cartoon story. The writing agent needs Codex with image
+                generation enabled before it can start, because the clean-image
+                step relies on image generation support.
+              </p>
+              {readiness && !readiness.codex.installed ? (
+                <p className="text-xs text-amber-700">
+                  Codex was not detected. Install the Codex CLI and sign in
+                  (e.g. <span className="font-mono">npm i -g @openai/codex</span> then{" "}
+                  <span className="font-mono">codex login</span>), then reopen this story.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs text-amber-700">
+                    Codex is installed but image generation isn&apos;t enabled. Enable
+                    it, then reopen this story:
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <code className="flex-1 truncate rounded border border-border bg-surface px-1.5 py-1 text-left text-[10px] font-mono text-foreground">
+                      {CODEX_ENABLE_CMD}
+                    </code>
+                    <button
+                      type="button"
+                      data-testid="copy-codex-enable-launch"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(CODEX_ENABLE_CMD);
+                          setCopiedEnableCmd(true);
+                          setTimeout(() => setCopiedEnableCmd(false), 2000);
+                        } catch { /* clipboard unavailable */ }
+                      }}
+                      className="rounded border border-border px-2 py-1 text-[10px] text-muted hover:border-accent hover:text-accent transition-colors"
+                    >
+                      {copiedEnableCmd ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

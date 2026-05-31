@@ -54,7 +54,13 @@ interface FetchCall { url: string; body: unknown }
 
 // authFetch that records every call. /api/stories starts empty, then returns a
 // single new story ("my-tale") so the polling effect fires the metadata POST.
-function makeAuthFetch() {
+function makeAuthFetch(opts?: { readiness?: unknown; readinessFails?: boolean }) {
+  // Default: codex installed + image generation enabled -> no cartoon warning.
+  const readiness = opts?.readiness ?? {
+    claude: { installed: true },
+    codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+    checkedAt: 1748000000000,
+  };
   const calls: FetchCall[] = [];
   let storiesAppeared = false;
   const fn = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
@@ -63,6 +69,12 @@ function makeAuthFetch() {
     calls.push({ url, body });
     if (url === "/api/wallet") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ address: "0xabc" }) });
+    }
+    if (url === "/api/agent/readiness") {
+      if (opts?.readinessFails) {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve(null) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(readiness) });
     }
     if (url === "/api/stories" && !opts) {
       const stories = storiesAppeared
@@ -179,5 +191,121 @@ describe("StoriesPage new-story provider selection", () => {
     expect(screen.getByTestId("agent-provider-helper").textContent).toContain(
       "Codex can generate clean cartoon images",
     );
+  });
+});
+
+function cartoonButton(): HTMLButtonElement {
+  // The Cartoon create button is the <button> whose label text is "Cartoon".
+  return screen.getByText("Cartoon").closest("button") as HTMLButtonElement;
+}
+
+describe("StoriesPage cartoon codex readiness gating", () => {
+  it("warns AND disables Cartoon create when codex is not installed", async () => {
+    const { fn } = makeAuthFetch({
+      readiness: {
+        claude: { installed: true },
+        codex: { installed: false, version: null, imageGeneration: "unknown" },
+        checkedAt: 1748000000000,
+      },
+    });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
+    });
+    expect(cartoonButton()).toBeDisabled();
+  });
+
+  it("shows copy-enable command AND disables Cartoon when image generation is disabled", async () => {
+    const { fn } = makeAuthFetch({
+      readiness: {
+        claude: { installed: true },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+        checkedAt: 1748000000000,
+      },
+    });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("copy-codex-enable")).toBeInTheDocument();
+    expect(screen.getByText("codex features enable image_generation")).toBeInTheDocument();
+    expect(cartoonButton()).toBeDisabled();
+  });
+
+  it("copies the enable command to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { fn } = makeAuthFetch({
+      readiness: {
+        claude: { installed: true },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+        checkedAt: 1748000000000,
+      },
+    });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("copy-codex-enable")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("copy-codex-enable"));
+    expect(writeText).toHaveBeenCalledWith("codex features enable image_generation");
+  });
+
+  it("no warning and Cartoon enabled when codex + image generation are ready", async () => {
+    const { fn } = makeAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-note")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("cartoon-codex-warning")).not.toBeInTheDocument();
+    expect(cartoonButton()).not.toBeDisabled();
+  });
+
+  it("warns AND disables Cartoon when image generation is unknown (not ready)", async () => {
+    const { fn } = makeAuthFetch({
+      readiness: {
+        claude: { installed: true },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "unknown" },
+        checkedAt: 1748000000000,
+      },
+    });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
+    });
+    expect(cartoonButton()).toBeDisabled();
+  });
+
+  it("does NOT disable Cartoon while readiness is unresolved (probe endpoint fails)", async () => {
+    const { fn } = makeAuthFetch({ readinessFails: true });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    // Note is always present; warning never shows when readiness is null.
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-note")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("cartoon-codex-warning")).not.toBeInTheDocument();
+    expect(cartoonButton()).not.toBeDisabled();
+  });
+
+  it("never disables the Fiction create button regardless of codex readiness", async () => {
+    const { fn } = makeAuthFetch({
+      readiness: {
+        claude: { installed: true },
+        codex: { installed: false, version: null, imageGeneration: "unknown" },
+        checkedAt: 1748000000000,
+      },
+    });
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
+    });
+    const fictionBtn = screen.getByText("Fiction").closest("button") as HTMLButtonElement;
+    expect(fictionBtn).not.toBeDisabled();
   });
 });
