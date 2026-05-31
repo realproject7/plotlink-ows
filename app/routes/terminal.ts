@@ -217,6 +217,26 @@ export function resolveProvider(args: {
   return args.storedProvider ?? "claude";
 }
 
+/**
+ * Move a persisted session entry from one key to another, PRESERVING its stored
+ * shape. A `_new_*` Codex session is stored as a provider-aware record
+ * (`{provider:"codex", sessionId, lastStartedAt}`); a Claude session as a bare
+ * string. Renaming must keep that shape so Codex resume metadata survives. Only
+ * when there is no stored entry do we fall back to the live PTY session id (a
+ * bare string, matching legacy Claude behavior). Mutates and returns `map`.
+ */
+export function carrySessionAcrossRename(
+  map: Record<string, StoredValue>,
+  oldName: string,
+  newName: string,
+  fallbackSessionId: string,
+): Record<string, StoredValue> {
+  const existing = map[oldName];
+  delete map[oldName];
+  map[newName] = existing ?? fallbackSessionId;
+  return map;
+}
+
 function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean; bypass?: boolean; provider?: "claude" | "codex" }) {
   // New story sessions spawn in the stories root so Claude can create any folder
   const isNewStory = storyName.startsWith("_new_");
@@ -451,10 +471,14 @@ terminal.post("/rename", async (c) => {
     agentProviderBySession.delete(oldName);
   }
 
-  // Update persisted session map: remove old key, store under new key
+  // Update persisted session map: carry the stored value across the rename so a
+  // provider-aware Codex record (`{provider,sessionId,...}`) or a legacy Claude
+  // string is PRESERVED, not flattened to the live PTY's fallback UUID. Writing
+  // session.sessionId here corrupted Codex metadata (the fresh-spawn fallback
+  // UUID is not a real Codex session id, so later resume built `codex resume
+  // <uuid>` instead of `codex resume --last`).
   const sessionMap = loadSessionMap();
-  delete sessionMap[oldName];
-  sessionMap[newName] = session.sessionId;
+  carrySessionAcrossRename(sessionMap, oldName, newName, session.sessionId);
   saveSessionMap(sessionMap);
 
   return c.json({ ok: true, sessionId: session.sessionId });

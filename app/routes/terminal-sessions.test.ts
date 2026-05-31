@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resumeIdFrom, isSessionRecord, type StoredValue } from "./terminal";
+import { resumeIdFrom, isSessionRecord, carrySessionAcrossRename, type StoredValue } from "./terminal";
 
 /**
  * Session-store back-compat: terminal-sessions.json may hold legacy bare-string
