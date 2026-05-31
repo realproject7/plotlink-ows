@@ -7,6 +7,7 @@ import {
   buildClaudeCommand,
   isTerminalSocketOpen,
   resolveBypass,
+  resolveProvider,
   resolveAgentCommandForSession,
   shellQuote,
 } from "./terminal";
@@ -68,6 +69,68 @@ describe("resolveBypass", () => {
   it("existing story prefers in-memory session mode over stored", () => {
     // Already-spawned session mode wins; client flag still ignored.
     expect(resolveBypass({ isNewStory: false, optBypass: false, sessionMode: "bypass", storedMode: "normal" })).toBe(true);
+  });
+});
+
+describe("resolveProvider", () => {
+  it("new story honors explicit optProvider=codex", () => {
+    expect(resolveProvider({ isNewStory: true, optProvider: "codex" })).toBe("codex");
+  });
+
+  it("new story defaults to claude without explicit flag", () => {
+    expect(resolveProvider({ isNewStory: true })).toBe("claude");
+  });
+
+  it("new story falls back to session provider when no optProvider", () => {
+    expect(resolveProvider({ isNewStory: true, sessionProvider: "codex" })).toBe("codex");
+  });
+
+  it("existing story IGNORES client optProvider (security)", () => {
+    // Malicious WS sends provider=codex, but stored metadata is claude.
+    expect(resolveProvider({ isNewStory: false, optProvider: "codex", storedProvider: "claude" })).toBe("claude");
+  });
+
+  it("existing story derives provider from stored .story.json", () => {
+    expect(resolveProvider({ isNewStory: false, storedProvider: "codex" })).toBe("codex");
+  });
+
+  it("existing story prefers in-memory session provider over stored", () => {
+    expect(resolveProvider({ isNewStory: false, optProvider: "claude", sessionProvider: "codex", storedProvider: "claude" })).toBe("codex");
+  });
+
+  // End-to-end regression for PR #260: a brand-new cartoon (_new_) session must
+  // invoke codex, not claude. Compose the two pure functions exactly as spawnPty
+  // does for a fresh _new_ spawn: resolve provider from the client flag, then
+  // render the concrete CLI command for that provider.
+  it("end-to-end: cartoon _new_ spawn (provider=codex) yields a codex command", () => {
+    const provider = resolveProvider({ isNewStory: true, optProvider: "codex" });
+    expect(provider).toBe("codex");
+    const cmd = resolveAgentCommandForSession({
+      provider,
+      mode: "normal",
+      resumeRequested: false,
+      stored: undefined,
+      newSessionId: "fresh-uuid",
+      storyDir: "/stories/_new_123",
+    });
+    expect(cmd.command).toBe("codex");
+    expect(cmd.command).not.toBe("claude");
+  });
+
+  // Byte-identical guarantee: a fiction _new_ spawn with NO provider flag still
+  // resolves to claude and renders the unchanged claude fresh-session command.
+  it("end-to-end: fiction _new_ spawn (no flag) yields the unchanged claude command", () => {
+    const provider = resolveProvider({ isNewStory: true });
+    expect(provider).toBe("claude");
+    const cmd = resolveAgentCommandForSession({
+      provider,
+      mode: "normal",
+      resumeRequested: false,
+      stored: undefined,
+      newSessionId: "fresh-uuid",
+      storyDir: "/stories/_new_123",
+    });
+    expect(cmd).toEqual({ command: "claude", args: ["--session-id", "fresh-uuid"] });
   });
 });
 
