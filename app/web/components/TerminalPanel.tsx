@@ -14,6 +14,7 @@ interface TerminalPanelProps {
   confirmedStories?: Set<string>;
   renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
   bypassStories?: Record<string, boolean>;
+  agentProviders?: Record<string, "claude" | "codex">;
 }
 
 interface TerminalSession {
@@ -107,7 +108,7 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories, agentProviders }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -146,11 +147,16 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
   const bypassRef = useRef<Record<string, boolean>>({});
   useEffect(() => { bypassRef.current = bypassStories || {}; }, [bypassStories]);
 
+  const providerRef = useRef<Record<string, "claude" | "codex">>({});
+  useEffect(() => { providerRef.current = agentProviders || {}; }, [agentProviders]);
+
   const connectWs = useCallback((name: string, session: TerminalSession, resume: boolean) => {
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const bypass = bypassRef.current[name] ? "&bypass=true" : "";
+    const provider = providerRef.current[name];
+    const providerParam = provider ? `&provider=${encodeURIComponent(provider)}` : "";
     const ws = new WebSocket(
-      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}&resume=${resume}${bypass}`
+      `${wsProto}//${window.location.host}/ws/terminal?story=${encodeURIComponent(name)}&token=${token}&resume=${resume}${bypass}${providerParam}`
     );
 
     ws.onopen = () => {

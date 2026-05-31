@@ -7,6 +7,7 @@ import { StoriesPage } from "./StoriesPage";
 const childProps = vi.hoisted(() => ({
   onNewStory: null as null | (() => void),
   renameRef: null as null | { current: ((o: string, n: string) => Promise<boolean>) | null },
+  agentProviders: null as null | Record<string, "claude" | "codex">,
 }));
 
 vi.mock("./StoryBrowser", () => ({
@@ -17,8 +18,12 @@ vi.mock("./StoryBrowser", () => ({
 }));
 
 vi.mock("./TerminalPanel", () => ({
-  TerminalPanel: (props: { renameRef: { current: ((o: string, n: string) => Promise<boolean>) | null } }) => {
+  TerminalPanel: (props: {
+    renameRef: { current: ((o: string, n: string) => Promise<boolean>) | null };
+    agentProviders?: Record<string, "claude" | "codex">;
+  }) => {
     childProps.renameRef = props.renameRef;
+    childProps.agentProviders = props.agentProviders ?? null;
     // Provide a rename implementation so the polling effect proceeds.
     props.renameRef.current = () => Promise.resolve(true);
     return <div data-testid="mock-terminal" />;
@@ -42,6 +47,7 @@ afterEach(() => {
   vi.useRealTimers();
   childProps.onNewStory = null;
   childProps.renameRef = null;
+  childProps.agentProviders = null;
 });
 
 interface FetchCall { url: string; body: unknown }
@@ -132,6 +138,35 @@ describe("StoriesPage new-story provider selection", () => {
     const body = await createStory({ provider: "codex", contentTypeLabel: "Fiction" });
     expect(body).toMatchObject({ contentType: "fiction", agentProvider: "codex" });
   }, 10000);
+
+  // Regression for PR #260: the provider must be threaded into the TerminalPanel
+  // `agentProviders` state map for the brand-new (_new_) session, so the FIRST
+  // WS spawn appends provider=codex. Cartoon is always codex.
+  it("threads provider=codex into agentProviders for a new cartoon _new_ session", async () => {
+    const { fn } = makeAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.click(screen.getByText("Cartoon"));
+    await waitFor(() => {
+      const providers = childProps.agentProviders ?? {};
+      const entries = Object.entries(providers);
+      expect(entries.length).toBeGreaterThan(0);
+      // The pending session key is a _new_<ts> id, mapped to codex.
+      expect(entries.some(([k, v]) => k.startsWith("_new_") && v === "codex")).toBe(true);
+      expect(Object.values(providers)).not.toContain("claude");
+    });
+  });
+
+  it("threads provider=claude into agentProviders for a default fiction _new_ session", async () => {
+    const { fn } = makeAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.click(screen.getByText("Fiction"));
+    await waitFor(() => {
+      const providers = childProps.agentProviders ?? {};
+      expect(Object.entries(providers).some(([k, v]) => k.startsWith("_new_") && v === "claude")).toBe(true);
+    });
+  });
 
   it("toggles provider helper text when switching to Codex", () => {
     render(<StoriesPage token="t" authFetch={makeAuthFetch().fn} />);

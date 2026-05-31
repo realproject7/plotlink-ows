@@ -160,8 +160,15 @@ async function start() {
         const story = url.searchParams.get("story") || undefined;
         const resume = url.searchParams.get("resume") === "true";
         const bypass = url.searchParams.get("bypass") === "true";
+        const provider = url.searchParams.get("provider");
         wss.handleUpgrade(req, socket, head, (ws) => {
-          attachTerminalWs(ws as unknown as WebSocket, story, resume, bypass);
+          attachTerminalWs(
+            ws as unknown as WebSocket,
+            story,
+            resume,
+            bypass,
+            provider === "claude" || provider === "codex" ? provider : undefined,
+          );
         });
       }).catch(() => socket.destroy());
     }

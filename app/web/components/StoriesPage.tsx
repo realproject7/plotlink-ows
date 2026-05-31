@@ -48,6 +48,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
   const [newStoryAgentProvider, setNewStoryAgentProvider] = useState<"claude" | "codex">("claude");
   const [bypassStories, setBypassStories] = useState<Record<string, boolean>>({});
+  const [agentProviders, setAgentProviders] = useState<Record<string, "claude" | "codex">>({});
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
@@ -102,6 +103,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     languageMap.current.set(id, language);
     agentModeMap.current.set(id, agentMode);
     agentProviderMap.current.set(id, provider);
+    setAgentProviders((prev) => ({ ...prev, [id]: provider }));
     if (agentMode === "bypass") {
       setBypassStories((prev) => ({ ...prev, [id]: true }));
     }
@@ -149,6 +151,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                   return next;
                 });
               }
+              setAgentProviders((prev) => {
+                const next = { ...prev, [name]: provider };
+                delete next[oldName];
+                return next;
+              });
               authFetch(`/api/stories/${name}/metadata`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -346,6 +353,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         delete next[name];
         return next;
       });
+      setAgentProviders((prev) => {
+        if (!(name in prev)) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     }
   }, []);
 
@@ -400,7 +413,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} agentProviders={agentProviders} />
       </div>
 
       {/* Drag Handle */}

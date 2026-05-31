@@ -169,6 +169,11 @@ export function shellQuote(s: string): string {
 // reconnects before a story directory / .story.json exists).
 const agentModeBySession = new Map<string, "normal" | "bypass">();
 
+// In-memory agent provider per active session name (covers _new_ sessions and
+// reconnects before a story directory / .story.json exists). Mirrors
+// agentModeBySession exactly.
+const agentProviderBySession = new Map<string, "claude" | "codex">();
+
 /**
  * Resolve effective permissions-bypass for a spawn.
  *
@@ -192,7 +197,27 @@ export function resolveBypass(args: {
   return args.storedMode === "bypass";
 }
 
-function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean; bypass?: boolean }) {
+/**
+ * Resolve the effective agent provider for a spawn.
+ *
+ * Mirrors resolveBypass's trust model: the client-supplied provider flag is only
+ * trusted for a brand-new (_new_) story's first spawn. For existing stories the
+ * provider derives strictly from server-side state (already-spawned session
+ * provider, then stored .story.json), so a direct WS URL cannot force a provider
+ * on a story whose metadata says otherwise.
+ */
+export function resolveProvider(args: {
+  isNewStory: boolean;
+  optProvider?: "claude" | "codex";
+  sessionProvider?: "claude" | "codex";
+  storedProvider?: "claude" | "codex";
+}): "claude" | "codex" {
+  if (args.isNewStory) return args.optProvider ?? args.sessionProvider ?? "claude";
+  if (args.sessionProvider !== undefined) return args.sessionProvider;
+  return args.storedProvider ?? "claude";
+}
+
+function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boolean; bypass?: boolean; provider?: "claude" | "codex" }) {
   // New story sessions spawn in the stories root so Claude can create any folder
   const isNewStory = storyName.startsWith("_new_");
   const storyDir = isNewStory ? STORIES_DIR : path.join(STORIES_DIR, storyName);
@@ -212,10 +237,16 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   });
   agentModeBySession.set(storyName, bypass ? "bypass" : "normal");
 
-  // Resolve provider from stored .story.json. Absent ⇒ Claude (no migration).
-  const provider: AgentProvider = isNewStory
-    ? "claude"
-    : readStoryMeta(storyDir).agentProvider ?? "claude";
+  // Resolve effective provider (see resolveProvider for the trust model). For a
+  // brand-new _new_ session the client flag is trusted; existing stories ignore
+  // it and read from session state then stored .story.json (no migration).
+  const provider: AgentProvider = resolveProvider({
+    isNewStory,
+    optProvider: opts?.provider,
+    sessionProvider: agentProviderBySession.get(storyName),
+    storedProvider: isNewStory ? undefined : readStoryMeta(storyDir).agentProvider,
+  });
+  agentProviderBySession.set(storyName, provider);
 
   // Determine resume id (accepts both legacy-string and record shapes).
   const sessionMap = loadSessionMap();
@@ -307,9 +338,10 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
 
 /** POST /api/terminal/spawn — spawn Claude CLI for a story */
 terminal.post("/spawn", async (c) => {
-  const body = await c.req.json<{ storyName?: string; resume?: boolean }>().catch(() => ({}));
+  const body = await c.req.json<{ storyName?: string; resume?: boolean; provider?: "claude" | "codex" }>().catch(() => ({}));
   const storyName = safeName(body.storyName || "default");
   if (!storyName) return c.json({ error: "Invalid story name" }, 400);
+  const optProvider = body.provider === "claude" || body.provider === "codex" ? body.provider : undefined;
 
   const existing = ptySessions.get(storyName);
   if (existing?.term && existing.state === "running") {
@@ -323,7 +355,7 @@ terminal.post("/spawn", async (c) => {
   }
 
   try {
-    const session = spawnPty(storyName, { resume: body.resume });
+    const session = spawnPty(storyName, { resume: body.resume, provider: optProvider });
     return c.json({ ok: true, pid: session.term.pid, storyName, sessionId: session.sessionId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to spawn PTY";
@@ -412,6 +444,13 @@ terminal.post("/rename", async (c) => {
     agentModeBySession.delete(oldName);
   }
 
+  // Carry the in-memory agent provider across the rename too (mirrors mode).
+  const oldProvider = agentProviderBySession.get(oldName);
+  if (oldProvider) {
+    agentProviderBySession.set(newName, oldProvider);
+    agentProviderBySession.delete(oldName);
+  }
+
   // Update persisted session map: remove old key, store under new key
   const sessionMap = loadSessionMap();
   delete sessionMap[oldName];
@@ -449,7 +488,7 @@ terminal.get("/status", (c) => {
  * Attach a raw WebSocket to a story's PTY session.
  * Called from server.ts WebSocket upgrade handler.
  */
-export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boolean, bypass?: boolean) {
+export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boolean, bypass?: boolean, provider?: "claude" | "codex") {
   const name = storyName && safeName(storyName) ? storyName : "default";
   let session = ptySessions.get(name);
 
@@ -463,7 +502,7 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boo
     }
 
     try {
-      session = spawnPty(name, { resume, bypass });
+      session = spawnPty(name, { resume, bypass, provider });
     } catch (err) {
       console.error("PTY spawn failed:", err);
       ws.close(1011, "pty-spawn-failed");
