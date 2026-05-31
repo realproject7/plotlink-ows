@@ -56,10 +56,14 @@ function writePublishStatus(storyDir: string, status: Record<string, FileStatus>
   fs.writeFileSync(statusFile, JSON.stringify(status, null, 2) + "\n");
 }
 
+export type AgentProvider = "claude" | "codex";
+
 interface StoryMeta {
   contentType: "fiction" | "cartoon";
   language?: string;
   agentMode?: "normal" | "bypass";
+  // Optional. Absent ⇒ Claude (no migration). "claude" | "codex".
+  agentProvider?: AgentProvider;
 }
 
 function readStoryMeta(storyDir: string): StoryMeta {
@@ -72,6 +76,7 @@ function readStoryMeta(storyDir: string): StoryMeta {
           contentType: raw.contentType,
           ...(typeof raw.language === "string" ? { language: raw.language } : {}),
           ...(raw.agentMode === "bypass" || raw.agentMode === "normal" ? { agentMode: raw.agentMode } : {}),
+          ...(raw.agentProvider === "claude" || raw.agentProvider === "codex" ? { agentProvider: raw.agentProvider } : {}),
         };
       }
     }
@@ -245,7 +250,7 @@ stories.post("/:name/metadata", async (c) => {
     return c.json({ error: "Story not found" }, 404);
   }
 
-  const body = await c.req.json<{ contentType?: string; language?: string; agentMode?: string }>();
+  const body = await c.req.json<{ contentType?: string; language?: string; agentMode?: string; agentProvider?: string }>();
   if (body.contentType !== "fiction" && body.contentType !== "cartoon") {
     return c.json({ error: "contentType must be 'fiction' or 'cartoon'" }, 400);
   }
@@ -256,6 +261,7 @@ stories.post("/:name/metadata", async (c) => {
     contentType: body.contentType,
     ...(typeof body.language === "string" ? { language: body.language } : {}),
     ...(body.agentMode === "bypass" || body.agentMode === "normal" ? { agentMode: body.agentMode } : {}),
+    ...(body.agentProvider === "claude" || body.agentProvider === "codex" ? { agentProvider: body.agentProvider } : {}),
   };
   writeStoryMeta(storyDir, meta);
   writeStoryInstructions(storyDir, meta.contentType);

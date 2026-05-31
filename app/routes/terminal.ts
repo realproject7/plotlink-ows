@@ -5,7 +5,83 @@ import fs from "fs";
 import { randomUUID } from "crypto";
 import { STORIES_DIR, DATA_DIR } from "../lib/paths";
 import { readStoryMeta } from "./stories";
+import type { AgentProvider } from "./stories";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
+import { buildAgentCommand } from "../lib/agent-command";
+import type { AgentMode, AgentCommand } from "../lib/agent-command";
+
+/**
+ * Provider-aware session record (new shape). Written ONLY for Codex sessions.
+ * Claude sessions keep being persisted as a bare string (legacy shape) so a
+ * rollback to an older app version still resumes fiction/Claude stories.
+ */
+export interface SessionRecord {
+  provider: AgentProvider;
+  sessionId: string | null;
+  lastStartedAt?: number;
+}
+export type StoredValue = string | SessionRecord;
+
+export function isSessionRecord(v: StoredValue | undefined): v is SessionRecord {
+  return typeof v === "object" && v !== null && "provider" in v;
+}
+
+/** Resolve a resume id from either stored shape (string → itself, record → .sessionId). */
+export function resumeIdFrom(v: StoredValue | undefined): string | null {
+  if (typeof v === "string") return v;
+  if (isSessionRecord(v)) return typeof v.sessionId === "string" ? v.sessionId : null;
+  return null;
+}
+
+/**
+ * Resolve the concrete agent CLI invocation (argv) for a Codex spawn, given the
+ * stored session value and whether the user requested a resume.
+ *
+ * Codex decouples "resume requested" from "stored id exists" — unlike Claude:
+ * - Claude needs a CONCRETE session id to resume (`--resume <id>`); with no
+ *   stored id it must start fresh (`--session-id <new>`). So Claude resume only
+ *   happens when both resumeRequested AND a stored id exist.
+ * - Codex can resume the most recent session with no id at all
+ *   (`codex resume --last`). So a resume request alone is enough; a stored id
+ *   (when present) just picks a specific session (`codex resume <id>`).
+ *
+ * This is the single code path shared by spawnPty (codex branch) and the
+ * route/session regression tests, so they exercise identical logic.
+ */
+export function resolveAgentCommandForSession(opts: {
+  provider: AgentProvider;
+  mode: AgentMode;
+  resumeRequested: boolean;
+  stored: StoredValue | undefined;
+  newSessionId: string;
+  storyDir: string;
+}): AgentCommand {
+  const { provider, mode, resumeRequested, stored, newSessionId, storyDir } = opts;
+  const storedResumeId = resumeIdFrom(stored);
+
+  if (provider === "claude") {
+    // Claude requires a concrete id to resume; otherwise fall back to fresh.
+    const doResume = !!(resumeRequested && storedResumeId);
+    return buildAgentCommand({
+      provider,
+      mode,
+      resume: doResume,
+      sessionId: doResume ? storedResumeId : null,
+      newSessionId,
+      storyDir,
+    });
+  }
+
+  // Codex: a resume request alone is enough even with no stored id (resume --last).
+  return buildAgentCommand({
+    provider,
+    mode,
+    resume: resumeRequested,
+    sessionId: storedResumeId,
+    newSessionId,
+    storyDir,
+  });
+}
 
 const MAX_SESSIONS = 5;
 const SESSION_FILE = path.join(DATA_DIR, "terminal-sessions.json");
@@ -26,8 +102,12 @@ function safeName(name: string): string | null {
   return name;
 }
 
-/** Load stored session UUIDs from disk */
-function loadSessionMap(): Record<string, string> {
+/**
+ * Load stored sessions from disk. Values may be legacy bare strings (Claude
+ * UUIDs) OR new provider-aware records. The file is NEVER migrated wholesale —
+ * only the touched key changes shape when actively updated.
+ */
+function loadSessionMap(): Record<string, StoredValue> {
   try {
     if (fs.existsSync(SESSION_FILE)) {
       return JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
@@ -36,8 +116,8 @@ function loadSessionMap(): Record<string, string> {
   return {};
 }
 
-/** Save session UUIDs to disk */
-function saveSessionMap(map: Record<string, string>) {
+/** Save sessions to disk (mixed legacy-string / record values). */
+function saveSessionMap(map: Record<string, StoredValue>) {
   try {
     const dir = path.dirname(SESSION_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -69,6 +149,20 @@ export function buildClaudeCommand(opts: {
 
 export function isTerminalSocketOpen(ws: Pick<WebSocket, "readyState">): boolean {
   return ws.readyState === WS_OPEN;
+}
+
+/**
+ * POSIX single-quote escape for embedding an arbitrary value in a shell string.
+ *
+ * We invoke the agent via a login shell (`pty.spawn(shell, ["-l","-c", cmd])`)
+ * so the user's PATH resolves the `claude`/`codex` binary. That means the argv
+ * is assembled into a single shell-parsed string, so every token must be quoted
+ * safely. Single-quoting (with the `'\''` trick for embedded quotes) is the only
+ * shell quoting that disables ALL special characters ($, `, ", \, spaces), so a
+ * value containing `"`, `$`, or a backtick cannot break out of its token.
+ */
+export function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 // In-memory agent mode per active session name (covers _new_ sessions and
@@ -118,21 +212,42 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   });
   agentModeBySession.set(storyName, bypass ? "bypass" : "normal");
 
-  // Determine session ID
+  // Resolve provider from stored .story.json. Absent ⇒ Claude (no migration).
+  const provider: AgentProvider = isNewStory
+    ? "claude"
+    : readStoryMeta(storyDir).agentProvider ?? "claude";
+
+  // Determine resume id (accepts both legacy-string and record shapes).
   const sessionMap = loadSessionMap();
-  let sessionId: string;
-  const doResume = !!(opts?.resume && sessionMap[storyName]);
-  if (doResume) {
-    sessionId = sessionMap[storyName];
+  const stored = sessionMap[storyName];
+  const storedResumeId = resumeIdFrom(stored);
+  // Claude needs a concrete stored id to resume; with none it starts fresh.
+  const doResume = !!(opts?.resume && storedResumeId);
+  // Fresh Claude reuses any explicit opts.sessionId (back-compat) else a new UUID.
+  const sessionId = doResume ? (storedResumeId as string) : (opts?.sessionId || randomUUID());
+
+  let agentCmd: string;
+  if (provider === "claude") {
+    // KEEP BYTE-IDENTICAL: same buildClaudeCommand output as before.
+    agentCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
   } else {
-    sessionId = opts?.sessionId || randomUUID();
+    // Codex decouples "resume requested" from "stored id exists": a resume
+    // request alone yields `codex resume --last` (no stored id needed), while a
+    // stored id picks a specific session (`codex resume <id>`). Render argv via
+    // the shared resolver, then quote it into an injection-safe shell string.
+    const { command, args } = resolveAgentCommandForSession({
+      provider,
+      mode: bypass ? "bypass" : "normal",
+      resumeRequested: !!opts?.resume,
+      stored,
+      newSessionId: sessionId,
+      storyDir,
+    });
+    agentCmd = [command, ...args].map(shellQuote).join(" ");
   }
 
-  // Build Claude CLI command. No --cwd flag — Claude uses process cwd, set via
-  // pty.spawn({ cwd: storyDir }).
-  const claudeCmd = buildClaudeCommand({ resume: doResume, sessionId, bypass });
-
-  const term = pty.spawn(shell, ["-l", "-c", claudeCmd], {
+  // No --cwd flag for Claude — it uses process cwd, set via pty.spawn({ cwd }).
+  const term = pty.spawn(shell, ["-l", "-c", agentCmd], {
     name: "xterm-256color",
     cols: 120,
     rows: 30,
@@ -140,8 +255,17 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
     env: process.env as Record<string, string>,
   });
 
-  // Persist session ID
-  sessionMap[storyName] = sessionId;
+  // Persist session info. Claude keeps the legacy bare-string shape (rollback
+  // safe); Codex writes a provider-aware record (its own id resolves later).
+  if (provider === "claude") {
+    sessionMap[storyName] = sessionId;
+  } else {
+    sessionMap[storyName] = {
+      provider,
+      sessionId: doResume ? sessionId : null,
+      lastStartedAt: Date.now(),
+    };
+  }
   saveSessionMap(sessionMap);
 
   const isResume = !!opts?.resume;
@@ -213,7 +337,7 @@ terminal.get("/session/:storyName", (c) => {
   if (!storyName) return c.json({ error: "Invalid story name" }, 400);
 
   const sessionMap = loadSessionMap();
-  const sessionId = sessionMap[storyName] || null;
+  const sessionId = resumeIdFrom(sessionMap[storyName]);
   const active = ptySessions.get(storyName);
 
   return c.json({
