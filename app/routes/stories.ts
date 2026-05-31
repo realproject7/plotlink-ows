@@ -5,6 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
+import { syncCleanImages, cleanImageCandidates } from "../lib/clean-image-sync";
 
 const stories = new Hono();
 
@@ -494,6 +495,101 @@ stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
 
   return c.json({ ok: true, warnings });
 });
+
+const CLEAN_IMAGE_MAX_BYTES = 1024 * 1024;
+const CLEAN_IMAGE_VALID_EXT = new Set(["webp", "jpg", "jpeg", "png"]);
+
+/**
+ * POST /api/stories/:name/cuts/:plotFile/sync-clean-images — detect clean image
+ * files that exist on disk and record their path on the matching cut. Only
+ * records a path when a real, valid file exists (size ≤ 1MB, allowed extension);
+ * invalid/oversized files are reported as `rejected` and never recorded.
+ */
+stories.post("/:name/cuts/:plotFile/sync-clean-images", (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  let cutsFile;
+  try {
+    cutsFile = readCutsFile(storyDir, plotFile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const rejectedMap = new Map<string, { cutId: number; reason: string }>();
+
+  // Validate a candidate relative path against the real filesystem. Returns true
+  // ONLY when the file exists, has an allowed extension, and is ≤ 1MB. Oversized
+  // or wrong-extension files are recorded in `rejected` (deduped by path) and
+  // treated as missing so they are never written to cuts.json.
+  const fileExists = (relPath: string): boolean => {
+    const abs = path.join(storyDir, relPath);
+    if (!fs.existsSync(abs)) return false;
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      return false;
+    }
+    if (!stat.isFile()) return false;
+
+    const cutMatch = relPath.match(/cut-(\d+)-clean\./);
+    const cutId = cutMatch ? parseInt(cutMatch[1], 10) : 0;
+    const ext = path.extname(relPath).slice(1).toLowerCase();
+
+    if (!CLEAN_IMAGE_VALID_EXT.has(ext)) {
+      rejectedMap.set(relPath, { cutId, reason: `Unsupported extension .${ext}` });
+      return false;
+    }
+    if (stat.size > CLEAN_IMAGE_MAX_BYTES) {
+      rejectedMap.set(relPath, { cutId, reason: "File must be under 1MB" });
+      return false;
+    }
+    return true;
+  };
+
+  // Touch every canonical candidate so oversized/invalid files surface as
+  // rejections even when a valid one is also present for the same cut.
+  for (const cut of cutsFile.cuts) {
+    for (const rel of cleanImageCandidates(plotFile, cut.id)) {
+      fileExists(rel);
+    }
+  }
+
+  // Surface any on-disk clean image with a disallowed extension (e.g. .txt) so
+  // the writer learns why it was not recorded — these never become candidates.
+  const assetDir = path.join(storyDir, "assets", plotFile);
+  if (fs.existsSync(assetDir)) {
+    const knownCutIds = new Set(cutsFile.cuts.map((cut) => cut.id));
+    for (const entry of fs.readdirSync(assetDir)) {
+      const m = entry.match(/^cut-(\d+)-clean\.([A-Za-z0-9]+)$/);
+      if (!m) continue;
+      const ext = m[2].toLowerCase();
+      const cutId = parseInt(m[1], 10);
+      if (!knownCutIds.has(cutId)) continue;
+      const rel = `assets/${plotFile}/${entry}`;
+      if (!CLEAN_IMAGE_VALID_EXT.has(ext) && !rejectedMap.has(rel)) {
+        rejectedMap.set(rel, { cutId, reason: `Unsupported extension .${ext}` });
+      }
+    }
+  }
+
+  const result = syncCleanImages(cutsFile.cuts, plotFile, fileExists);
+  const rejected = Array.from(rejectedMap.values());
+  if (result.changed) {
+    writeCutsFile(storyDir, plotFile, { ...cutsFile, cuts: result.cuts });
+  }
+
+  return c.json({ ok: true, changed: result.changed, synced: result.synced, rejected });
+});
+
 
 /** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */
 stories.get("/:name/asset/*", (c) => {

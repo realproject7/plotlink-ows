@@ -412,6 +412,96 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("sync-clean-images records cleanImagePath when a valid file exists", async () => {
+    const storyDir = path.join(tmpDir, "sync-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.from("fake-webp"));
+
+    const res = await app.request("/api/stories/sync-story/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(true);
+    expect(body.synced).toEqual([1]);
+    expect(body.rejected).toEqual([]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(reloaded.cuts[1].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects an oversized file and does not record it", async () => {
+    const storyDir = path.join(tmpDir, "sync-big");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.alloc(1024 * 1024 + 10));
+
+    const res = await app.request("/api/stories/sync-big/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([{ cutId: 1, reason: "File must be under 1MB" }]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images ignores files with an invalid extension", async () => {
+    const storyDir = path.join(tmpDir, "sync-bad-ext");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.txt"), Buffer.from("not an image"));
+
+    const res = await app.request("/api/stories/sync-bad-ext/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([{ cutId: 1, reason: "Unsupported extension .txt" }]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images is idempotent on a second run", async () => {
+    const storyDir = path.join(tmpDir, "sync-idem");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.from("fake-webp"));
+
+    const first = await (await app.request("/api/stories/sync-idem/cuts/plot-01/sync-clean-images", { method: "POST" })).json();
+    expect(first.changed).toBe(true);
+
+    const second = await (await app.request("/api/stories/sync-idem/cuts/plot-01/sync-clean-images", { method: "POST" })).json();
+    expect(second.changed).toBe(false);
+    expect(second.synced).toEqual([]);
+  });
+
+  it("sync-clean-images returns 404 for missing story", async () => {
+    const res = await app.request("/api/stories/nope/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
+  it("sync-clean-images returns 404 when cuts file is missing", async () => {
+    const storyDir = path.join(tmpDir, "sync-no-cuts");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const res = await app.request("/api/stories/sync-no-cuts/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
   it("defaults language to English when no CJK in title", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });

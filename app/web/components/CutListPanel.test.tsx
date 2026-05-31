@@ -328,6 +328,67 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("shows a Sync clean images button that POSTs sync-clean-images then reloads", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, description: "Sync scene" })],
+    };
+    const authFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(cutsData) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, changed: true, synced: [1], rejected: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({
+        ...cutsData,
+        cuts: [{ ...cutsData.cuts[0], cleanImagePath: "assets/plot-01/cut-01-clean.webp" }],
+      }) });
+
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByTestId("sync-clean-btn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("sync-clean-btn"));
+
+    await waitFor(() => {
+      const urls = authFetch.mock.calls.map((c: [string]) => c[0]);
+      expect(urls.some((u: string) => u.includes("/sync-clean-images"))).toBe(true);
+      // reload happened (GET cuts called twice total)
+      expect(urls.filter((u: string) => u === "/api/stories/story/cuts/plot-01").length).toBe(2);
+    });
+    await waitFor(() => expect(screen.getByTestId("sync-result")).toHaveTextContent("Synced 1"));
+  });
+
+  it("missing cut shows Copy prompt, Ask Codex and Upload affordances", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, description: "Missing scene" })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Missing scene")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Missing scene"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
+      expect(screen.getByTestId("ask-codex-1")).toBeInTheDocument();
+      expect(screen.getByTestId("ask-codex-copy-1")).toBeInTheDocument();
+      expect(screen.getByText("Upload clean image")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Ask Codex affordance once a clean image exists", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", description: "Has clean" })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Has clean")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Has clean"));
+
+    await waitFor(() => expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument());
+    expect(screen.queryByTestId("ask-codex-1")).not.toBeInTheDocument();
+  });
+
   it("shows error state on fetch failure", async () => {
     const authFetch = mockAuthFetch({ ok: false, status: 400, data: { error: "Bad data" } });
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
