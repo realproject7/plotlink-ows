@@ -229,9 +229,27 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
           <div className="flex items-center justify-between">
             <span className="text-foreground text-sm">Codex</span>
             <span className="text-muted text-xs">
-              {readiness?.codex.installed
-                ? `Installed, image generation ${readiness.codex.imageGeneration}`
-                : "Not detected"}
+              {readiness?.codex.installed ? "Installed" : "Not detected"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Codex version</span>
+            <span className="text-muted text-xs font-mono">
+              {readiness?.codex.version ?? "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Image generation</span>
+            <span className="text-muted text-xs">
+              {readiness?.codex.imageGeneration ?? "unknown"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Last checked</span>
+            <span className="text-muted text-xs">
+              {readiness?.checkedAt
+                ? new Date(readiness.checkedAt).toLocaleString()
+                : "—"}
             </span>
           </div>
         </div>

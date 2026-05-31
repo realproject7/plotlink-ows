@@ -30,44 +30,54 @@ function mockFetch(readiness: unknown) {
 }
 
 describe("Settings agent provider readiness", () => {
-  it("renders provider readiness rows reflecting installed/feature", async () => {
+  it("renders codex version, image generation status, and last-checked timestamp", async () => {
+    const checkedAt = 1748000000000;
     mockFetch({
       claude: { installed: true },
-      codex: { installed: true, imageGeneration: "disabled" },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+      checkedAt,
     });
     render(<Settings token="t" onLogout={() => {}} />);
     const section = await screen.findByTestId("provider-readiness");
     await waitFor(() => {
       expect(section).toHaveTextContent("Claude");
       expect(section).toHaveTextContent("Installed");
-      expect(section).toHaveTextContent("Installed, image generation disabled");
+      expect(section).toHaveTextContent("Codex version");
+      expect(section).toHaveTextContent("codex-cli 0.135.0");
+      expect(section).toHaveTextContent("Image generation");
+      expect(section).toHaveTextContent("disabled");
+      expect(section).toHaveTextContent("Last checked");
+      expect(section).toHaveTextContent(new Date(checkedAt).toLocaleString());
     });
   });
 
   it("shows 'Not detected' when codex is missing and claude is absent", async () => {
     mockFetch({
       claude: { installed: false },
-      codex: { installed: false, imageGeneration: "unknown" },
+      codex: { installed: false, version: null, imageGeneration: "unknown" },
+      checkedAt: 1748000000000,
     });
     render(<Settings token="t" onLogout={() => {}} />);
     const section = await screen.findByTestId("provider-readiness");
     await waitFor(() => {
-      // Both rows fall back to "Not detected".
+      // Both installed rows fall back to "Not detected".
       const notDetected = section.querySelectorAll(".text-muted");
       expect(section).toHaveTextContent("Not detected");
       expect(notDetected.length).toBeGreaterThan(0);
     });
   });
 
-  it("shows 'Installed, image generation enabled' for a ready codex", async () => {
+  it("shows image generation enabled for a ready codex", async () => {
     mockFetch({
       claude: { installed: true },
-      codex: { installed: true, imageGeneration: "enabled" },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+      checkedAt: 1748000000000,
     });
     render(<Settings token="t" onLogout={() => {}} />);
     const section = await screen.findByTestId("provider-readiness");
     await waitFor(() => {
-      expect(section).toHaveTextContent("Installed, image generation enabled");
+      expect(section).toHaveTextContent("Image generation");
+      expect(section).toHaveTextContent("enabled");
     });
   });
 });

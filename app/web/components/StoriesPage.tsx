@@ -49,6 +49,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
   const [newStoryAgentProvider, setNewStoryAgentProvider] = useState<"claude" | "codex">("claude");
   const [readiness, setReadiness] = useState<AgentReadiness | null>(null);
+  const [codexEnableCopied, setCodexEnableCopied] = useState(false);
   const [bypassStories, setBypassStories] = useState<Record<string, boolean>>({});
   const [agentProviders, setAgentProviders] = useState<Record<string, "claude" | "codex">>({});
   // Track confirmed stories (those with structure.md) for Archive gating
@@ -400,6 +401,23 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     return () => clearInterval(interval);
   }, [authFetch]);
 
+  // Codex readiness for cartoon gating. `codexReady` requires Codex installed
+  // AND image_generation effectively enabled. `cartoonBlocked` only disables
+  // create once readiness has actually loaded and is not ready — when readiness
+  // is still null (loading or probe-endpoint failure) we DO NOT block, to avoid
+  // permanently bricking cartoon if the probe errors.
+  const codexReady =
+    !!readiness && readiness.codex.installed && readiness.codex.imageGeneration === "enabled";
+  const cartoonBlocked = !!readiness && !codexReady;
+
+  const copyCodexEnable = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText("codex features enable image_generation");
+      setCodexEnableCopied(true);
+      setTimeout(() => setCodexEnableCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  }, []);
+
   const handleArchiveStory = useCallback((name: string) => {
     // Archive API already called by TerminalPanel — just clear selection
     if (selectedStory === name) {
@@ -516,30 +534,54 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
               </button>
-              <button
-                onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, "codex")}
-                className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
-              >
-                <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>
-                <p className="text-[11px] text-muted">Comics, manga, webtoons</p>
-                <p className="text-[11px] text-muted" data-testid="cartoon-codex-note">
-                  Cartoon mode requires Codex because the clean-image step needs image generation support.
-                </p>
+              <div className="space-y-1">
+                <button
+                  onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, "codex")}
+                  disabled={cartoonBlocked}
+                  className="w-full border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
+                >
+                  <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>
+                  <p className="text-[11px] text-muted">Comics, manga, webtoons</p>
+                  <p className="text-[11px] text-muted" data-testid="cartoon-codex-note">
+                    Cartoon mode requires Codex because the clean-image step needs image generation support.
+                  </p>
+                </button>
+                {/* Warnings/copy live OUTSIDE the button: a disabled button would
+                    otherwise swallow clicks on the Copy control. */}
+                {readiness && !readiness.codex.installed && (
+                  <p
+                    className="text-[11px] text-amber-700 text-left"
+                    data-testid="cartoon-codex-warning"
+                  >
+                    Codex was not detected. Install the Codex CLI and sign in
+                    (e.g. <span className="font-mono">npm i -g @openai/codex</span> then{" "}
+                    <span className="font-mono">codex login</span>) to create cartoons.
+                  </p>
+                )}
                 {readiness &&
-                  (!readiness.codex.installed ||
-                    readiness.codex.imageGeneration === "disabled") && (
-                    <p
-                      className="text-[11px] text-amber-700"
-                      data-testid="cartoon-codex-warning"
-                    >
-                      Cartoon requires Codex with image generation.{" "}
-                      {readiness.codex.installed
-                        ? "Codex image generation appears unavailable."
-                        : "Codex was not detected."}{" "}
-                      See setup guide.
-                    </p>
+                  readiness.codex.installed &&
+                  readiness.codex.imageGeneration !== "enabled" && (
+                    <div data-testid="cartoon-codex-warning">
+                      <p className="text-[11px] text-amber-700 text-left">
+                        Codex is installed but image generation isn&apos;t enabled.
+                        Enable it, then reopen this dialog:
+                      </p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <code className="flex-1 truncate rounded border border-border bg-surface px-1.5 py-1 text-left text-[10px] font-mono text-foreground">
+                          codex features enable image_generation
+                        </code>
+                        <button
+                          type="button"
+                          data-testid="copy-codex-enable"
+                          onClick={copyCodexEnable}
+                          className="rounded border border-border px-2 py-1 text-[10px] text-muted hover:border-accent hover:text-accent transition-colors"
+                        >
+                          {codexEnableCopied ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
                   )}
-              </button>
+              </div>
             </div>
             <button
               onClick={() => setShowNewStoryModal(false)}

@@ -28,7 +28,10 @@ agent.get("/readiness", async (c) => {
       }
     };
 
-    const readiness = await probeAgentReadiness(run);
+    const readiness = {
+      ...(await probeAgentReadiness(run)),
+      checkedAt: Date.now(),
+    };
     return c.json(readiness);
   } catch (error) {
     console.error("Agent readiness error:", error);
