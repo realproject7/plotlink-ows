@@ -9,6 +9,53 @@ export interface CleanImageSyncResult {
 /** Preference order for clean-image extensions when several files exist. */
 export const CLEAN_IMAGE_EXTENSIONS = ["webp", "jpg", "jpeg", "png"] as const;
 
+/** Image type detected from a file's leading magic bytes. */
+export type SniffedType = "webp" | "jpeg" | "png" | "unknown";
+
+/**
+ * Detect an image type from leading magic bytes. Pure (no filesystem). Returns
+ * "unknown" for non-image / mismatched / too-short input.
+ *
+ *  - JPEG: FF D8 FF
+ *  - PNG:  89 50 4E 47 0D 0A 1A 0A
+ *  - WebP: bytes 0-3 = "RIFF" (52 49 46 46) AND bytes 8-11 = "WEBP" (57 45 42 50)
+ */
+export function sniffImageType(bytes: Uint8Array): SniffedType {
+  // JPEG: FF D8 FF
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "jpeg";
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "png";
+  }
+  // WebP: "RIFF" .... "WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "webp";
+  }
+  return "unknown";
+}
+
 /** Canonical clean-image relative paths for a cut, in preference order. */
 export function cleanImageCandidates(plotFile: string, cutId: number): string[] {
   const padded = String(cutId).padStart(2, "0");

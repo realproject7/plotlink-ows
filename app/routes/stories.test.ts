@@ -412,6 +412,14 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(400);
   });
 
+  // Real magic-byte payloads so content sniffing accepts them.
+  const WEBP_MAGIC = Buffer.from([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const PNG_MAGIC = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00,
+  ]);
+
   it("sync-clean-images records cleanImagePath when a valid file exists", async () => {
     const storyDir = path.join(tmpDir, "sync-story");
     fs.mkdirSync(storyDir, { recursive: true });
@@ -419,7 +427,7 @@ describe("POST /upload-clean/:cutId route", () => {
 
     const assetDir = path.join(storyDir, "assets", "plot-01");
     fs.mkdirSync(assetDir, { recursive: true });
-    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.from("fake-webp"));
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
 
     const res = await app.request("/api/stories/sync-story/cuts/plot-01/sync-clean-images", { method: "POST" });
     expect(res.status).toBe(200);
@@ -431,6 +439,52 @@ describe("POST /upload-clean/:cutId route", () => {
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
     expect(reloaded.cuts[1].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects a text file renamed to .webp (content sniff)", async () => {
+    const storyDir = path.join(tmpDir, "sync-fake-webp");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    // Valid webp for cut 1, text-content file renamed .webp for cut 2.
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
+    fs.writeFileSync(path.join(assetDir, "cut-02-clean.webp"), Buffer.from("hello world"));
+
+    const res = await app.request("/api/stories/sync-fake-webp/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.synced).toEqual([1]);
+    expect(body.rejected).toEqual([
+      { cutId: 2, reason: "not a valid image (content does not match WebP/JPEG/PNG)" },
+    ]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(reloaded.cuts[1].cleanImagePath).toBeNull();
+  });
+
+  it("sync-clean-images rejects a .webp whose content is PNG (extension mismatch)", async () => {
+    const storyDir = path.join(tmpDir, "sync-mismatch");
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));
+
+    const assetDir = path.join(storyDir, "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), PNG_MAGIC);
+
+    const res = await app.request("/api/stories/sync-mismatch/cuts/plot-01/sync-clean-images", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(false);
+    expect(body.synced).toEqual([]);
+    expect(body.rejected).toEqual([
+      { cutId: 1, reason: "content does not match .webp extension" },
+    ]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
   });
 
   it("sync-clean-images rejects an oversized file and does not record it", async () => {
@@ -480,7 +534,7 @@ describe("POST /upload-clean/:cutId route", () => {
 
     const assetDir = path.join(storyDir, "assets", "plot-01");
     fs.mkdirSync(assetDir, { recursive: true });
-    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), Buffer.from("fake-webp"));
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_MAGIC);
 
     const first = await (await app.request("/api/stories/sync-idem/cuts/plot-01/sync-clean-images", { method: "POST" })).json();
     expect(first.changed).toBe(true);

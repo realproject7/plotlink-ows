@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncCleanImages, cleanImageCandidates } from "./clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType } from "./clean-image-sync";
 import { createDefaultCut } from "./cuts";
 
 function cut(id: number, overrides: Partial<ReturnType<typeof createDefaultCut>> = {}) {
@@ -14,6 +14,41 @@ describe("cleanImageCandidates", () => {
       "assets/plot-01/cut-03-clean.jpeg",
       "assets/plot-01/cut-03-clean.png",
     ]);
+  });
+});
+
+describe("sniffImageType", () => {
+  it("detects JPEG from FF D8 FF magic", () => {
+    expect(sniffImageType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00]))).toBe("jpeg");
+  });
+
+  it("detects PNG from 89 50 4E 47 0D 0A 1A 0A magic", () => {
+    expect(sniffImageType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))).toBe("png");
+  });
+
+  it("detects WebP from RIFF....WEBP magic", () => {
+    expect(
+      sniffImageType(
+        new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00]),
+      ),
+    ).toBe("webp");
+  });
+
+  it("returns unknown for RIFF without WEBP marker", () => {
+    expect(
+      sniffImageType(
+        new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x41, 0x56, 0x49, 0x20]),
+      ),
+    ).toBe("unknown");
+  });
+
+  it("returns unknown for text/garbage", () => {
+    expect(sniffImageType(new TextEncoder().encode("hello world"))).toBe("unknown");
+  });
+
+  it("returns unknown for a too-short buffer", () => {
+    expect(sniffImageType(new Uint8Array([0xff, 0xd8]))).toBe("unknown");
+    expect(sniffImageType(new Uint8Array([]))).toBe("unknown");
   });
 });
 

@@ -5,7 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
-import { syncCleanImages, cleanImageCandidates } from "../lib/clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, type SniffedType } from "../lib/clean-image-sync";
 
 const stories = new Hono();
 
@@ -499,6 +499,14 @@ stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
 const CLEAN_IMAGE_MAX_BYTES = 1024 * 1024;
 const CLEAN_IMAGE_VALID_EXT = new Set(["webp", "jpg", "jpeg", "png"]);
 
+/** Map an allowed file extension to the image type its content must match. */
+const CLEAN_IMAGE_EXT_TO_TYPE: Record<string, Exclude<SniffedType, "unknown">> = {
+  webp: "webp",
+  jpg: "jpeg",
+  jpeg: "jpeg",
+  png: "png",
+};
+
 /**
  * POST /api/stories/:name/cuts/:plotFile/sync-clean-images — detect clean image
  * files that exist on disk and record their path on the matching cut. Only
@@ -550,6 +558,34 @@ stories.post("/:name/cuts/:plotFile/sync-clean-images", (c) => {
     }
     if (stat.size > CLEAN_IMAGE_MAX_BYTES) {
       rejectedMap.set(relPath, { cutId, reason: "File must be under 1MB" });
+      return false;
+    }
+
+    // Sniff the real content so a text file (or a renamed/mismatched image)
+    // named `.webp`/`.jpg` cannot pass on extension alone.
+    let sniffed: SniffedType;
+    try {
+      const fd = fs.openSync(abs, "r");
+      try {
+        const head = Buffer.alloc(16);
+        const read = fs.readSync(fd, head, 0, 16, 0);
+        sniffed = sniffImageType(head.subarray(0, read));
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return false;
+    }
+
+    if (sniffed === "unknown") {
+      rejectedMap.set(relPath, {
+        cutId,
+        reason: "not a valid image (content does not match WebP/JPEG/PNG)",
+      });
+      return false;
+    }
+    if (sniffed !== CLEAN_IMAGE_EXT_TO_TYPE[ext]) {
+      rejectedMap.set(relPath, { cutId, reason: `content does not match .${ext} extension` });
       return false;
     }
     return true;
