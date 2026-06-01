@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Node env (not jsdom): this is a pure fs/Hono route test, and multipart
+// FormData upload bodies only serialize correctly under the node environment
+// (jsdom's FormData/File do not set a multipart boundary for c.req.formData()).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -247,6 +251,78 @@ describe("POST /upload-clean/:cutId route", () => {
     const res = await postEmpty("/api/stories/nonexistent/cuts/plot-01/upload-clean/1");
 
     expect(res.status).toBe(404);
+  });
+
+  // #266: validate uploads by actual file bytes, not just the (spoofable) MIME.
+  const WEBP_BYTES = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  function uploadClean(story: string, cutId: number, bytes: Uint8Array, mime: string, filename: string) {
+    const fd = new FormData();
+    fd.append("file", new File([bytes], filename, { type: mime }));
+    return app.request(`/api/stories/${story}/cuts/plot-01/upload-clean/${cutId}`, {
+      method: "POST",
+      body: fd,
+    });
+  }
+
+  function seedStory(name: string) {
+    const storyDir = path.join(tmpDir, name);
+    fs.mkdirSync(storyDir, { recursive: true });
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2));
+    return storyDir;
+  }
+
+  it("accepts a valid WebP upload: 200, file written, cleanImagePath recorded", async () => {
+    const storyDir = seedStory("upl-webp");
+    const res = await uploadClean("upl-webp", 1, WEBP_BYTES, "image/webp", "cut.webp");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(fs.existsSync(path.join(storyDir, "assets/plot-01/cut-01-clean.webp"))).toBe(true);
+  });
+
+  it("accepts a valid JPEG upload: 200, cleanImagePath recorded with .jpg", async () => {
+    const storyDir = seedStory("upl-jpeg");
+    const res = await uploadClean("upl-jpeg", 1, JPEG_BYTES, "image/jpeg", "cut.jpg");
+    expect(res.status).toBe(200);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.jpg");
+  });
+
+  it("rejects a text file renamed .webp with image/webp MIME: 400, nothing written/recorded", async () => {
+    const storyDir = seedStory("upl-fake");
+    const text = new TextEncoder().encode("this is not an image, just text");
+    const res = await uploadClean("upl-fake", 1, text, "image/webp", "cut.webp");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("not a valid WebP/JPEG image");
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+    expect(fs.existsSync(path.join(storyDir, "assets/plot-01/cut-01-clean.webp"))).toBe(false);
+  });
+
+  it("rejects PNG bytes labeled image/webp: 400, not recorded", async () => {
+    const storyDir = seedStory("upl-png");
+    const res = await uploadClean("upl-png", 1, PNG_BYTES, "image/webp", "cut.webp");
+    expect(res.status).toBe(400);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+  });
+
+  it("rejects a disallowed MIME (image/png) before byte validation: 400", async () => {
+    const storyDir = seedStory("upl-pngmime");
+    const res = await uploadClean("upl-pngmime", 1, PNG_BYTES, "image/png", "cut.png");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Only WebP and JPEG");
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
   });
 
   it("GET cuts returns 404 when cuts file is missing", async () => {
