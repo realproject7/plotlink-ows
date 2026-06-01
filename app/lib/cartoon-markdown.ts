@@ -1,4 +1,5 @@
 import type { Cut } from "./cuts";
+import { findPlaceholderProse } from "./cartoon-readiness";
 
 const MARKER_START = (id: string) => `<!-- ows:cartoon-cut ${id} start -->`;
 const MARKER_END = (id: string) => `<!-- ows:cartoon-cut ${id} end -->`;
@@ -27,11 +28,27 @@ export function generateCartoonMarkdown(cuts: Cut[]): string {
   return cuts.map((cut, i) => generateCutBlock(cut, i + 1)).join("\n\n");
 }
 
+/**
+ * Drop non-marker paragraphs that are pre-generation / instructional placeholder
+ * prose, so generated publish markdown stays image-only (plus marker comments).
+ * Paragraphs are blank-line-delimited; a `ows:cartoon-cut` block is a single
+ * paragraph (its lines are joined by single newlines) and is always preserved.
+ * See #286 — the leaked "Placeholder only ..." line was such a stray paragraph.
+ */
+function stripPlaceholderProse(markdown: string): string {
+  return markdown
+    .split(/\n{2,}/)
+    .filter((para) => para.includes("ows:cartoon-cut") || !findPlaceholderProse(para))
+    .join("\n\n");
+}
+
 export function mergeCartoonMarkdown(
   existingMd: string,
   cuts: Cut[],
 ): { markdown: string; warnings: string[] } {
   const warnings: string[] = [];
+
+  existingMd = stripPlaceholderProse(existingMd);
 
   const newBlocks = new Map<string, string>();
   for (let i = 0; i < cuts.length; i++) {

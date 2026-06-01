@@ -214,6 +214,28 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(data.issues.some((i: string) => i.includes("not an http(s) URL"))).toBe(true);
   });
 
+  it("blocks cartoon plot when placeholder prose remains above otherwise-valid cut blocks (#286)", async () => {
+    // Reproduces storyline #57 / plot 1: every cut block is a valid uploaded
+    // image (would pass the old guard), but instructional placeholder prose sits
+    // ABOVE the blocks and would render as junk on the immutable published page.
+    const storyDir = setupCartoonStory();
+    const url = "https://ipfs.filebase.io/ipfs/QmExact";
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].uploadedUrl = url;
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const md = [
+      "Placeholder only. OWS should generate the publish markdown from `plot-01.cuts.json` after clean images are approved, lettered final images are created, and final images are uploaded.",
+      "",
+      `<!-- ows:cartoon-cut cut-001 start -->\n![C](${url})\n<!-- ows:cartoon-cut cut-001 end -->`,
+    ].join("\n");
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("not ready");
+    expect(data.issues.some((i: string) => i.includes("placeholder/instructional prose"))).toBe(true);
+  });
+
   it("cannot bypass cartoon guard by sending contentType: fiction", async () => {
     // Story is cartoon server-side; body lies and says fiction.
     const storyDir = setupCartoonStory();
