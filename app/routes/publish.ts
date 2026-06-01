@@ -8,6 +8,23 @@ import { STORIES_DIR } from "../lib/paths";
 import { readCutsFile } from "../lib/cuts";
 import { checkMarkdownReadiness } from "../lib/cartoon-readiness";
 import { readStoryMeta } from "./stories";
+import { sniffImageType } from "../lib/clean-image-sync";
+
+/**
+ * Validate that an uploaded image's actual magic bytes match its claimed
+ * WebP/JPEG MIME type, so a renamed PNG/text file labeled image/webp cannot be
+ * forwarded to the plotlink backend. Mirrors the byte check the cartoon
+ * clean-image upload uses (#266). Returns a user-facing error string, or null
+ * when the bytes are valid.
+ */
+async function imageBytesError(file: File): Promise<string | null> {
+  const expected = file.type === "image/webp" ? "webp" : "jpeg";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (sniffImageType(bytes) !== expected) {
+    return "File content is not a valid WebP/JPEG image (bytes do not match the image type)";
+  }
+  return null;
+}
 
 const publish = new Hono();
 
@@ -254,6 +271,9 @@ publish.post("/upload-cover", async (c) => {
     if (!allowedTypes.includes(file.type)) {
       return c.json({ error: "Only WebP and JPEG images are accepted" }, 400);
     }
+
+    const bytesError = await imageBytesError(file);
+    if (bytesError) return c.json({ error: bytesError }, 400);
 
     const cid = await uploadCoverImage(wallet.name, address as `0x${string}`, file);
     return c.json({ cid });

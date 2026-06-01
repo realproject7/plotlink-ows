@@ -1,3 +1,23 @@
+/** Cover image constraints enforced by the plotlink backend. */
+export const COVER_MAX_BYTES = 1024 * 1024;
+export const COVER_ALLOWED_TYPES = ["image/webp", "image/jpeg"] as const;
+
+/**
+ * Validate a chosen story cover against the constraints the plotlink backend
+ * enforces (WebP/JPEG, ≤1MB) so the writer gets immediate feedback at selection
+ * rather than a late error at save. Pure — takes only size/type — and shared by
+ * fiction and cartoon (the cover route is content-type agnostic). The 600x900
+ * portrait guidance is a recommendation and is not enforced here. Returns a
+ * user-facing error string, or null when the file is acceptable.
+ */
+export function validateCoverImage(file: { size: number; type: string }): string | null {
+  if (file.size > COVER_MAX_BYTES) return "Image exceeds 1MB limit";
+  if (!(COVER_ALLOWED_TYPES as readonly string[]).includes(file.type)) {
+    return "Only WebP and JPEG images are accepted";
+  }
+  return null;
+}
+
 export function getContentTypeForPublish(
   storyContentTypes: Record<string, string>,
   storyName: string,
