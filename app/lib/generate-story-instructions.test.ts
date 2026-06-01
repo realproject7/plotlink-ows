@@ -44,7 +44,8 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("No text overlays");
   });
 
-  it("cartoon output explains the clean-image prompt handoff and never claims it created files", () => {
+  it("Claude/default cartoon output explains the clean-image prompt handoff and never claims it created files", () => {
+    // Default provider is Claude (matches the absent⇒Claude default; see #268).
     const out = generateStoryInstructions("cartoon");
     // Claude must not claim a clean image file was created when it only made a prompt
     expect(out).toContain("Do NOT claim that");
@@ -57,15 +58,44 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("Upload clean image");
     // After a real file exists, cleanImagePath is updated via OWS/cuts API
     expect(out).toContain("cleanImagePath");
+    // Default == explicit "claude" branch
+    expect(out).toBe(generateStoryInstructions("cartoon", "claude"));
   });
 
-  it("cartoon output includes the Codex clean-image file contract", () => {
-    const out = generateStoryInstructions("cartoon");
-    expect(out).toContain("Codex image generation");
+  it("Codex cartoon output leads with the create-the-file contract, not a can't-create-files warning", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // PRIMARY instruction: create the real file at the canonical path and verify it
+    expect(out).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
     expect(out).toContain("cut-XX-clean.webp");
     expect(out).toContain("under 1MB");
+    expect(out).toContain("VERIFY the file actually exists");
     expect(out).toContain("Do NOT claim the image was generated unless the file actually exists");
     expect(out).toContain("Sync clean images");
+    // Acceptance (#274): Codex must NOT be told it cannot/does not create image files
+    expect(out).not.toContain("You cannot create image files yourself");
+    expect(out).not.toContain("do **not** generate image files");
+    // The manual prompt+import path survives only as an explicit fallback
+    expect(out).toContain("Fallback: hand the prompt to the writer");
+    expect(out).toContain("Copy prompt");
+    expect(out).toContain("Upload clean image");
+  });
+
+  it("Codex and Claude cartoon outputs differ; the create-file contract is primary only for Codex", () => {
+    const codex = generateStoryInstructions("cartoon", "codex");
+    const claude = generateStoryInstructions("cartoon", "claude");
+    expect(codex).not.toBe(claude);
+    // The shared clean-image-first rules are present in both
+    expect(codex).toContain("Do NOT bake dialogue");
+    expect(claude).toContain("Do NOT bake dialogue");
+    // The Codex create-file primary heading appears only in the Codex variant
+    expect(codex).toContain("Create the clean image file directly — your primary job");
+    expect(claude).not.toContain("Create the clean image file directly — your primary job");
+    // The Claude can't-create-files handoff is primary only in the Claude variant
+    expect(claude).toContain("You cannot create image files yourself");
+    expect(codex).not.toContain("You cannot create image files yourself");
+    // Episode workflow step 2 reflects the provider's primary path
+    expect(codex).toContain("Create the real clean-image file for each cut");
+    expect(claude).toContain("**Prompt & import**");
   });
 
   it("fiction and cartoon outputs are different", () => {
@@ -137,11 +167,31 @@ describe("writeStoryInstructions", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates CLAUDE.md with correct marker", () => {
+  it("creates CLAUDE.md with provider-aware cartoon marker (default Claude)", () => {
     writeStoryInstructions(tmpDir, "cartoon");
     const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
-    expect(content.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon -->");
+    expect(content.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon:claude -->");
     expect(content).toContain("Character Bible");
+  });
+
+  it("creates a Codex cartoon CLAUDE.md with the codex marker and create-file contract", () => {
+    writeStoryInstructions(tmpDir, "cartoon", "codex");
+    const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    expect(content.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon:codex -->");
+    expect(content).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    expect(content).not.toContain("You cannot create image files yourself");
+  });
+
+  it("regenerates when the cartoon provider changes (Claude → Codex repair)", () => {
+    writeStoryInstructions(tmpDir, "cartoon", "claude");
+    const before = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    expect(before).toContain("You cannot create image files yourself");
+
+    writeStoryInstructions(tmpDir, "cartoon", "codex");
+    const after = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    expect(after.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon:codex -->");
+    expect(after).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    expect(after).not.toContain("You cannot create image files yourself");
   });
 
   it("skips write when marker matches", () => {

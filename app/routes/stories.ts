@@ -282,7 +282,9 @@ stories.post("/:name/metadata", async (c) => {
     ...(body.agentProvider === "claude" || body.agentProvider === "codex" ? { agentProvider: body.agentProvider } : {}),
   };
   writeStoryMeta(storyDir, meta);
-  writeStoryInstructions(storyDir, meta.contentType);
+  // Provider-aware so a legacy-cartoon repair (agentProvider → codex) rewrites
+  // CLAUDE.md with the Codex file-creation contract; absent ⇒ Claude/manual.
+  writeStoryInstructions(storyDir, meta.contentType, meta.agentProvider);
 
   return c.json({ ok: true });
 });

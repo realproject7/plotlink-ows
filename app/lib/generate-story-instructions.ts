@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import type { AgentProvider } from "../routes/stories";
 
 function fictionInstructions(): string {
   return `# Writing Instructions — Fiction
@@ -55,7 +56,105 @@ Each chapter is a self-contained prose section:
 `;
 }
 
-function cartoonInstructions(): string {
+/**
+ * Provider-branched clean-image workflow section for cartoon instructions.
+ *
+ * The clean-image-first rules (no dialogue/SFX/bubbles/watermark/signature baked
+ * into art) are shared; only the "who creates the file" contract differs:
+ *
+ * - Codex: image generation is available, so the PRIMARY instruction is to create
+ *   the real `assets/plot-NN/cut-XX-clean.webp` file and verify it exists. The
+ *   manual prompt + import path is kept only as a fallback for when image
+ *   generation is unavailable. Critically, Codex is never told it cannot create
+ *   image files (see #274).
+ * - Claude / legacy (absent provider): Claude does not generate image files in the
+ *   terminal, so the manual prompt + import handoff stays primary (unchanged
+ *   behavior).
+ */
+function cleanImageWorkflowSection(provider: AgentProvider): string {
+  if (provider === "codex") {
+    return `### Create the clean image file directly — your primary job
+
+You are running as Codex with image generation available, so for each cut you
+CREATE THE REAL CLEAN-IMAGE FILE — you do not just return a prompt or description.
+Follow this file contract exactly:
+
+1. Generate the clean image for the requested cut from its shot type + description
+   + characters (the OWS UI's per-cut "Copy prompt" gives you the exact visual
+   prompt text if you need it).
+2. Save it as \`assets/plot-NN/cut-XX-clean.webp\` (WebP, or JPEG) — use the
+   episode's \`plot-NN\` folder and the cut's zero-padded id (\`cut-01\`, \`cut-02\`,
+   …).
+3. The image must contain NO text, captions, speech bubbles, SFX lettering,
+   readable signage, watermark, or signature.
+4. After saving, VERIFY the file actually exists at
+   \`assets/plot-NN/cut-XX-clean.webp\`, is WebP or JPEG, and is under 1MB — before
+   reporting success.
+5. Do NOT claim the image was generated unless the file actually exists; then run
+   the OWS "Sync clean images" action (or let OWS auto-detect it) to record
+   \`cleanImagePath\` — never hand-write the path for a file that is not really
+   there.
+
+**Only exception:** Include text in an image when it is part of the physical scene
+(a sign on a building, text on a screen, a letter being read) AND the writer has
+explicitly requested it.
+
+### Fallback: hand the prompt to the writer (only if image generation is unavailable)
+
+If image generation is not available in this session, do not block — fall back to
+the manual handoff for each cut:
+1. PREPARE THE EXACT CLEAN-IMAGE PROMPT (shot type + description + characters +
+   the no-text constraint). This is the same prompt the OWS UI exposes per cut.
+2. Tell the writer to generate it externally (any provider/tool) and then
+   upload/import the resulting WebP/JPEG into OWS using the per-cut "Copy prompt" +
+   "Upload clean image" controls.
+3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
+   file actually exists.** Never report an image as generated when you only
+   produced a prompt.`;
+  }
+
+  return `### You cannot create image files yourself — hand the prompt to the writer
+
+You (Claude) do **not** generate image files in this terminal. You produce the
+exact clean-image PROMPT for each cut; the writer (or a configured image tool, if
+any) generates the actual image externally and imports it back into OWS.
+
+If no image-generation tool is available in the terminal, for each cut:
+1. PREPARE THE EXACT CLEAN-IMAGE PROMPT (shot type + description + characters +
+   the no-text constraint). This is the same prompt the OWS UI exposes per cut.
+2. Tell the writer to generate it externally (any provider/tool they prefer) and
+   then upload/import the resulting WebP/JPEG into OWS using the per-cut
+   "Copy prompt" + "Upload clean image" controls.
+3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
+   file actually exists.** Never report an image as generated when you only
+   produced a prompt.
+4. After a clean image file exists, update/verify the cut's \`cleanImagePath\`
+   through the OWS import flow or the cuts API — do not invent the path.
+
+If a configured image tool exists, it may generate the clean image directly;
+otherwise the manual prompt + import path above is the safe baseline.
+
+Saved clean images live at: \`assets/plot-NN/cut-XX-clean.webp\` (OWS records the
+path; you do not hand-write it unless the file is really there).
+
+**Only exception:** Include text in images when it is part of the physical scene
+(a sign on a building, text on a screen, a letter being read) AND the writer
+has explicitly requested it.`;
+}
+
+/** Provider-branched step 2 of the Episode Workflow checklist. */
+function episodeWorkflowImageStep(provider: AgentProvider): string {
+  if (provider === "codex") {
+    return `2. **Generate** — Create the real clean-image file for each cut at
+   \`assets/plot-NN/cut-XX-clean.webp\` and verify it exists (fall back to preparing
+   the prompt for the writer to import only if image generation is unavailable).`;
+  }
+  return `2. **Prompt & import** — Prepare the clean-image prompt for each cut; the writer
+   generates it externally (or a configured image tool, if any) and uploads/
+   imports the clean image via OWS. You do not create the image file yourself.`;
+}
+
+function cartoonInstructions(provider: AgentProvider): string {
   return `# Writing Instructions — Cartoon
 
 > Auto-generated by PlotLink OWS. Do not edit manually.
@@ -188,50 +287,7 @@ Clean images must contain:
 - No narration captions
 - No lettering of any kind
 
-### You cannot create image files yourself — hand the prompt to the writer
-
-You (Claude) do **not** generate image files in this terminal. You produce the
-exact clean-image PROMPT for each cut; the writer (or a configured image tool, if
-any) generates the actual image externally and imports it back into OWS.
-
-If no image-generation tool is available in the terminal, for each cut:
-1. PREPARE THE EXACT CLEAN-IMAGE PROMPT (shot type + description + characters +
-   the no-text constraint). This is the same prompt the OWS UI exposes per cut.
-2. Tell the writer to generate it externally (any provider/tool they prefer) and
-   then upload/import the resulting WebP/JPEG into OWS using the per-cut
-   "Copy prompt" + "Upload clean image" controls.
-3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
-   file actually exists.** Never report an image as generated when you only
-   produced a prompt.
-4. After a clean image file exists, update/verify the cut's \`cleanImagePath\`
-   through the OWS import flow or the cuts API — do not invent the path.
-
-If a configured image tool exists, it may generate the clean image directly;
-otherwise the manual prompt + import path above is the safe baseline.
-
-Saved clean images live at: \`assets/plot-NN/cut-XX-clean.webp\` (OWS records the
-path; you do not hand-write it unless the file is really there).
-
-### Codex image generation — file contract
-
-If you are running as Codex with image generation available, you MAY produce the
-clean image file directly. When you do, follow this contract exactly:
-
-1. Use Codex image generation to create the clean image for the requested cut.
-2. Save it as \`assets/plot-NN/cut-XX-clean.webp\` (WebP, or JPEG) — use the
-   episode's \`plot-NN\` folder and the cut's zero-padded id (\`cut-01\`, \`cut-02\`,
-   …).
-3. The image must contain NO text, captions, speech bubbles, SFX lettering,
-   readable signage, watermark, or signature.
-4. After saving, verify the file exists, is WebP or JPEG, and is under 1MB.
-5. Do NOT claim the image was generated unless the file actually exists; then run
-   the OWS "Sync clean images" action (or let OWS auto-detect it) to record
-   \`cleanImagePath\` — never hand-write the path for a file that is not really
-   there.
-
-**Only exception:** Include text in images when it is part of the physical scene
-(a sign on a building, text on a screen, a letter being read) AND the writer
-has explicitly requested it.
+${cleanImageWorkflowSection(provider)}
 
 ## Character Consistency
 
@@ -283,9 +339,7 @@ Correct flow:
 ## Episode Workflow
 
 1. **Plan** — Create plot-NN.cuts.json with shot-by-shot breakdown
-2. **Prompt & import** — Prepare the clean-image prompt for each cut; the writer
-   generates it externally (or a configured image tool, if any) and uploads/
-   imports the clean image via OWS. You do not create the image file yourself.
+${episodeWorkflowImageStep(provider)}
 3. **Review** — Writer reviews clean images, requests adjustments
 4. **Letter** — Writer adds speech bubbles and text via lettering editor
 5. **Upload** — Upload final lettered images to get IPFS URLs (recorded in cuts.json)
@@ -295,20 +349,36 @@ Correct flow:
 `;
 }
 
-export function generateStoryInstructions(contentType: "fiction" | "cartoon"): string {
-  if (contentType === "cartoon") return cartoonInstructions();
+export function generateStoryInstructions(
+  contentType: "fiction" | "cartoon",
+  // Cartoon instructions branch by provider so a Codex cartoon session is told to
+  // create the real clean-image file, while Claude/legacy sessions get the manual
+  // prompt-and-import handoff. Fiction ignores provider (always Claude). Absent ⇒
+  // "claude" (matches the fiction-safe absent⇒Claude default; see #268).
+  provider: AgentProvider = "claude",
+): string {
+  if (contentType === "cartoon") return cartoonInstructions(provider);
   return fictionInstructions();
 }
 
 const MARKER_PREFIX = "<!-- plotlink-ows:story-instructions:";
 
-function marker(contentType: string): string {
-  return `${MARKER_PREFIX}${contentType} -->`;
+// Cartoon markers encode the provider so a story repaired Claude⇒Codex (or vice
+// versa) regenerates its CLAUDE.md on the next spawn instead of keeping stale,
+// provider-mismatched wording. Fiction has no provider variant — its marker is
+// unchanged for rollback safety.
+function marker(contentType: "fiction" | "cartoon", provider: AgentProvider): string {
+  const suffix = contentType === "cartoon" ? `cartoon:${provider}` : "fiction";
+  return `${MARKER_PREFIX}${suffix} -->`;
 }
 
-export function writeStoryInstructions(storyDir: string, contentType: "fiction" | "cartoon"): void {
+export function writeStoryInstructions(
+  storyDir: string,
+  contentType: "fiction" | "cartoon",
+  provider: AgentProvider = "claude",
+): void {
   const claudeMdPath = path.join(storyDir, "CLAUDE.md");
-  const expectedMarker = marker(contentType);
+  const expectedMarker = marker(contentType, provider);
 
   if (fs.existsSync(claudeMdPath)) {
     try {
@@ -318,6 +388,6 @@ export function writeStoryInstructions(storyDir: string, contentType: "fiction" 
     } catch { /* regenerate on error */ }
   }
 
-  const content = expectedMarker + "\n" + generateStoryInstructions(contentType);
+  const content = expectedMarker + "\n" + generateStoryInstructions(contentType, provider);
   fs.writeFileSync(claudeMdPath, content, "utf-8");
 }

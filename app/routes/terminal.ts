@@ -242,10 +242,6 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
   const isNewStory = storyName.startsWith("_new_");
   const storyDir = isNewStory ? STORIES_DIR : path.join(STORIES_DIR, storyName);
   if (!fs.existsSync(storyDir)) fs.mkdirSync(storyDir, { recursive: true });
-  if (!isNewStory) {
-    const { contentType } = readStoryMeta(storyDir);
-    writeStoryInstructions(storyDir, contentType);
-  }
   const shell = process.env.SHELL || "/bin/zsh";
 
   // Resolve effective agent mode (see resolveBypass for the trust model).
@@ -267,6 +263,14 @@ function spawnPty(storyName: string, opts?: { sessionId?: string; resume?: boole
     storedProvider: isNewStory ? undefined : readStoryMeta(storyDir).agentProvider,
   });
   agentProviderBySession.set(storyName, provider);
+
+  // Write provider-aware CLAUDE.md AFTER provider resolution so a Codex cartoon
+  // session gets the create-the-file contract and a Claude/legacy session gets the
+  // manual prompt-and-import handoff (#274). New (_new_) stories have no named
+  // folder yet — their CLAUDE.md is written when the story is created/named.
+  if (!isNewStory) {
+    writeStoryInstructions(storyDir, readStoryMeta(storyDir).contentType, provider);
+  }
 
   // Determine resume id (accepts both legacy-string and record shapes).
   const sessionMap = loadSessionMap();
