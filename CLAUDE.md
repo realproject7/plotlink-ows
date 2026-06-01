@@ -51,7 +51,7 @@ The OWS passphrase is stored in plaintext in `~/.plotlink-ows/.env` as `OWS_PASS
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/publish/preflight` | GET | Check wallet balance, Filebase config |
+| `/api/publish/preflight` | GET | Check wallet balance vs. creation fee (uploads go through the PlotLink API) |
 | `/api/publish/file` | POST | Publish story on-chain (SSE stream of progress events) |
 | `/api/publish/retry-index` | POST | Retry indexing for a published file |
 | `/api/publish/upload-cover` | POST | Upload cover image — FormData `file` field, **WebP or JPEG only**, max 1MB → returns `{ cid }` |

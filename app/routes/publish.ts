@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { publishStoryline, publishPlot, getEthBalance, estimatePublishCost, uploadCoverImage, uploadPlotImage, updateStoryline } from "../lib/publish";
+import { publishStoryline, publishPlot, getEthBalance, getCreationFee, estimatePublishCost, uploadCoverImage, uploadPlotImage, updateStoryline } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 import path from "path";
@@ -43,41 +43,61 @@ publish.get("/preflight", async (c) => {
       return c.json({ ready: false, error: "No EVM address on wallet" });
     }
 
-    // Check ETH balance against real estimated cost
     const balance = await getEthBalance(address);
+
+    // The MCV2 Bond creation fee is a plain contract read and is the only hard
+    // on-chain cost we can always count on. Read it independently of gas
+    // estimation: a flaky gas estimate must not masquerade as an unreadable-chain
+    // failure. If the fee itself cannot be read, the RPC/contract config is
+    // genuinely broken — that is a real blocker.
+    let creationFee: bigint;
+    try {
+      creationFee = await getCreationFee();
+    } catch {
+      return c.json({
+        ready: false,
+        address,
+        ethBalance: balance.toString(),
+        error: "Could not read creation fee — check RPC and contract config",
+      });
+    }
+
+    // Gas estimation is best-effort. PlotLink owns Filebase/IPFS server-side and
+    // OWS uploads images/content through the PlotLink API, so there is NO local
+    // Filebase env requirement to gate on (#287). And gas estimation simulates
+    // createStoryline with dummy content the contract can reject — which is why
+    // the real #211 pilot publish succeeded while this estimate failed. So a
+    // failed estimate is a warning, not an absolute publish blocker.
     let totalCost: bigint | null = null;
-    let creationFee = BigInt(0);
-    let estimationFailed = false;
+    let estimateWarning: string | null = null;
     try {
       const dummyCid = "QmDummy";
       const dummyHash = keccak256(toBytes("estimation"));
       const estimate = await estimatePublishCost(address, "Test", dummyCid, dummyHash);
       totalCost = estimate.totalCost;
-      creationFee = estimate.creationFee;
     } catch {
-      estimationFailed = true;
+      estimateWarning =
+        "Could not estimate gas; using the creation fee as the minimum required balance — actual publish may still succeed";
     }
-    // Fail closed: if estimation fails, block publishing
-    const requiredBalance = totalCost ?? BigInt(0);
-    const hasEnoughEth = !estimationFailed && totalCost !== null && balance >= requiredBalance;
 
-    // Check Filebase config
-    const hasFilebase = !!(process.env.FILEBASE_ACCESS_KEY && process.env.FILEBASE_SECRET_KEY);
+    // Require enough ETH for at least the creation fee; when a full gas estimate
+    // is available, require that instead. Never block solely on a missing
+    // estimate — but a genuinely insufficient balance is still a real blocker.
+    const requiredBalance = totalCost ?? creationFee;
+    const hasEnoughEth = balance >= requiredBalance;
 
     return c.json({
-      ready: hasEnoughEth && hasFilebase,
+      ready: hasEnoughEth,
       address,
       ethBalance: balance.toString(),
       creationFee: creationFee.toString(),
       requiredBalance: requiredBalance.toString(),
       hasEnoughEth,
-      hasFilebase,
-      estimationFailed,
-      error: estimationFailed
-        ? "Could not estimate publish cost — check RPC and contract config"
-        : !hasEnoughEth
-        ? `Insufficient ETH. Need ~${(Number(requiredBalance) / 1e18).toFixed(6)} ETH (creation fee + gas)`
-        : !hasFilebase ? "Filebase not configured" : null,
+      estimationFailed: totalCost === null,
+      estimateWarning,
+      error: !hasEnoughEth
+        ? `Insufficient ETH. Need at least ~${(Number(requiredBalance) / 1e18).toFixed(6)} ETH (creation fee${totalCost !== null ? " + gas" : ""})`
+        : null,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Preflight check failed";

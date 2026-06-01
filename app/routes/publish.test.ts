@@ -19,6 +19,7 @@ vi.mock("../lib/publish", () => ({
   publishStoryline: vi.fn(),
   publishPlot: vi.fn(),
   getEthBalance: vi.fn(),
+  getCreationFee: vi.fn(),
   estimatePublishCost: vi.fn(),
   uploadCoverImage: vi.fn(),
   uploadPlotImage: vi.fn(),
@@ -31,6 +32,8 @@ vi.mock("../../lib/ows/wallet", () => ({
 }));
 
 import { publishRoutes } from "./publish";
+import { getEthBalance, getCreationFee, estimatePublishCost } from "../lib/publish";
+import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 import { createCutsFile, writeCutsFile } from "../lib/cuts";
 import { writeStoryMeta } from "./stories";
 import { Hono } from "hono";
@@ -247,5 +250,86 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("not ready");
+  });
+});
+
+describe("GET /api/publish/preflight — PlotLink-backed upload flow (#287)", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    app = makeApp();
+    // Default: a valid funded writer wallet.
+    vi.mocked(listAgentWallets).mockReturnValue([
+      { name: "plotlink-writer", address: "0xabc" } as never,
+    ]);
+    vi.mocked(getBaseAddress).mockReturnValue("0xabc" as never);
+    vi.mocked(getEthBalance).mockResolvedValue(BigInt(1e18)); // 1 ETH
+    vi.mocked(getCreationFee).mockResolvedValue(BigInt(1e16)); // 0.01 ETH
+    vi.mocked(estimatePublishCost).mockResolvedValue({
+      creationFee: BigInt(1e16),
+      gasEstimate: BigInt(21000),
+      gasPrice: BigInt(1e9),
+      totalCost: BigInt(1e16) + BigInt(1e15),
+    } as never);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function preflight() {
+    const res = await app.request("/api/publish/preflight");
+    return { res, data: await res.json() };
+  }
+
+  it("reports not-ready when there is no writer wallet", async () => {
+    vi.mocked(listAgentWallets).mockReturnValue([]);
+    const { data } = await preflight();
+    expect(data.ready).toBe(false);
+    expect(data.error).toContain("No OWS wallet");
+  });
+
+  it("a valid funded setup is ready and never reports Filebase (#287 AC1)", async () => {
+    const { data } = await preflight();
+    expect(data.ready).toBe(true);
+    expect(data.error).toBeNull();
+    // The obsolete local Filebase requirement is gone entirely.
+    expect(data).not.toHaveProperty("hasFilebase");
+    expect(JSON.stringify(data)).not.toMatch(/filebase/i);
+  });
+
+  it("gas-estimation failure is a warning, not a blocker, when balance covers the creation fee (#211 pilot)", async () => {
+    // Reproduces the pilot: estimateGas reverts on dummy createStoryline args
+    // while the real publish succeeds. Fee is readable; balance covers it.
+    vi.mocked(estimatePublishCost).mockRejectedValue(new Error("execution reverted"));
+    const { data } = await preflight();
+    expect(data.ready).toBe(true);
+    expect(data.error).toBeNull();
+    expect(data.estimationFailed).toBe(true);
+    expect(data.estimateWarning).toBeTruthy();
+    expect(data.requiredBalance).toBe(BigInt(1e16).toString()); // falls back to creation fee
+  });
+
+  it("insufficient balance is still a real blocker", async () => {
+    vi.mocked(getEthBalance).mockResolvedValue(BigInt(1e15)); // 0.001 ETH < fee+gas
+    const { data } = await preflight();
+    expect(data.ready).toBe(false);
+    expect(data.error).toContain("Insufficient ETH");
+  });
+
+  it("insufficient balance blocks even when gas estimation fails (fee not covered)", async () => {
+    vi.mocked(estimatePublishCost).mockRejectedValue(new Error("execution reverted"));
+    vi.mocked(getEthBalance).mockResolvedValue(BigInt(1e15)); // below the creation fee
+    const { data } = await preflight();
+    expect(data.ready).toBe(false);
+    expect(data.error).toContain("Insufficient ETH");
+    expect(data.estimateWarning).toBeTruthy();
+  });
+
+  it("an unreadable creation fee (RPC/contract config) is a real blocker", async () => {
+    vi.mocked(getCreationFee).mockRejectedValue(new Error("RPC down"));
+    const { data } = await preflight();
+    expect(data.ready).toBe(false);
+    expect(data.error).toContain("creation fee");
   });
 });
