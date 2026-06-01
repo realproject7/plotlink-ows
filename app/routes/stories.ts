@@ -727,12 +727,19 @@ stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
 });
 
 
-/** GET /api/stories/:name/asset/* — serve story asset file (supports nested paths) */
-stories.get("/:name/asset/*", (c) => {
+/** GET /api/stories/:name/asset/:assetPath — serve story asset file (supports nested paths) */
+// NOTE: uses a regex splat param (`{.+}`) rather than a bare `*` wildcard.
+// Hono v4 does not populate `c.req.param("*")` for a mixed named/wildcard route
+// like `/:name/asset/*`, so the handler always saw an empty assetPath and
+// returned 400 — which surfaced as "Image not available" in the UI once the
+// clean-image loaders actually started sending the auth header (#278). The
+// regex param captures the remaining path, including slashes, and is readable
+// back by name.
+stories.get("/:name/asset/:assetPath{.+}", (c) => {
   const name = safeName(c.req.param("name"));
   if (!name) return c.json({ error: "Invalid story name" }, 400);
 
-  const assetPath = c.req.param("*");
+  const assetPath = c.req.param("assetPath");
   if (!assetPath) return c.json({ error: "Invalid asset path" }, 400);
 
   if (assetPath.includes("..") || assetPath.startsWith("/")) {

@@ -853,3 +853,60 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.detected).toEqual([]);
   });
 });
+
+// Regression for #278: the real failure mode that mocked-authFetch component
+// tests could not catch. The clean/final cartoon images are loaded over this
+// route, and it must actually return the bytes. Before the fix the handler read
+// the nested path via `c.req.param("*")`, which Hono v4 leaves empty for a
+// mixed named/wildcard route, so every authenticated asset request 400'd and the
+// UI showed "Image not available". These tests exercise the real Hono route.
+describe("GET /:name/asset/:assetPath — serve story asset (real route)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  // Minimal valid WebP header so the bytes are recognizable in assertions.
+  const WEBP_BYTES = Buffer.from([
+    0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+  ]);
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-asset-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+
+    const assetDir = path.join(tmpDir, "lanterns-after-midnight", "assets", "plot-01");
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(assetDir, "cut-01-clean.webp"), WEBP_BYTES);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns the nested clean image with the right content-type (not 400)", async () => {
+    const res = await app.request(
+      "/api/stories/lanterns-after-midnight/asset/plot-01/cut-01-clean.webp",
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/webp");
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(bytes).toEqual(WEBP_BYTES);
+  });
+
+  it("404s for a missing asset (path resolved, file absent)", async () => {
+    const res = await app.request(
+      "/api/stories/lanterns-after-midnight/asset/plot-01/cut-99-clean.webp",
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects encoded path traversal that survives URL normalization", async () => {
+    // Raw "../" is collapsed by the URL parser before routing; the meaningful
+    // attack is percent-encoded, which reaches the handler's `..` guard intact.
+    const res = await app.request(
+      "/api/stories/lanterns-after-midnight/asset/%2e%2e%2f%2e%2e%2fetc/passwd",
+    );
+    expect(res.status).toBe(400);
+  });
+});
