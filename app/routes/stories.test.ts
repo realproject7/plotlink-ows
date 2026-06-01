@@ -110,6 +110,97 @@ describe("story metadata (.story.json)", () => {
     const meta = readStoryMeta(tmpDir);
     expect(meta.contentType).toBe("cartoon");
   });
+
+  it("persists agentProvider codex in .story.json", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon", agentProvider: "codex" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentProvider).toBe("codex");
+  });
+
+  it("defaults agentProvider to undefined when not set", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon" });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentProvider).toBeUndefined();
+  });
+
+  it("ignores invalid agentProvider values", () => {
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "cartoon", agentProvider: "gemini" }));
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.agentProvider).toBeUndefined();
+  });
+});
+
+describe("GET /api/stories — agentProvider exposure (read-only)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-prov-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function seedStory(name: string, meta: Record<string, unknown>) {
+    const storyDir = path.join(tmpDir, name);
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, ".story.json"), JSON.stringify(meta));
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# Title\n");
+    return storyDir;
+  }
+
+  it("lists a legacy cartoon (no agentProvider) with agentProvider absent/undefined", async () => {
+    seedStory("legacy-cartoon", { contentType: "cartoon" });
+    const res = await app.request("/api/stories");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const story = body.stories.find((s: { name: string }) => s.name === "legacy-cartoon");
+    expect(story.contentType).toBe("cartoon");
+    expect(story.agentProvider).toBeUndefined();
+  });
+
+  it("lists a cartoon with agentProvider codex as codex", async () => {
+    seedStory("codex-cartoon", { contentType: "cartoon", agentProvider: "codex" });
+    const res = await app.request("/api/stories");
+    const body = await res.json();
+    const story = body.stories.find((s: { name: string }) => s.name === "codex-cartoon");
+    expect(story.agentProvider).toBe("codex");
+  });
+
+  it("lists a fiction story with agentProvider absent/undefined", async () => {
+    seedStory("plain-fiction", { contentType: "fiction" });
+    const res = await app.request("/api/stories");
+    const body = await res.json();
+    const story = body.stories.find((s: { name: string }) => s.name === "plain-fiction");
+    expect(story.contentType).toBe("fiction");
+    expect(story.agentProvider).toBeUndefined();
+  });
+
+  it("repair POST {contentType:cartoon, agentProvider:codex} sets provider AND preserves language/agentMode", async () => {
+    const storyDir = seedStory("repair-me", {
+      contentType: "cartoon",
+      language: "Korean",
+      agentMode: "bypass",
+    });
+
+    const res = await app.request("/api/stories/repair-me/metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: "cartoon", agentProvider: "codex" }),
+    });
+    expect(res.status).toBe(200);
+
+    const meta = readStoryMeta(storyDir);
+    expect(meta.agentProvider).toBe("codex");
+    expect(meta.contentType).toBe("cartoon");
+    // Preserved via the route's `...existing` spread — repair must not wipe these.
+    expect(meta.language).toBe("Korean");
+    expect(meta.agentMode).toBe("bypass");
+  });
 });
 
 describe("clean image upload simulation", () => {

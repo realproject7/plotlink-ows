@@ -6,13 +6,17 @@ import { StoriesPage } from "./StoriesPage";
 // new-story flow (open modal, expose renameRef) without real terminals.
 const childProps = vi.hoisted(() => ({
   onNewStory: null as null | (() => void),
+  onSelectFile: null as null | ((storyName: string, fileName: string) => void),
   renameRef: null as null | { current: ((o: string, n: string) => Promise<boolean>) | null },
   agentProviders: null as null | Record<string, "claude" | "codex">,
+  needsProviderRepair: null as null | boolean,
+  onRepairProvider: null as null | (() => void | Promise<void>),
 }));
 
 vi.mock("./StoryBrowser", () => ({
-  StoryBrowser: (props: { onNewStory: () => void }) => {
+  StoryBrowser: (props: { onNewStory: () => void; onSelectFile: (s: string, f: string) => void }) => {
     childProps.onNewStory = props.onNewStory;
+    childProps.onSelectFile = props.onSelectFile;
     return <button data-testid="mock-new-story" onClick={props.onNewStory}>New Story</button>;
   },
 }));
@@ -21,9 +25,13 @@ vi.mock("./TerminalPanel", () => ({
   TerminalPanel: (props: {
     renameRef: { current: ((o: string, n: string) => Promise<boolean>) | null };
     agentProviders?: Record<string, "claude" | "codex">;
+    needsProviderRepair?: boolean;
+    onRepairProvider?: () => void | Promise<void>;
   }) => {
     childProps.renameRef = props.renameRef;
     childProps.agentProviders = props.agentProviders ?? null;
+    childProps.needsProviderRepair = props.needsProviderRepair ?? null;
+    childProps.onRepairProvider = props.onRepairProvider ?? null;
     // Provide a rename implementation so the polling effect proceeds.
     props.renameRef.current = () => Promise.resolve(true);
     return <div data-testid="mock-terminal" />;
@@ -46,8 +54,11 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   childProps.onNewStory = null;
+  childProps.onSelectFile = null;
   childProps.renameRef = null;
   childProps.agentProviders = null;
+  childProps.needsProviderRepair = null;
+  childProps.onRepairProvider = null;
 });
 
 interface FetchCall { url: string; body: unknown }
@@ -192,6 +203,90 @@ describe("StoriesPage new-story provider selection", () => {
       "Codex can generate clean cartoon images",
     );
   });
+});
+
+// authFetch whose /api/stories list contains a legacy cartoon (no
+// agentProvider), a codex cartoon, and a fiction story, so repair wiring can be
+// asserted. Records calls for inspecting the repair metadata POST body.
+function makeListAuthFetch() {
+  const calls: FetchCall[] = [];
+  const stories = [
+    { name: "legacy-cartoon", hasStructure: true, contentType: "cartoon" },
+    { name: "codex-cartoon", hasStructure: true, contentType: "cartoon", agentProvider: "codex" },
+    { name: "my-novel", hasStructure: true, contentType: "fiction" },
+  ];
+  const fn = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+    let body: unknown;
+    try { body = opts?.body ? JSON.parse(opts.body as string) : undefined; } catch { /* ignore */ }
+    calls.push({ url, body });
+    if (url === "/api/wallet") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ address: "0xabc" }) });
+    }
+    if (url === "/api/agent/readiness") {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          claude: { installed: true },
+          codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+          checkedAt: 1748000000000,
+        }),
+      });
+    }
+    if (url === "/api/stories" && !opts) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ stories }) });
+    }
+    if (url.startsWith("/api/stories/") && !opts) {
+      // story detail fetch from handleSelectStory — return no files.
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ files: [] }) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+  });
+  return { fn, calls };
+}
+
+describe("StoriesPage legacy cartoon provider repair wiring", () => {
+  it("passes needsProviderRepair=true for a selected legacy cartoon and the repair POSTs codex", async () => {
+    const { fn, calls } = makeListAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+
+    // Wait for the list to populate state.
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    // Select the legacy cartoon (no agentProvider recorded).
+    childProps.onSelectFile!("legacy-cartoon", "structure.md");
+
+    await waitFor(() => expect(childProps.needsProviderRepair).toBe(true));
+
+    // Invoke the repair callback the panel would call.
+    await childProps.onRepairProvider!();
+
+    const repairCall = calls.find(
+      (c) => c.url === "/api/stories/legacy-cartoon/metadata",
+    );
+    expect(repairCall).toBeDefined();
+    expect(repairCall!.body).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
+  }, 10000);
+
+  it("does NOT flag repair for a cartoon that already has codex", async () => {
+    const { fn } = makeListAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("codex-cartoon", "structure.md");
+    // Give state a tick; needsProviderRepair must stay false.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(childProps.needsProviderRepair).toBe(false);
+  }, 10000);
+
+  it("does NOT flag repair for a fiction story", async () => {
+    const { fn } = makeListAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("my-novel", "structure.md");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(childProps.needsProviderRepair).toBe(false);
+  }, 10000);
 });
 
 function cartoonButton(): HTMLButtonElement {

@@ -40,6 +40,9 @@ interface StoryInfo {
   publishedCount: number;
   contentType: "fiction" | "cartoon";
   language: string;
+  // Optional. Absent ⇒ no provider recorded (legacy story ⇒ defaults to Claude
+  // at launch). Surfaced read-only so the client can offer a scoped repair.
+  agentProvider?: AgentProvider;
 }
 
 function readPublishStatus(storyDir: string): Record<string, FileStatus> {
@@ -148,7 +151,21 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     else if (fromScript) language = fromScript;
   }
 
-  return { name, title, files, hasStructure, hasGenesis, plotCount, publishedCount, contentType: storyMeta.contentType, language };
+  return {
+    name,
+    title,
+    files,
+    hasStructure,
+    hasGenesis,
+    plotCount,
+    publishedCount,
+    contentType: storyMeta.contentType,
+    language,
+    // Read-only passthrough. Absent when the story has no provider recorded
+    // (legacy), so a legacy cartoon shows no provider and the client can offer
+    // the explicit repair affordance. Never written/migrated here.
+    ...(storyMeta.agentProvider ? { agentProvider: storyMeta.agentProvider } : {}),
+  };
 }
 
 /** GET /api/stories — list all stories */
