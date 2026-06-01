@@ -3,6 +3,7 @@ import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
+import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
 
 interface Overlay {
   id: string;
@@ -47,6 +48,9 @@ interface CutListPanelProps {
   fileName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   language?: string;
+  // Rate-limit retry knobs (sleep/maxRetries/baseDelayMs) — injectable so tests
+  // can run retries instantly. Production uses the defaults (#288).
+  uploadRetry?: Pick<RetryDeps, "sleep" | "maxRetries" | "baseDelayMs">;
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded";
@@ -284,7 +288,7 @@ function CutRow({
   );
 }
 
-export function CutListPanel({ storyName, fileName, authFetch, language }: CutListPanelProps) {
+export function CutListPanel({ storyName, fileName, authFetch, language, uploadRetry }: CutListPanelProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -481,9 +485,30 @@ export function CutListPanel({ storyName, fileName, authFetch, language }: CutLi
                 const blob = await imgRes.blob();
                 const fd = new FormData();
                 fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
-                const upRes = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
-                if (!upRes.ok) { const e = await upRes.json().catch(() => ({})); errors.push(`Cut ${ct.id}: upload failed — ${e.error || "unknown"}`); continue; }
-                const { cid, url } = await upRes.json();
+                // Retry with backoff while the PlotLink endpoint rate-limits us
+                // (5 uploads/min), instead of failing the whole batch (#288).
+                // Already-uploaded cuts are skipped by the `!uploadedCid` filter
+                // above, so a retry never re-uploads a recorded cut.
+                const upload = await withRateLimitRetry(
+                  async () => {
+                    const res = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
+                    if (res.ok) {
+                      const { cid, url } = await res.json();
+                      return { ok: true as const, status: res.status, cid, url };
+                    }
+                    const e = await res.json().catch(() => ({}));
+                    return { ok: false as const, status: res.status, errorMessage: (e as { error?: string }).error };
+                  },
+                  {
+                    ...uploadRetry,
+                    onWaiting: ({ attempt, maxRetries, waitMs }) =>
+                      setUploadProgress(
+                        `Cut ${ct.id} rate-limited — waiting ${Math.round(waitMs / 1000)}s before retry ${attempt}/${maxRetries}...`,
+                      ),
+                  },
+                );
+                if (!upload.ok) { errors.push(`Cut ${ct.id}: upload failed — ${upload.errorMessage || "unknown"}`); continue; }
+                const { cid, url } = upload;
                 const setRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },

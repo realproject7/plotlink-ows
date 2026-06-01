@@ -364,6 +364,87 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("retries a rate-limited cut upload then records it (no batch failure) (#288)", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [] })],
+    };
+    let uploadCalls = 0;
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") {
+        uploadCalls += 1;
+        // First attempt is rate-limited (the OWS route forwards PlotLink's
+        // limit as a 500 with the upstream message); the retry succeeds.
+        if (uploadCalls === 1) {
+          return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: "Rate limit exceeded. Max 5 uploads per minute." }) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: "QmRetryOk", url: "https://ipfs.example.com/QmRetryOk" }) });
+      }
+      if (url.includes("set-uploaded")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      if (url.includes("generate-markdown")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: [] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
+
+    render(
+      <CutListPanel
+        storyName="story"
+        fileName="plot-01.md"
+        authFetch={authFetch}
+        uploadRetry={{ sleep: () => Promise.resolve(), baseDelayMs: 0 }}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("upload-generate-btn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("upload-generate-btn"));
+
+    await waitFor(() => {
+      // Uploaded twice (rate-limited then retried), then recorded with the
+      // successful retry's CID, then markdown generated — batch did not fail.
+      expect(uploadCalls).toBe(2);
+      const calls = authFetch.mock.calls;
+      const setUploadedCall = calls.find((c: [string, RequestInit?]) => typeof c[0] === "string" && c[0].includes("set-uploaded"));
+      expect(setUploadedCall).toBeTruthy();
+      expect(JSON.parse(setUploadedCall![1]?.body as string).cid).toBe("QmRetryOk");
+      expect(calls.some((c: [string]) => c[0].includes("generate-markdown"))).toBe(true);
+    });
+  });
+
+  it("reports the affected cut and reason when rate-limit retries are exhausted (#288)", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 3, finalImagePath: "assets/plot-01/cut-03-final.webp", overlays: [] })],
+    };
+    let uploadCalls = 0;
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") { uploadCalls += 1; return Promise.resolve({ ok: false, status: 429, json: () => Promise.resolve({ error: "Rate limit exceeded. Max 5 uploads per minute." }) }); }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
+
+    render(
+      <CutListPanel
+        storyName="story"
+        fileName="plot-01.md"
+        authFetch={authFetch}
+        uploadRetry={{ sleep: () => Promise.resolve(), baseDelayMs: 0, maxRetries: 2 }}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("upload-generate-btn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("upload-generate-btn"));
+
+    await waitFor(() => {
+      // Affected cut number + the rate-limit reason are surfaced; markdown is NOT generated.
+      const warning = screen.getByText(/Cut 3: upload failed — Rate limit exceeded/);
+      expect(warning).toBeInTheDocument();
+      expect(uploadCalls).toBe(3); // initial + 2 retries before giving up
+      expect(authFetch.mock.calls.some((c: [string]) => c[0].includes("generate-markdown"))).toBe(false);
+    });
+  });
+
   it("shows a Sync clean images button that POSTs sync-clean-images then reloads", async () => {
     const cutsData = {
       version: 1, plotFile: "plot-01",
