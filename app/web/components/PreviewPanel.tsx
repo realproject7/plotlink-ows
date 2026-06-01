@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
+import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
 import { validateCoverImage } from "../lib/publish-helpers";
@@ -77,6 +78,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
+  // Cartoon preview sub-mode: "publish" = exact PlotLink-bound markdown;
+  // "inspect" = cuts.json planning inspector. Kept distinct so planning prose
+  // does not masquerade as publish content (#289).
+  const [cartoonPreviewMode, setCartoonPreviewMode] = useState<"publish" | "inspect">("publish");
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -546,8 +551,32 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       {/* Content area */}
       {activeTab === "preview" ? (
         isCartoonPlot ? (
-          <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
-            <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+          <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
+            {/* Two explicit modes: Publish Preview (exact PlotLink markdown) vs
+                Cut Inspector (cuts.json planning metadata) — see #289. */}
+            <div className="flex gap-1 px-3 py-1 border-b border-border">
+              <button
+                data-testid="cartoon-mode-publish"
+                onClick={() => setCartoonPreviewMode("publish")}
+                className={`px-2 py-0.5 text-[11px] rounded ${cartoonPreviewMode === "publish" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
+              >
+                Publish Preview
+              </button>
+              <button
+                data-testid="cartoon-mode-inspect"
+                onClick={() => setCartoonPreviewMode("inspect")}
+                className={`px-2 py-0.5 text-[11px] rounded ${cartoonPreviewMode === "inspect" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
+              >
+                Cut Inspector
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              {cartoonPreviewMode === "publish" ? (
+                <CartoonPublishPreview content={fileData?.content ?? ""} stage={cartoonStage} />
+              ) : (
+                <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4" style={{ background: "var(--paper-bg)" }}>
