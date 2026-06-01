@@ -52,7 +52,7 @@ interface PreviewPanelProps {
   storyName: string | null;
   fileName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => void;
+  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void;
   publishingFile?: string | null;
   walletAddress?: string | null;
   contentType?: "fiction" | "cartoon";
@@ -910,6 +910,45 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 )}
               </div>
             )}
+            {/* Pre-publish cover picker (#284): a new genesis (esp. cartoon)
+                gets a cover before its first createStoryline. Reuses the same
+                validation/stale-clear as the published Edit Story panel; the
+                selected file is handed to the publish flow, which uploads it and
+                sets it on the storyline once it exists. */}
+            {isGenesis && (
+              <div className="flex flex-col gap-1.5" data-testid="prepublish-cover">
+                <span className="text-xs font-medium text-foreground">Cover Image <span className="text-muted font-normal">(optional)</span></span>
+                <div className="flex items-start gap-3">
+                  {coverPreview && (
+                    <div className="relative">
+                      <img
+                        src={coverPreview}
+                        alt="Cover preview"
+                        className="w-16 h-24 object-cover rounded border border-border"
+                      />
+                      <button
+                        onClick={() => { setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
+                      >
+                        x
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/webp,image/jpeg"
+                      onChange={handleCoverSelect}
+                      className="text-xs"
+                      data-testid="prepublish-cover-input"
+                    />
+                    <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
+                    {editError && <span className="text-error text-xs" data-testid="prepublish-cover-error">{editError}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               {(isGenesis) && (
                 <>
@@ -940,7 +979,21 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     const msg = `This plot contains ${imageValidation.count} illustration(s). Content is immutable after publishing — image references cannot be changed or removed.\n\nPlease verify illustrations appear correctly in Preview before continuing.\n\nPublish now?`;
                     if (!window.confirm(msg)) return;
                   }
-                  onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
+                  // Genesis carries the optional pre-publish cover (#284); plot
+                  // files never do. Only pass the 6th arg when a cover is
+                  // actually selected, so the no-cover call signature (and
+                  // existing fiction/plot publish behavior) is unchanged.
+                  const cover = isGenesis ? coverFile : null;
+                  if (cover) {
+                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
+                    // Hand the file to the parent's publish flow, then drop the
+                    // local selection so it can't linger into the Edit panel.
+                    setCoverFile(null);
+                    setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+                    if (coverInputRef.current) coverInputRef.current.value = "";
+                  } else {
+                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
+                  }
                 }}
                 disabled={!!publishingFile || overLimit || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
