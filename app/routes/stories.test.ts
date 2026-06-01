@@ -451,6 +451,46 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.error).toContain("invalid JSON");
   });
 
+  it("persists speech overlays incl. tailAnchor through PUT then GET (save → close → reopen)", async () => {
+    // Mirrors the live lettering flow: the editor PUTs the cuts file on Save,
+    // and reloads it via GET on reopen. The speaker/text/tail the writer set
+    // must survive that round-trip byte-for-byte.
+    const storyDir = path.join(tmpDir, "letter-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cutsFile = createCutsFile("plot-01");
+    cutsFile.cuts[0].cleanImagePath = "assets/plot-01/cut-01-clean.webp";
+    cutsFile.cuts[0].overlays = [
+      {
+        id: "ov-1",
+        type: "speech",
+        x: 0.1, y: 0.2, width: 0.25, height: 0.12,
+        text: "Hello there",
+        speaker: "Mira",
+        tailAnchor: { x: 0.4, y: 1.35 },
+      },
+    ];
+
+    const putRes = await app.request("/api/stories/letter-story/cuts/plot-01", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cutsFile),
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await app.request("/api/stories/letter-story/cuts/plot-01");
+    expect(getRes.status).toBe(200);
+    const reloaded = await getRes.json();
+    const overlay = reloaded.cuts[0].overlays[0];
+    expect(overlay.type).toBe("speech");
+    expect(overlay.speaker).toBe("Mira");
+    expect(overlay.text).toBe("Hello there");
+    expect(overlay.tailAnchor).toEqual({ x: 0.4, y: 1.35 });
+
+    // And on disk (the file the editor reopens from).
+    const onDisk = readCutsFile(storyDir, "plot-01")!;
+    expect(onDisk.cuts[0].overlays[0].tailAnchor).toEqual({ x: 0.4, y: 1.35 });
+  });
+
   it("detects Korean language from structure.md title without .story.json language", async () => {
     const storyDir = path.join(tmpDir, "korean-story");
     fs.mkdirSync(storyDir, { recursive: true });

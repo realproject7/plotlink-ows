@@ -1,3 +1,5 @@
+import { speechTailPoints } from "@app-lib/overlays";
+
 interface Overlay {
   id: string;
   type: "speech" | "narration" | "sfx";
@@ -7,6 +9,7 @@ interface Overlay {
   height: number;
   text: string;
   speaker?: string;
+  tailAnchor?: { x: number; y: number };
 }
 
 const MAX_SIZE = 1024 * 1024;
@@ -46,7 +49,10 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function renderOverlays(
+const SPEECH_FILL = "rgba(255, 255, 255, 0.9)";
+const SPEECH_STROKE = "rgba(0, 0, 0, 0.3)";
+
+export function renderOverlays(
   ctx: CanvasRenderingContext2D,
   overlays: Overlay[],
   width: number,
@@ -61,11 +67,32 @@ function renderOverlays(
     const oh = overlay.height * height;
 
     if (overlay.type === "speech") {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      // Draw the tail first so the bubble body covers its base, leaving a
+      // seamless join with only the two angled sides outlined — otherwise the
+      // tail the writer positioned never appears in the exported image.
+      const tail = overlay.tailAnchor && speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor);
+      if (tail) {
+        ctx.fillStyle = SPEECH_FILL;
+        ctx.beginPath();
+        ctx.moveTo(tail.base1.x, tail.base1.y);
+        ctx.lineTo(tail.tip.x, tail.tip.y);
+        ctx.lineTo(tail.base2.x, tail.base2.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = SPEECH_STROKE;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(tail.base1.x, tail.base1.y);
+        ctx.lineTo(tail.tip.x, tail.tip.y);
+        ctx.lineTo(tail.base2.x, tail.base2.y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = SPEECH_FILL;
       ctx.beginPath();
       ctx.roundRect(ox, oy, ow, oh, 8);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+      ctx.strokeStyle = SPEECH_STROKE;
       ctx.lineWidth = 1;
       ctx.stroke();
     } else if (overlay.type === "narration") {

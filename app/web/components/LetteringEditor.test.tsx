@@ -27,6 +27,7 @@ interface Overlay {
   height: number;
   text: string;
   speaker?: string;
+  tailAnchor?: { x: number; y: number };
 }
 
 afterEach(cleanup);
@@ -151,6 +152,60 @@ describe("LetteringEditor", () => {
     const el = screen.getByTestId("overlay-test-overlay-1");
     expect(el).toBeInTheDocument();
     expect(screen.getByText("Hello!")).toBeInTheDocument();
+  });
+
+  it("renders a visible tail for a speech overlay so tail-anchor edits are seen, not only exported", async () => {
+    // Regression: tailAnchor was editable and persisted but drawn nowhere in
+    // the editor — the writer got no feedback until export. The preview must
+    // render the tail polygon driven by tailAnchor.
+    const overlay: Overlay = {
+      id: "tail-speech",
+      type: "speech",
+      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
+      text: "Hi", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 1.2 },
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await simulateImageLoad();
+
+    const tail = screen.getByTestId("tail-tail-speech");
+    expect(tail).toBeInTheDocument();
+    expect(tail.tagName.toLowerCase()).toBe("polygon");
+    // Three points: base1, tip, base2.
+    expect(tail.getAttribute("points")?.trim().split(/\s+/)).toHaveLength(3);
+  });
+
+  it("does not render a tail polygon for narration overlays", async () => {
+    const overlay: Overlay = {
+      id: "narr-tail",
+      type: "narration",
+      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
+      text: "Later...",
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await simulateImageLoad();
+
+    expect(screen.queryByTestId("tail-narr-tail")).not.toBeInTheDocument();
   });
 
   it("shows inspector when overlay is clicked", async () => {

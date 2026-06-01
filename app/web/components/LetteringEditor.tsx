@@ -6,6 +6,7 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
+import { speechTailPoints } from "@app-lib/overlays";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -345,6 +346,32 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             >
               Narration cut
             </div>
+          )}
+
+          {/* Speech-bubble tails, drawn under the overlay boxes so the box
+              sits on top of the tail base — mirrors the export rendering so
+              tail-anchor edits are visible here, not only in the final image. */}
+          {imageBounds.width > 0 && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" data-testid="tail-layer">
+              {overlays.map((overlay) => {
+                if (overlay.type !== "speech" || !overlay.tailAnchor) return null;
+                const ox = imageBounds.x + toPixel(overlay.x, imageBounds.width);
+                const oy = imageBounds.y + toPixel(overlay.y, imageBounds.height);
+                const ow = toPixel(overlay.width, imageBounds.width);
+                const oh = toPixel(overlay.height, imageBounds.height);
+                const pts = speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor);
+                if (!pts) return null;
+                return (
+                  <polygon
+                    key={overlay.id}
+                    data-testid={`tail-${overlay.id}`}
+                    points={`${pts.base1.x},${pts.base1.y} ${pts.tip.x},${pts.tip.y} ${pts.base2.x},${pts.base2.y}`}
+                    className="fill-white/80 stroke-foreground/40"
+                    strokeWidth={1}
+                  />
+                );
+              })}
+            </svg>
           )}
 
           {imageBounds.width > 0 && overlays.map((overlay) => {

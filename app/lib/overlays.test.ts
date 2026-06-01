@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toPixel, toNorm, createOverlay } from "./overlays";
+import { toPixel, toNorm, createOverlay, speechTailPoints } from "./overlays";
 
 describe("toPixel", () => {
   it("converts 0.5 to half of container", () => {
@@ -71,5 +71,46 @@ describe("createOverlay", () => {
     const a = createOverlay("speech");
     const b = createOverlay("speech");
     expect(a.id).not.toBe(b.id);
+  });
+});
+
+describe("speechTailPoints", () => {
+  // Bubble rect: ox=100, oy=100, ow=200, oh=100 → center (200, 150).
+  const ox = 100, oy = 100, ow = 200, oh = 100;
+
+  it("points the tail tip below the bubble for the default {0.5, 1.2} anchor", () => {
+    const pts = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 1.2 });
+    expect(pts).not.toBeNull();
+    // tip = (ox + 0.5*ow, oy + 1.2*oh) = (200, 220), below the bubble bottom (200).
+    expect(pts!.tip).toEqual({ x: 200, y: 220 });
+    // base sits on the bottom edge (oy + oh = 200), centered under the tip x.
+    expect(pts!.base1.y).toBe(200);
+    expect(pts!.base2.y).toBe(200);
+    expect((pts!.base1.x + pts!.base2.x) / 2).toBeCloseTo(200, 5);
+    expect(pts!.base2.x).toBeGreaterThan(pts!.base1.x);
+  });
+
+  it("anchors the base to the top edge when the tail points up", () => {
+    const pts = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: -0.5 });
+    expect(pts).not.toBeNull();
+    expect(pts!.tip).toEqual({ x: 200, y: 50 });
+    expect(pts!.base1.y).toBe(100); // top edge
+    expect(pts!.base2.y).toBe(100);
+  });
+
+  it("anchors the base to the side edge when the tail points sideways", () => {
+    const pts = speechTailPoints(ox, oy, ow, oh, { x: 1.3, y: 0.5 });
+    expect(pts).not.toBeNull();
+    // tip = (100 + 1.3*200, 150) = (360, 150), to the right of the bubble (300).
+    expect(pts!.tip).toEqual({ x: 360, y: 150 });
+    // base is vertical on the right edge (ox + ow = 300).
+    expect(pts!.base1.x).toBe(300);
+    expect(pts!.base2.x).toBe(300);
+    expect(pts!.base2.y).toBeGreaterThan(pts!.base1.y);
+  });
+
+  it("returns null when the tip falls inside the bubble (no visible tail)", () => {
+    expect(speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 0.5 })).toBeNull();
+    expect(speechTailPoints(ox, oy, ow, oh, { x: 0.9, y: 0.9 })).toBeNull();
   });
 });
