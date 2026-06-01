@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { probeAgentReadiness } from "./agent-readiness";
+import { probeAgentReadiness, isCodexAuthUnclear } from "./agent-readiness";
 
 type RunResult = { ok: boolean; stdout: string };
 
@@ -23,7 +23,7 @@ describe("probeAgentReadiness", () => {
     const result = await probeAgentReadiness(run);
     expect(result).toEqual({
       claude: { installed: true },
-      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" },
     });
     // Pure function must NOT include a clock-stamped field.
     expect("checkedAt" in result).toBe(false);
@@ -121,7 +121,7 @@ describe("probeAgentReadiness", () => {
     expect(result.codex.imageGeneration).toBe("unknown");
   });
 
-  it("codex not installed -> installed:false, version:null, imageGeneration:unknown", async () => {
+  it("codex not installed -> installed:false, version:null, imageGeneration:unknown, auth:unknown", async () => {
     const run = fakeRun({
       "claude --version": { ok: true, stdout: "claude 1.0.0" },
       // codex --version absent -> fails
@@ -131,6 +131,7 @@ describe("probeAgentReadiness", () => {
       installed: false,
       version: null,
       imageGeneration: "unknown",
+      auth: "unknown",
     });
   });
 
@@ -152,5 +153,75 @@ describe("probeAgentReadiness", () => {
     });
     const result = await probeAgentReadiness(run);
     expect(result.codex.version).toBe("codex-cli 0.135.0");
+  });
+});
+
+describe("probeAgentReadiness — codex auth hint (#263)", () => {
+  it("auth:ok when `codex features list` is readable", async () => {
+    const run = fakeRun({
+      "claude --version": { ok: true, stdout: "claude 1.0.0" },
+      "codex --version": { ok: true, stdout: "codex 0.5.0" },
+      "codex features list": { ok: true, stdout: "image_generation enabled" },
+    });
+    expect((await probeAgentReadiness(run)).codex.auth).toBe("ok");
+  });
+
+  it("auth:ok even when the listing omits image_generation (feature just disabled)", async () => {
+    const run = fakeRun({
+      "claude --version": { ok: true, stdout: "claude 1.0.0" },
+      "codex --version": { ok: true, stdout: "codex 0.5.0" },
+      "codex features list": { ok: true, stdout: "web_search enabled" },
+    });
+    const result = await probeAgentReadiness(run);
+    expect(result.codex.auth).toBe("ok");
+    expect(result.codex.imageGeneration).toBe("disabled");
+  });
+
+  it("auth:unknown when codex is installed but `features list` errors (logged-out/unclear)", async () => {
+    const run = fakeRun({
+      "claude --version": { ok: true, stdout: "claude 1.0.0" },
+      "codex --version": { ok: true, stdout: "codex 0.5.0" },
+      // features list absent -> fails
+    });
+    const result = await probeAgentReadiness(run);
+    expect(result.codex.auth).toBe("unknown");
+    expect(result.codex.imageGeneration).toBe("unknown");
+  });
+
+  it("auth:unknown when `features list` returns empty stdout", async () => {
+    const run = fakeRun({
+      "claude --version": { ok: true, stdout: "claude 1.0.0" },
+      "codex --version": { ok: true, stdout: "codex 0.5.0" },
+      "codex features list": { ok: true, stdout: "   \n " },
+    });
+    expect((await probeAgentReadiness(run)).codex.auth).toBe("unknown");
+  });
+
+  it("auth:unknown when codex is not installed", async () => {
+    const run = fakeRun({ "claude --version": { ok: true, stdout: "claude 1.0.0" } });
+    expect((await probeAgentReadiness(run)).codex.auth).toBe("unknown");
+  });
+});
+
+describe("isCodexAuthUnclear (#263)", () => {
+  const mk = (codex: { installed: boolean; auth: "ok" | "unknown" }) => ({
+    codex: { installed: codex.installed, version: null, imageGeneration: "unknown" as const, auth: codex.auth },
+  });
+
+  it("true only when codex is installed AND auth is unknown", () => {
+    expect(isCodexAuthUnclear(mk({ installed: true, auth: "unknown" }))).toBe(true);
+  });
+
+  it("false when auth is ok", () => {
+    expect(isCodexAuthUnclear(mk({ installed: true, auth: "ok" }))).toBe(false);
+  });
+
+  it("false when codex is not installed (that is a separate 'not detected' case)", () => {
+    expect(isCodexAuthUnclear(mk({ installed: false, auth: "unknown" }))).toBe(false);
+  });
+
+  it("false (fail-open) when readiness has not loaded", () => {
+    expect(isCodexAuthUnclear(null)).toBe(false);
+    expect(isCodexAuthUnclear(undefined)).toBe(false);
   });
 });

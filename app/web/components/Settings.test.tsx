@@ -34,7 +34,7 @@ describe("Settings agent provider readiness", () => {
     const checkedAt = 1748000000000;
     mockFetch({
       claude: { installed: true },
-      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled", auth: "ok" },
       checkedAt,
     });
     render(<Settings token="t" onLogout={() => {}} />);
@@ -54,7 +54,7 @@ describe("Settings agent provider readiness", () => {
   it("shows 'Not detected' when codex is missing and claude is absent", async () => {
     mockFetch({
       claude: { installed: false },
-      codex: { installed: false, version: null, imageGeneration: "unknown" },
+      codex: { installed: false, version: null, imageGeneration: "unknown", auth: "unknown" },
       checkedAt: 1748000000000,
     });
     render(<Settings token="t" onLogout={() => {}} />);
@@ -70,7 +70,7 @@ describe("Settings agent provider readiness", () => {
   it("shows image generation enabled for a ready codex", async () => {
     mockFetch({
       claude: { installed: true },
-      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" },
       checkedAt: 1748000000000,
     });
     render(<Settings token="t" onLogout={() => {}} />);
@@ -78,6 +78,34 @@ describe("Settings agent provider readiness", () => {
     await waitFor(() => {
       expect(section).toHaveTextContent("Image generation");
       expect(section).toHaveTextContent("enabled");
+    });
+  });
+
+  it("shows 'ok' Codex auth and no auth hint when the feature listing is readable", async () => {
+    mockFetch({
+      claude: { installed: true },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" },
+      checkedAt: 1748000000000,
+    });
+    render(<Settings token="t" onLogout={() => {}} />);
+    await screen.findByTestId("provider-readiness");
+    await waitFor(() => {
+      expect(screen.getByTestId("codex-auth-status")).toHaveTextContent("ok");
+    });
+    expect(screen.queryByTestId("codex-auth-unknown-settings")).not.toBeInTheDocument();
+  });
+
+  it("shows 'unclear' Codex auth AND a distinct login hint when installed but auth is unclear (#263)", async () => {
+    mockFetch({
+      claude: { installed: true },
+      codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "unknown", auth: "unknown" },
+      checkedAt: 1748000000000,
+    });
+    render(<Settings token="t" onLogout={() => {}} />);
+    await screen.findByTestId("provider-readiness");
+    await waitFor(() => {
+      expect(screen.getByTestId("codex-auth-status")).toHaveTextContent("unclear");
+      expect(screen.getByTestId("codex-auth-unknown-settings")).toBeInTheDocument();
     });
   });
 });
