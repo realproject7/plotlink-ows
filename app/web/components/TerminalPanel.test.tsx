@@ -135,6 +135,7 @@ describe("TerminalPanel cartoon launch gate", () => {
   function renderPanel(props: {
     contentType?: "fiction" | "cartoon";
     readiness?: AgentReadiness | null;
+    storyName?: string;
   }) {
     const renameRef = { current: null } as {
       current: ((o: string, n: string) => Promise<boolean>) | null;
@@ -142,7 +143,7 @@ describe("TerminalPanel cartoon launch gate", () => {
     return render(
       <TerminalPanel
         token="t"
-        storyName="my-story"
+        storyName={props.storyName ?? "my-story"}
         authFetch={noopFetch}
         renameRef={renameRef}
         contentType={props.contentType}
@@ -182,6 +183,30 @@ describe("TerminalPanel cartoon launch gate", () => {
 
   it("fiction + codex not installed => spawns WS (fiction never gated)", async () => {
     renderPanel({ contentType: "fiction", readiness: readiness(false, "unknown") });
+    expect(screen.queryByTestId("cartoon-launch-blocked")).not.toBeInTheDocument();
+    await waitFor(() => expect(wsConstructed.length).toBeGreaterThan(0));
+  });
+
+  // #264: a freshly-created _new_* cartoon draft (not yet persisted) must be
+  // gated just like a persisted cartoon story — its content type now reaches
+  // TerminalPanel via the pending-draft fallback in StoriesPage.
+  it("NEW cartoon draft (_new_*) + codex not ready => no WS spawn, blocked panel", async () => {
+    renderPanel({
+      storyName: "_new_1730000000000",
+      contentType: "cartoon",
+      readiness: readiness(false, "unknown"),
+    });
+    expect(screen.getByTestId("cartoon-launch-blocked")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(wsConstructed).toHaveLength(0);
+  });
+
+  it("NEW fiction draft (_new_*) + codex not installed => spawns WS (never gated)", async () => {
+    renderPanel({
+      storyName: "_new_1730000000001",
+      contentType: "fiction",
+      readiness: readiness(false, "unknown"),
+    });
     expect(screen.queryByTestId("cartoon-launch-blocked")).not.toBeInTheDocument();
     await waitFor(() => expect(wsConstructed.length).toBeGreaterThan(0));
   });
