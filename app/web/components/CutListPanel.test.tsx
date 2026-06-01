@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
-import { installObjectUrlStub } from "./asset-test-utils";
+import { installObjectUrlStub, MOCK_BLOB_URL } from "./asset-test-utils";
 
 beforeAll(() => {
   installObjectUrlStub();
@@ -199,6 +199,26 @@ describe("CutListPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument());
     expect(screen.queryByTestId("clean-image-handoff-1")).not.toBeInTheDocument();
+  });
+
+  it("renders the expanded clean-image preview via an authFetch blob URL, not the raw protected URL", async () => {
+    // Regression for #276: the cut-list preview also rendered a raw
+    // <img src="/api/stories/.../asset/...">, which can't carry the bearer
+    // header and 401s. It must load through authFetch like the other surfaces.
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", description: "Has image" })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByText("Has image")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Has image"));
+
+    const img = await screen.findByAltText("Cut 1 clean");
+    expect(img).toHaveAttribute("src", MOCK_BLOB_URL);
+    expect(img.getAttribute("src")).not.toContain("/api/stories/");
+    expect(authFetch).toHaveBeenCalledWith("/api/stories/story/asset/plot-01/cut-01-clean.webp");
   });
 
   it("shows replace button when clean image exists", async () => {
