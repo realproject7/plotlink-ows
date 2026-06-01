@@ -149,7 +149,7 @@ describe("CutListPanel", () => {
     });
   });
 
-  it("Copy prompt copies the clean-image prompt to the clipboard", async () => {
+  it("Copy prompt copies an actionable Codex task (output path + create-file + visual prompt)", async () => {
     const cutsData = {
       version: 1, plotFile: "plot-01",
       cuts: [makeCut({ id: 1, shotType: "wide", description: "Rainy alley", characters: ["Mira"] })],
@@ -165,6 +165,13 @@ describe("CutListPanel", () => {
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
     const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    // Actionable Codex task content (the #267 deliverable):
+    expect(copied).toContain("assets/plot-01/cut-01-clean.webp");
+    expect(copied).toContain("SAVE IT AS AN ACTUAL FILE");
+    expect(copied).toContain("VERIFY the file exists");
+    expect(copied).toContain("under 1MB");
+    expect(copied).toContain("final lettering and upload happen later");
+    // The pure visual prompt is still embedded (no scene detail lost):
     expect(copied).toContain("Wide shot. Rainy alley");
     expect(copied).toContain("Characters: Mira.");
     expect(copied).toContain("No speech bubbles");

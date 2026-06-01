@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
-import { buildCleanImagePrompt } from "@app-lib/cartoon-prompt";
+import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 
 interface Overlay {
@@ -182,14 +182,14 @@ function CutRow({
           <div className="mt-2 space-y-2">
             <button
               onClick={() => {
-                navigator.clipboard.writeText(buildCleanImagePrompt(cut as unknown as LibCut));
+                navigator.clipboard.writeText(buildCodexTaskPrompt(cut as unknown as LibCut, plotFile));
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               }}
               data-testid={`copy-prompt-${cut.id}`}
               className="px-3 py-1.5 text-xs border border-border rounded hover:border-accent hover:bg-accent/5"
             >
-              {copied ? "Copied!" : "Copy prompt"}
+              {copied ? "Copied!" : "Copy Codex task"}
             </button>
 
             <input
@@ -224,20 +224,20 @@ function CutRow({
               >
                 <p className="text-[11px] font-medium text-foreground">Ask Codex to generate clean image</p>
                 <p className="text-[10px] text-muted">
-                  Paste this prompt into the Codex terminal to generate{" "}
-                  <span className="font-mono">cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>, then use
-                  &ldquo;Sync clean images&rdquo; (or it is auto-detected).
+                  Paste this task into the Codex terminal to create{" "}
+                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>,
+                  then use &ldquo;Sync clean images&rdquo; (or it is auto-detected).
                 </p>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(buildCleanImagePrompt(cut as unknown as LibCut));
+                    navigator.clipboard.writeText(buildCodexTaskPrompt(cut as unknown as LibCut, plotFile));
                     setAskCopied(true);
                     setTimeout(() => setAskCopied(false), 2000);
                   }}
                   data-testid={`ask-codex-copy-${cut.id}`}
                   className="px-2 py-1 text-[11px] border border-border rounded hover:border-accent hover:bg-accent/5"
                 >
-                  {askCopied ? "Copied!" : "Copy prompt for Codex"}
+                  {askCopied ? "Copied!" : "Copy Codex task"}
                 </button>
               </div>
             )}
