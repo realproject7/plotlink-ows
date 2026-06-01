@@ -7,6 +7,7 @@ import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
+import { validateCoverImage } from "../lib/publish-helpers";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -264,16 +265,22 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 1024 * 1024) {
-      setEditError("Image exceeds 1MB limit");
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      setEditError("File must be an image");
+    // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
+    // immediate feedback instead of a late error at save (the server enforces
+    // the same WebP/JPEG ≤1MB constraint).
+    const error = validateCoverImage(file);
+    if (error) {
+      // Discard any previously-queued valid cover and clear the input, so an
+      // invalid re-selection can't leave a stale cover that Save would still
+      // upload contrary to the user's latest choice (#281 follow-up).
+      setCoverFile(null);
+      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      if (coverInputRef.current) coverInputRef.current.value = "";
+      setEditError(error);
       return;
     }
     setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+    setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setEditError(null);
   }, []);
 
@@ -737,9 +744,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                       <input
                         ref={coverInputRef}
                         type="file"
-                        accept="image/webp,image/jpeg,image/png"
+                        accept="image/webp,image/jpeg"
                         onChange={handleCoverSelect}
                         className="text-xs"
+                        data-testid="cover-input"
                       />
                       <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
                     </div>

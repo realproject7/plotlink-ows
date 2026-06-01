@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -102,5 +102,39 @@ describe("needsLegacyProviderRepair", () => {
 
   it("false when no story is selected", () => {
     expect(needsLegacyProviderRepair("cartoon", undefined, null)).toBe(false);
+  });
+});
+
+describe("validateCoverImage", () => {
+  it("accepts a valid WebP cover", () => {
+    expect(validateCoverImage({ size: 500 * 1024, type: "image/webp" })).toBeNull();
+  });
+
+  it("accepts a valid JPEG cover", () => {
+    expect(validateCoverImage({ size: 500 * 1024, type: "image/jpeg" })).toBeNull();
+  });
+
+  it("accepts a cover at exactly 1MB", () => {
+    expect(validateCoverImage({ size: COVER_MAX_BYTES, type: "image/webp" })).toBeNull();
+  });
+
+  it("rejects a cover over 1MB", () => {
+    expect(validateCoverImage({ size: COVER_MAX_BYTES + 1, type: "image/webp" })).toBe("Image exceeds 1MB limit");
+  });
+
+  it("rejects a PNG cover with a clear WebP/JPEG message (regression: was accepted via startsWith('image/'))", () => {
+    expect(validateCoverImage({ size: 100, type: "image/png" })).toBe("Only WebP and JPEG images are accepted");
+  });
+
+  it("rejects a GIF cover", () => {
+    expect(validateCoverImage({ size: 100, type: "image/gif" })).toBe("Only WebP and JPEG images are accepted");
+  });
+
+  it("rejects a non-image file", () => {
+    expect(validateCoverImage({ size: 100, type: "application/pdf" })).toBe("Only WebP and JPEG images are accepted");
+  });
+
+  it("checks size before type (oversized takes priority)", () => {
+    expect(validateCoverImage({ size: COVER_MAX_BYTES + 1, type: "image/png" })).toBe("Image exceeds 1MB limit");
   });
 });
