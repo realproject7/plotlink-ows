@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCleanImagePrompt } from "./cartoon-prompt";
+import { buildCleanImagePrompt, buildCodexTaskPrompt, cleanImageOutputPath } from "./cartoon-prompt";
 import type { Cut } from "./cuts";
 
 function makeCut(overrides: Partial<Cut> = {}): Cut {
@@ -77,6 +77,76 @@ describe("buildCleanImagePrompt", () => {
     const cut = makeCut({ characters: ["Mira"] });
     const before = JSON.stringify(cut);
     buildCleanImagePrompt(cut);
+    expect(JSON.stringify(cut)).toBe(before);
+  });
+});
+
+describe("cleanImageOutputPath", () => {
+  it("builds the canonical zero-padded webp path", () => {
+    expect(cleanImageOutputPath("plot-01", 1)).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(cleanImageOutputPath("plot-02", 10)).toBe("assets/plot-02/cut-10-clean.webp");
+  });
+});
+
+describe("buildCodexTaskPrompt", () => {
+  it("includes the exact target output path (multiple times)", () => {
+    const prompt = buildCodexTaskPrompt(makeCut({ id: 3 }), "plot-01");
+    expect(prompt).toContain("assets/plot-01/cut-03-clean.webp");
+  });
+
+  it("tells the agent to create the actual file, not describe it", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("SAVE IT AS AN ACTUAL FILE");
+    expect(prompt).toContain("do not just describe it or return a prompt");
+  });
+
+  it("requires verifying the file exists before reporting success", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("VERIFY the file exists");
+    expect(prompt).toContain("Do not claim success unless the file is actually written");
+  });
+
+  it("states the format and size limit", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("WebP");
+    expect(prompt).toContain("under 1MB");
+  });
+
+  it("keeps the clean-image-only / no-text constraints", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("Clean image only");
+    expect(prompt).toContain("no text, speech bubbles");
+  });
+
+  it("reminds that lettering/upload happen later", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("final lettering and upload happen later");
+  });
+
+  it("embeds the pure visual prompt (no scene detail lost)", () => {
+    const cut = makeCut({ shotType: "wide", description: "Rain-soaked city", characters: ["Mira"] });
+    const prompt = buildCodexTaskPrompt(cut, "plot-01");
+    expect(prompt).toContain(buildCleanImagePrompt(cut));
+  });
+
+  it("still excludes dialogue/narration/sfx text", () => {
+    const prompt = buildCodexTaskPrompt(
+      makeCut({
+        dialogue: [{ speaker: "Mira", text: "Secret dialogue line" }],
+        narration: "Secret narration text",
+        sfx: "SECRETSFX",
+      }),
+      "plot-01",
+    );
+    expect(prompt).not.toContain("Secret dialogue line");
+    expect(prompt).not.toContain("Secret narration text");
+    expect(prompt).not.toContain("SECRETSFX");
+  });
+
+  it("is a pure function (does not mutate the cut)", () => {
+    const cut = makeCut({ characters: ["Mira"] });
+    const before = JSON.stringify(cut);
+    buildCodexTaskPrompt(cut, "plot-01");
     expect(JSON.stringify(cut)).toBe(before);
   });
 });

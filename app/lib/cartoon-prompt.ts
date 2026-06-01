@@ -30,3 +30,34 @@ export function buildCleanImagePrompt(cut: Cut): string {
 
   return lines.join("\n").trim();
 }
+
+/** Canonical clean-image output path for a cut (webp, matching the sync/import contract). */
+export function cleanImageOutputPath(plotFile: string, cutId: number): string {
+  return `assets/${plotFile}/cut-${String(cutId).padStart(2, "0")}-clean.webp`;
+}
+
+/**
+ * Build an actionable Codex *task* prompt for generating a cut's clean image.
+ *
+ * Unlike `buildCleanImagePrompt` (a pure visual description), this instructs the
+ * agent to CREATE THE ACTUAL FILE at the exact target path and verify it before
+ * reporting success — so Codex produces a real `cut-XX-clean.webp` asset rather
+ * than returning a prompt or description. The visual prompt is embedded so no
+ * scene detail is lost. Pure function — no side effects.
+ */
+export function buildCodexTaskPrompt(cut: Cut, plotFile: string): string {
+  const outputPath = cleanImageOutputPath(plotFile, cut.id);
+  return [
+    `Generate the clean image for cut ${cut.id} and SAVE IT AS AN ACTUAL FILE at: ${outputPath}`,
+    "",
+    "Image description:",
+    buildCleanImagePrompt(cut),
+    "",
+    "Requirements:",
+    `- Create the real image file at ${outputPath} — do not just describe it or return a prompt.`,
+    "- Clean image only: no text, speech bubbles, captions, sound effects, signage, watermark, or signature.",
+    "- Format: WebP (or JPEG). Size: under 1MB.",
+    `- After saving, VERIFY the file exists at ${outputPath} before reporting success. Do not claim success unless the file is actually written.`,
+    "- Do not letter or upload anything — final lettering and upload happen later in OWS.",
+  ].join("\n");
+}
