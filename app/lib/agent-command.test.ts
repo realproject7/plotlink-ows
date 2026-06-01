@@ -45,23 +45,38 @@ describe("buildAgentCommand — Codex", () => {
     ).toEqual({ command: "codex", args: ["--enable", "image_generation", "--cd", STORY_DIR] });
   });
 
-  it("resume with id: codex resume <id> (subcommand, not --resume)", () => {
+  it("resume with id preserves cwd + image generation: codex resume <id> --enable image_generation --cd <storyDir>", () => {
     const { command, args } = buildAgentCommand({ provider: "codex", mode: "normal", resume: true, sessionId: STORED_ID, newSessionId: NEW_ID, storyDir: STORY_DIR });
     expect(command).toBe("codex");
-    expect(args).toEqual(["resume", STORED_ID]);
+    expect(args).toEqual(["resume", STORED_ID, "--enable", "image_generation", "--cd", STORY_DIR]);
     expect(args).not.toContain("--resume");
   });
 
-  it("resume without id: codex resume --last", () => {
+  it("resume without id preserves cwd + image generation: codex resume --last --enable image_generation --cd <storyDir>", () => {
     expect(
       buildAgentCommand({ provider: "codex", mode: "normal", resume: true, sessionId: null, newSessionId: NEW_ID, storyDir: STORY_DIR }).args,
-    ).toEqual(["resume", "--last"]);
+    ).toEqual(["resume", "--last", "--enable", "image_generation", "--cd", STORY_DIR]);
+  });
+
+  it("resume always carries the story cwd and image_generation capability", () => {
+    for (const sessionId of [STORED_ID, null]) {
+      const { args } = buildAgentCommand({ provider: "codex", mode: "normal", resume: true, sessionId, newSessionId: NEW_ID, storyDir: STORY_DIR });
+      expect(args).toContain("--enable");
+      expect(args).toContain("image_generation");
+      expect(args.slice(-2)).toEqual(["--cd", STORY_DIR]);
+    }
   });
 
   it("bypass fresh appends --dangerously-bypass-approvals-and-sandbox", () => {
     expect(
       buildAgentCommand({ provider: "codex", mode: "bypass", resume: false, sessionId: null, newSessionId: NEW_ID, storyDir: STORY_DIR }).args,
     ).toEqual(["--enable", "image_generation", "--cd", STORY_DIR, "--dangerously-bypass-approvals-and-sandbox"]);
+  });
+
+  it("bypass resume appends --dangerously-bypass-approvals-and-sandbox after cwd", () => {
+    expect(
+      buildAgentCommand({ provider: "codex", mode: "bypass", resume: true, sessionId: STORED_ID, newSessionId: NEW_ID, storyDir: STORY_DIR }).args,
+    ).toEqual(["resume", STORED_ID, "--enable", "image_generation", "--cd", STORY_DIR, "--dangerously-bypass-approvals-and-sandbox"]);
   });
 
   it("never emits Claude-only flags", () => {

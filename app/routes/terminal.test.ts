@@ -207,35 +207,44 @@ describe("resolveAgentCommandForSession (resume decision)", () => {
   // image_generation --cd` launch. The previous spawnPty logic gated resume on
   // a stored id (correct for Claude, wrong for Codex), so this case fell back
   // to a fresh session.
-  it("codex resume with stored {sessionId:null} => codex resume --last", () => {
+  // #265: resume now also preserves the story cwd (--cd) and image_generation.
+  it("codex resume with stored {sessionId:null} => codex resume --last + cwd/image-gen", () => {
     const result = resolveAgentCommandForSession({
       ...base,
       provider: "codex",
       resumeRequested: true,
       stored: { provider: "codex", sessionId: null },
     });
-    expect(result).toEqual({ command: "codex", args: ["resume", "--last"] });
-    expect(result.args).not.toContain("image_generation");
+    expect(result).toEqual({
+      command: "codex",
+      args: ["resume", "--last", "--enable", "image_generation", "--cd", "/stories/my-tale"],
+    });
   });
 
-  it("codex resume with stored {sessionId:'CDX'} => codex resume CDX", () => {
+  it("codex resume with stored {sessionId:'CDX'} => codex resume CDX + cwd/image-gen", () => {
     const result = resolveAgentCommandForSession({
       ...base,
       provider: "codex",
       resumeRequested: true,
       stored: { provider: "codex", sessionId: "CDX" },
     });
-    expect(result).toEqual({ command: "codex", args: ["resume", "CDX"] });
+    expect(result).toEqual({
+      command: "codex",
+      args: ["resume", "CDX", "--enable", "image_generation", "--cd", "/stories/my-tale"],
+    });
   });
 
-  it("codex resume requested with no stored record => codex resume --last", () => {
+  it("codex resume requested with no stored record => codex resume --last + cwd/image-gen", () => {
     const result = resolveAgentCommandForSession({
       ...base,
       provider: "codex",
       resumeRequested: true,
       stored: undefined,
     });
-    expect(result).toEqual({ command: "codex", args: ["resume", "--last"] });
+    expect(result).toEqual({
+      command: "codex",
+      args: ["resume", "--last", "--enable", "image_generation", "--cd", "/stories/my-tale"],
+    });
   });
 
   it("codex without resume => fresh --enable image_generation --cd", () => {
