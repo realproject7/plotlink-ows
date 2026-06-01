@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline } from "../lib/publish-helpers";
 import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -259,7 +259,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     window.addEventListener("mouseup", onMouseUp);
   }, []);
 
-  const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean) => {
+  const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
 
@@ -337,6 +337,18 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     authorAddress: walletAddress,
                   }),
                 });
+
+                // Pre-publish cover (#284): a new genesis can't carry a cover
+                // through createStoryline, so once the storyline exists, attach
+                // the selected cover via upload-cover + update-storyline. Best-
+                // effort — a failure leaves the storyline published with no
+                // cover, settable later via Edit Story.
+                if (coverFile && fileName === "genesis.md" && data.storylineId) {
+                  setPublishProgress("Uploading cover...");
+                  try {
+                    await attachCoverToStoryline(authFetch, data.storylineId, coverFile);
+                  } catch { /* non-fatal: storyline is already published */ }
+                }
               }
             } catch { /* ignore partial SSE */ }
           }

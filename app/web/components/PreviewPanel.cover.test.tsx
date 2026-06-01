@@ -130,3 +130,83 @@ describe("PreviewPanel cover selection", () => {
     expect(JSON.parse(update.body as string).coverCid).toBe("QmStaleCover");
   });
 });
+
+// Unpublished genesis — the cover is picked BEFORE first publish (#284).
+const DRAFT_GENESIS = {
+  file: "genesis.md",
+  status: "draft",
+  content: "# A story\n\nHook.",
+};
+
+function makeDraftAuthFetch() {
+  return vi.fn((url: string, opts?: RequestInit) => {
+    if (url.includes("/api/stories/") && (!opts || (opts.method ?? "GET") === "GET")) {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(DRAFT_GENESIS) });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+  });
+}
+
+describe("PreviewPanel pre-publish cover (#284)", () => {
+  async function renderDraftGenesis(onPublish: ReturnType<typeof vi.fn>) {
+    render(
+      <PreviewPanel
+        storyName="my-story"
+        fileName="genesis.md"
+        authFetch={makeDraftAuthFetch()}
+        onPublish={onPublish}
+        publishingFile={null}
+        walletAddress={WALLET}
+        contentType="cartoon"
+      />,
+    );
+    // The unpublished genesis publish form (with the pre-publish cover picker).
+    await screen.findByTestId("prepublish-cover");
+    return screen.getByRole("button", { name: "Publish to PlotLink" });
+  }
+
+  it("passes the selected cover file to onPublish as the 6th argument", async () => {
+    const onPublish = vi.fn();
+    const publishBtn = await renderDraftGenesis(onPublish);
+
+    const input = screen.getByTestId("prepublish-cover-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [fileOf("image/webp", "cover.webp")] } });
+    expect(await screen.findByAltText("Cover preview")).toBeInTheDocument();
+
+    fireEvent.click(publishBtn);
+
+    expect(onPublish).toHaveBeenCalledTimes(1);
+    const args = onPublish.mock.calls[0];
+    expect(args[0]).toBe("my-story");
+    expect(args[1]).toBe("genesis.md");
+    expect(args[5]).toBeInstanceOf(File);
+    expect((args[5] as File).name).toBe("cover.webp");
+  });
+
+  it("publishes with the unchanged 5-arg signature when no cover is selected", async () => {
+    const onPublish = vi.fn();
+    const publishBtn = await renderDraftGenesis(onPublish);
+    fireEvent.click(publishBtn);
+    expect(onPublish).toHaveBeenCalledTimes(1);
+    // No cover → no 6th arg, preserving the existing publish call shape.
+    expect(onPublish.mock.calls[0][5]).toBeUndefined();
+  });
+
+  it("clears a stale valid cover when a later pick is invalid (does not publish the stale cover)", async () => {
+    const onPublish = vi.fn();
+    const publishBtn = await renderDraftGenesis(onPublish);
+
+    const input = screen.getByTestId("prepublish-cover-input") as HTMLInputElement;
+    // valid, then invalid
+    fireEvent.change(input, { target: { files: [fileOf("image/webp", "cover.webp")] } });
+    expect(await screen.findByAltText("Cover preview")).toBeInTheDocument();
+    fireEvent.change(input, { target: { files: [fileOf("image/png", "bad.png")] } });
+    expect(await screen.findByTestId("prepublish-cover-error")).toHaveTextContent("Only WebP and JPEG");
+    expect(screen.queryByAltText("Cover preview")).not.toBeInTheDocument();
+
+    fireEvent.click(publishBtn);
+    expect(onPublish).toHaveBeenCalledTimes(1);
+    // Stale cover was dropped → no cover argument passed.
+    expect(onPublish.mock.calls[0][5]).toBeUndefined();
+  });
+});

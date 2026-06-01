@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES } from "./publish-helpers";
+import { describe, it, expect, vi } from "vitest";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -136,5 +136,46 @@ describe("validateCoverImage", () => {
 
   it("checks size before type (oversized takes priority)", () => {
     expect(validateCoverImage({ size: COVER_MAX_BYTES + 1, type: "image/png" })).toBe("Image exceeds 1MB limit");
+  });
+});
+
+describe("attachCoverToStoryline", () => {
+  const file = new File(["x"], "cover.webp", { type: "image/webp" });
+
+  function jsonRes(ok: boolean, body: unknown) {
+    return { ok, json: () => Promise.resolve(body) } as unknown as Response;
+  }
+
+  it("uploads the cover then sets it on the storyline, returning the cid", async () => {
+    const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const authFetch = vi.fn((url: string, opts?: RequestInit) => {
+      calls.push({ url, method: opts?.method, body: opts?.body });
+      if (url.includes("upload-cover")) return Promise.resolve(jsonRes(true, { cid: "QmCid" }));
+      return Promise.resolve(jsonRes(true, { ok: true }));
+    });
+
+    const cid = await attachCoverToStoryline(authFetch, 7, file);
+
+    expect(cid).toBe("QmCid");
+    expect(calls[0].url).toContain("/api/publish/upload-cover");
+    expect(calls[0].body).toBeInstanceOf(FormData);
+    expect(calls[1].url).toContain("/api/publish/update-storyline");
+    expect(JSON.parse(calls[1].body as string)).toEqual({ storylineId: 7, coverCid: "QmCid" });
+  });
+
+  it("returns null and does NOT call update-storyline when the upload fails", async () => {
+    const authFetch = vi.fn(() => Promise.resolve(jsonRes(false, { error: "bad" })));
+    const cid = await attachCoverToStoryline(authFetch, 7, file);
+    expect(cid).toBeNull();
+    // only the upload attempt — never update-storyline
+    expect(authFetch).toHaveBeenCalledTimes(1);
+    expect(authFetch.mock.calls[0][0]).toContain("/api/publish/upload-cover");
+  });
+
+  it("returns null when the upload succeeds but yields no cid", async () => {
+    const authFetch = vi.fn(() => Promise.resolve(jsonRes(true, {})));
+    const cid = await attachCoverToStoryline(authFetch, 7, file);
+    expect(cid).toBeNull();
+    expect(authFetch).toHaveBeenCalledTimes(1);
   });
 });
