@@ -5,7 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, type SniffedType } from "../lib/clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, type SniffedType } from "../lib/clean-image-sync";
 
 const stories = new Hono();
 
@@ -352,6 +352,17 @@ stories.post("/:name/cuts/:plotFile/upload-clean/:cutId", async (c) => {
     return c.json({ error: "Only WebP and JPEG images are supported" }, 400);
   }
 
+  // Validate by actual file bytes, not just the (spoofable) MIME label, so a
+  // renamed text/PNG file claiming image/webp cannot be recorded as a clean
+  // image. Mirrors the magic-byte check used by sync-clean-images (#256/#266).
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (!cleanImageBytesMatchMime(buffer, mime)) {
+    return c.json(
+      { error: "File content is not a valid WebP/JPEG image (bytes do not match the image type)" },
+      400,
+    );
+  }
+
   const ext = mime === "image/webp" ? "webp" : "jpg";
   const padded = String(cutId).padStart(2, "0");
   const assetDir = path.join(storyDir, "assets", plotFile);
@@ -359,7 +370,6 @@ stories.post("/:name/cuts/:plotFile/upload-clean/:cutId", async (c) => {
 
   const fileName = `cut-${padded}-clean.${ext}`;
   const filePath = path.join(assetDir, fileName);
-  const buffer = Buffer.from(await file.arrayBuffer());
   fs.writeFileSync(filePath, buffer);
 
   const cleanImagePath = `assets/${plotFile}/cut-${padded}-clean.${ext}`;
