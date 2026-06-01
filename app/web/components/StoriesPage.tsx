@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair } from "../lib/publish-helpers";
 import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -56,6 +56,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
   const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
+  // Provider recorded on each persisted story (read-only, from /api/stories).
+  // Absent ⇒ legacy story with no provider (defaults to Claude at launch).
+  const [storyProviders, setStoryProviders] = useState<Record<string, "claude" | "codex" | undefined>>({});
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
@@ -375,16 +378,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string }[]) => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string; agentProvider?: "claude" | "codex" }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
       const lang: Record<string, string> = {};
+      const prov: Record<string, "claude" | "codex" | undefined> = {};
       for (const s of stories) {
         ct[s.name] = s.contentType || "fiction";
         lang[s.name] = s.language || "English";
+        prov[s.name] = s.agentProvider;
       }
       setStoryContentTypes(ct);
       setStoryLanguages(lang);
+      setStoryProviders(prov);
     };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
       if (data?.stories) updateFromStories(data.stories);
@@ -418,6 +424,38 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     } catch { /* clipboard unavailable */ }
   }, []);
 
+  // Explicit, scoped repair for a legacy cartoon story with no recorded
+  // provider: set THIS story's `agentProvider` to "codex". Reuses the metadata
+  // route, whose `...existing` spread preserves language/agentMode. Does NOT
+  // touch fiction, does NOT bulk-migrate. Optimistically updates local provider
+  // state so launch gating sees codex immediately, then re-fetches.
+  const handleRepairProvider = useCallback(async () => {
+    if (!selectedStory || selectedStory.startsWith("_new_")) return;
+    const name = selectedStory;
+    const res = await authFetch(`/api/stories/${name}/metadata`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contentType: "cartoon", agentProvider: "codex" }),
+    });
+    if (!res.ok) return;
+    setStoryProviders((prev) => ({ ...prev, [name]: "codex" }));
+    setAgentProviders((prev) => ({ ...prev, [name]: "codex" }));
+    // Re-fetch so the list state reflects the persisted provider.
+    try {
+      const listRes = await authFetch("/api/stories");
+      if (listRes.ok) {
+        const data = await listRes.json();
+        if (data?.stories) {
+          const prov: Record<string, "claude" | "codex" | undefined> = {};
+          for (const s of data.stories as { name: string; agentProvider?: "claude" | "codex" }[]) {
+            prov[s.name] = s.agentProvider;
+          }
+          setStoryProviders(prov);
+        }
+      }
+    } catch { /* ignore */ }
+  }, [authFetch, selectedStory]);
+
   const handleArchiveStory = useCallback((name: string) => {
     // Archive API already called by TerminalPanel — just clear selection
     if (selectedStory === name) {
@@ -425,6 +463,17 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       setSelectedFile(null);
     }
   }, [selectedStory]);
+
+  // Resolve the effective provider for the selected story: an optimistic/new
+  // session value (agentProviders) wins, else the persisted list value.
+  const selectedProvider = selectedStory
+    ? (agentProviders[selectedStory] ?? storyProviders[selectedStory])
+    : undefined;
+  const selectedNeedsProviderRepair = needsLegacyProviderRepair(
+    resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current),
+    selectedProvider,
+    selectedStory,
+  );
 
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
@@ -442,7 +491,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} agentProviders={agentProviders} readiness={readiness} contentType={resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current)} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} agentProviders={agentProviders} readiness={readiness} contentType={resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current)} needsProviderRepair={selectedNeedsProviderRepair} onRepairProvider={handleRepairProvider} />
       </div>
 
       {/* Drag Handle */}

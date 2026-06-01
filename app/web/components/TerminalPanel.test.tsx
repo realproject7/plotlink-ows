@@ -211,3 +211,56 @@ describe("TerminalPanel cartoon launch gate", () => {
     await waitFor(() => expect(wsConstructed.length).toBeGreaterThan(0));
   });
 });
+
+describe("TerminalPanel legacy cartoon provider repair", () => {
+  function renderPanel(props: {
+    needsProviderRepair?: boolean;
+    onRepairProvider?: () => void | Promise<void>;
+    contentType?: "fiction" | "cartoon";
+    readiness?: AgentReadiness | null;
+    storyName?: string;
+  }) {
+    const renameRef = { current: null } as {
+      current: ((o: string, n: string) => Promise<boolean>) | null;
+    };
+    return render(
+      <TerminalPanel
+        token="t"
+        storyName={props.storyName ?? "my-cartoon"}
+        authFetch={noopFetch}
+        renameRef={renameRef}
+        contentType={props.contentType ?? "cartoon"}
+        readiness={props.readiness ?? readiness(true, "enabled")}
+        needsProviderRepair={props.needsProviderRepair}
+        onRepairProvider={props.onRepairProvider}
+      />,
+    );
+  }
+
+  it("shows the repair panel and button when needsProviderRepair is true, and does NOT spawn", async () => {
+    renderPanel({ needsProviderRepair: true });
+    expect(screen.getByTestId("legacy-cartoon-provider-repair")).toBeInTheDocument();
+    expect(screen.getByTestId("repair-provider-codex")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(wsConstructed).toHaveLength(0);
+  });
+
+  it("clicking the repair button calls onRepairProvider", async () => {
+    const onRepairProvider = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ needsProviderRepair: true, onRepairProvider });
+    screen.getByTestId("repair-provider-codex").click();
+    await waitFor(() => expect(onRepairProvider).toHaveBeenCalledTimes(1));
+  });
+
+  it("does NOT show the repair panel for fiction", () => {
+    renderPanel({ needsProviderRepair: false, contentType: "fiction", storyName: "my-novel" });
+    expect(screen.queryByTestId("legacy-cartoon-provider-repair")).not.toBeInTheDocument();
+  });
+
+  it("does NOT show the repair panel for a cartoon that already has a provider", async () => {
+    renderPanel({ needsProviderRepair: false });
+    expect(screen.queryByTestId("legacy-cartoon-provider-repair")).not.toBeInTheDocument();
+    // Normal cartoon (codex ready) auto-spawns.
+    await waitFor(() => expect(wsConstructed.length).toBeGreaterThan(0));
+  });
+});

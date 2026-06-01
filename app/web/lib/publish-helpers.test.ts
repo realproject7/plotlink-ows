@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -72,5 +72,35 @@ describe("resolveSelectedContentType", () => {
 
   it("defaults to fiction for a selected but unknown story", () => {
     expect(resolveSelectedContentType("ghost", {}, new Map())).toBe("fiction");
+  });
+});
+
+describe("needsLegacyProviderRepair", () => {
+  it("true for a real cartoon with no provider", () => {
+    expect(needsLegacyProviderRepair("cartoon", undefined, "my-cartoon")).toBe(true);
+  });
+
+  it("false for a cartoon already set to codex", () => {
+    expect(needsLegacyProviderRepair("cartoon", "codex", "my-cartoon")).toBe(false);
+  });
+
+  it("false for a cartoon already set to claude", () => {
+    expect(needsLegacyProviderRepair("cartoon", "claude", "my-cartoon")).toBe(false);
+  });
+
+  it("false for fiction with no provider", () => {
+    expect(needsLegacyProviderRepair("fiction", undefined, "my-novel")).toBe(false);
+  });
+
+  it("false for a _new_* cartoon draft with no provider", () => {
+    expect(needsLegacyProviderRepair("cartoon", undefined, "_new_1730000000000")).toBe(false);
+  });
+
+  it("false for undefined content type", () => {
+    expect(needsLegacyProviderRepair(undefined, undefined, "my-cartoon")).toBe(false);
+  });
+
+  it("false when no story is selected", () => {
+    expect(needsLegacyProviderRepair("cartoon", undefined, null)).toBe(false);
   });
 });

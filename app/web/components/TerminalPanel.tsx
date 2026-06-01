@@ -20,6 +20,16 @@ interface TerminalPanelProps {
   readiness?: AgentReadiness | null;
   /** Content type of the currently-selected story (undefined = unknown). */
   contentType?: "fiction" | "cartoon";
+  /**
+   * True only for the selected real (non-`_new_*`) cartoon story whose
+   * `.story.json` has no `agentProvider` recorded (legacy). When true, show the
+   * explicit provider-repair CTA instead of auto-spawning, so the writer sets
+   * the provider to Codex before launching. Never true for fiction or a cartoon
+   * that already has a provider.
+   */
+  needsProviderRepair?: boolean;
+  /** Set this story's provider to Codex (scoped, non-destructive repair). */
+  onRepairProvider?: () => void | Promise<void>;
 }
 
 const CODEX_ENABLE_CMD = "codex features enable image_generation";
@@ -137,7 +147,7 @@ async function deleteScrollback(storyName: string): Promise<void> {
 // Sessions live outside React state to avoid ref-in-effect lint issues
 const sessions = new Map<string, TerminalSession>();
 
-export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories, agentProviders, readiness, contentType }: TerminalPanelProps) {
+export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDestroySession, onArchiveStory, confirmedStories, renameRef, bypassStories, agentProviders, readiness, contentType, needsProviderRepair, onRepairProvider }: TerminalPanelProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const authFetchRef = useRef(authFetch);
   const [sessionList, setSessionList] = useState<string[]>([]);
@@ -145,9 +155,13 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
   const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null);
   const [copiedEnableCmd, setCopiedEnableCmd] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   // Gate the cartoon agent launch for the currently-selected story.
   const cartoonLaunchBlocked = isCartoonLaunchBlocked(contentType, readiness);
+  // Legacy cartoon (no provider recorded) ⇒ require explicit provider repair
+  // before auto-spawning a terminal. Scoped to the selected story only.
+  const showProviderRepair = !!needsProviderRepair;
 
   const connectWsRef = useRef<(name: string, session: TerminalSession, resume: boolean) => void>(() => {});
 
@@ -426,6 +440,13 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
       showSession(null);
       return;
     }
+    // Legacy cartoon with no recorded provider: do NOT auto-spawn. Show the
+    // explicit repair CTA so the writer sets the provider to Codex first. After
+    // repair, `needsProviderRepair` flips false and normal gating/launch applies.
+    if (showProviderRepair) {
+      showSession(null);
+      return;
+    }
     if (!sessions.has(storyName)) {
       // Check if a previous session exists — if so, show overlay instead of auto-connecting
       authFetchRef.current(`/api/terminal/session/${encodeURIComponent(storyName)}`)
@@ -446,7 +467,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     } else {
       showSession(storyName);
     }
-  }, [storyName, createSession, showSession, cartoonLaunchBlocked]);
+  }, [storyName, createSession, showSession, cartoonLaunchBlocked, showProviderRepair]);
 
   // Periodic scrollback save (every 30s for active session)
   useEffect(() => {
@@ -547,7 +568,7 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
         <div ref={wrapperRef} className="h-full" />
 
         {/* Empty state overlay */}
-        {isEmpty && !cartoonLaunchBlocked && (
+        {isEmpty && !cartoonLaunchBlocked && !showProviderRepair && (
           <div className="absolute inset-0 flex items-center justify-center text-muted">
             <div className="text-center">
               <p className="text-lg font-serif">Select a story on the left menu</p>
@@ -605,6 +626,49 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Legacy cartoon: no provider recorded — explicit, scoped repair CTA.
+            Separate from readiness gating; about a MISSING provider on this one
+            story. Setting it to Codex never touches other stories or fiction. */}
+        {showProviderRepair && !cartoonLaunchBlocked && (
+          <div
+            data-testid="legacy-cartoon-provider-repair"
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "rgba(240, 235, 225, 0.9)" }}
+          >
+            <div className="space-y-3 p-6 bg-surface border border-border rounded-lg shadow-lg max-w-md">
+              <p className="text-sm font-serif text-foreground font-medium">
+                Set this cartoon story&apos;s provider
+              </p>
+              <p className="text-xs text-muted">
+                This cartoon story was created before provider tracking, so it has
+                no provider recorded and would launch with Claude — which can&apos;t
+                generate the clean images cartoons need. Set this story&apos;s
+                provider to Codex to continue.
+              </p>
+              <p className="text-[11px] text-muted">
+                Only this story is changed. Other stories and fiction are not affected.
+              </p>
+              <button
+                type="button"
+                data-testid="repair-provider-codex"
+                disabled={repairing}
+                onClick={async () => {
+                  if (repairing) return;
+                  setRepairing(true);
+                  try {
+                    await onRepairProvider?.();
+                  } finally {
+                    setRepairing(false);
+                  }
+                }}
+                className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {repairing ? "Setting…" : "Set this story's provider to Codex"}
+              </button>
             </div>
           </div>
         )}
