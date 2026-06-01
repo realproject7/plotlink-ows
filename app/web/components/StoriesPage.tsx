@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType } from "../lib/publish-helpers";
 import type { AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -442,7 +442,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
       {/* Terminal — sized by ratio of available space */}
       <div className="min-w-0 border-r border-border" style={{ flex: `${ratio} 0 0` }}>
-        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} agentProviders={agentProviders} readiness={readiness} contentType={selectedStory ? storyContentTypes[selectedStory] : undefined} />
+        <TerminalPanel token={token} storyName={selectedStory} authFetch={authFetch} onSelectStory={handleSelectStory} onDestroySession={handleDestroySession} onArchiveStory={handleArchiveStory} confirmedStories={confirmedStories} renameRef={renameRef} bypassStories={bypassStories} agentProviders={agentProviders} readiness={readiness} contentType={resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current)} />
       </div>
 
       {/* Drag Handle */}
@@ -467,7 +467,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           onPublish={handlePublish}
           publishingFile={publishingFile}
           walletAddress={walletAddress}
-          contentType={selectedStory ? (storyContentTypes[selectedStory] || contentTypeMap.current.get(selectedStory) || "fiction") : "fiction"}
+          contentType={resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current) || "fiction"}
           language={selectedStory ? (storyLanguages[selectedStory] || "English") : "English"}
         />
         {publishProgress && (
