@@ -262,6 +262,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
+    let coverAttachFailed = false;
 
     try {
       // Get file content
@@ -345,9 +346,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                 // cover, settable later via Edit Story.
                 if (coverFile && fileName === "genesis.md" && data.storylineId) {
                   setPublishProgress("Uploading cover...");
+                  let coverCid: string | null = null;
                   try {
-                    await attachCoverToStoryline(authFetch, data.storylineId, coverFile);
+                    coverCid = await attachCoverToStoryline(authFetch, data.storylineId, coverFile);
                   } catch { /* non-fatal: storyline is already published */ }
+                  // A null result means the cover was not attached (upload or
+                  // update-storyline failed). The storyline is published either
+                  // way; tell the user so they can retry from Edit Story.
+                  if (!coverCid) coverAttachFailed = true;
                 }
               }
             } catch { /* ignore partial SSE */ }
@@ -355,7 +361,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         }
       }
 
-      setPublishProgress("Published!");
+      setPublishProgress(
+        coverAttachFailed
+          ? "Published, but cover upload failed — set it later from Edit Story."
+          : "Published!",
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Publish failed";
       setPublishProgress(`Error: ${message}`);

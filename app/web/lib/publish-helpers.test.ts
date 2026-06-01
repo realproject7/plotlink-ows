@@ -178,4 +178,18 @@ describe("attachCoverToStoryline", () => {
     expect(cid).toBeNull();
     expect(authFetch).toHaveBeenCalledTimes(1);
   });
+
+  it("returns null when update-storyline fails, even though the cover uploaded", async () => {
+    // Cover uploaded but never set on the storyline → not attached, must report
+    // failure so the publish flow can surface the non-fatal warning (#284/re1).
+    const authFetch = vi.fn((url: string) => {
+      if (url.includes("upload-cover")) return Promise.resolve(jsonRes(true, { cid: "QmCid" }));
+      return Promise.resolve(jsonRes(false, { error: "not indexed yet" }));
+    });
+    const cid = await attachCoverToStoryline(authFetch, 7, file);
+    expect(cid).toBeNull();
+    // both endpoints were attempted
+    expect(authFetch).toHaveBeenCalledTimes(2);
+    expect(authFetch.mock.calls[1][0]).toContain("/api/publish/update-storyline");
+  });
 });

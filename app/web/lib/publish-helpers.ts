@@ -25,9 +25,10 @@ type AuthFetch = (url: string, opts?: RequestInit) => Promise<Response>;
  * `createStoryline` flow can't carry a cover CID, so after a genesis publishes
  * we upload the selected cover (byte-validated server-side, #281) and set it via
  * the existing `update-storyline` endpoint — the same two-step the published
- * Edit Story panel uses. Best-effort: a failed upload returns null without
- * calling update-storyline, so the storyline still stands and the writer can set
- * a cover later via Edit Story. Returns the cover CID, or null when not attached.
+ * Edit Story panel uses. Best-effort: a failed upload OR a failed
+ * update-storyline returns null, so the storyline still stands and the writer
+ * can set a cover later via Edit Story. Returns the cover CID only when the
+ * cover was actually attached (both steps succeeded), else null.
  */
 export async function attachCoverToStoryline(
   authFetch: AuthFetch,
@@ -40,11 +41,14 @@ export async function attachCoverToStoryline(
   if (!upRes.ok) return null;
   const { cid } = (await upRes.json()) as { cid?: string };
   if (!cid) return null;
-  await authFetch("/api/publish/update-storyline", {
+  const updRes = await authFetch("/api/publish/update-storyline", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ storylineId, coverCid: cid }),
   });
+  // The cover is only attached if update-storyline also succeeds; a non-ok
+  // response means the cover was uploaded but never set on the storyline.
+  if (!updRes.ok) return null;
   return cid;
 }
 
