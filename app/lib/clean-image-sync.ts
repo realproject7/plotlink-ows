@@ -56,6 +56,19 @@ export function sniffImageType(bytes: Uint8Array): SniffedType {
   return "unknown";
 }
 
+/**
+ * Validate that an uploaded file's actual magic bytes match its claimed image
+ * MIME type. Pure (no fs). Used by the manual `upload-clean` route (#266) so a
+ * renamed text/PNG file labeled `image/webp` cannot be recorded as a clean
+ * image. Only the cartoon clean-image formats (WebP/JPEG) are accepted.
+ */
+export function cleanImageBytesMatchMime(bytes: Uint8Array, mime: string): boolean {
+  const expected: SniffedType | null =
+    mime === "image/webp" ? "webp" : mime === "image/jpeg" ? "jpeg" : null;
+  if (expected === null) return false;
+  return sniffImageType(bytes) === expected;
+}
+
 /** Canonical clean-image relative paths for a cut, in preference order. */
 export function cleanImageCandidates(plotFile: string, cutId: number): string[] {
   const padded = String(cutId).padStart(2, "0");

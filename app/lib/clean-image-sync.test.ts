@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
 import { createDefaultCut } from "./cuts";
 
 function cut(id: number, overrides: Partial<ReturnType<typeof createDefaultCut>> = {}) {
@@ -60,6 +60,38 @@ describe("sniffImageType", () => {
   it("returns unknown for a too-short buffer", () => {
     expect(sniffImageType(new Uint8Array([0xff, 0xd8]))).toBe("unknown");
     expect(sniffImageType(new Uint8Array([]))).toBe("unknown");
+  });
+});
+
+describe("cleanImageBytesMatchMime (manual upload byte validation, #266)", () => {
+  const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00]);
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00]);
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const TEXT = new TextEncoder().encode("this is not an image");
+
+  it("accepts WebP bytes labeled image/webp", () => {
+    expect(cleanImageBytesMatchMime(WEBP, "image/webp")).toBe(true);
+  });
+
+  it("accepts JPEG bytes labeled image/jpeg", () => {
+    expect(cleanImageBytesMatchMime(JPEG, "image/jpeg")).toBe(true);
+  });
+
+  it("rejects text bytes labeled image/webp (renamed file)", () => {
+    expect(cleanImageBytesMatchMime(TEXT, "image/webp")).toBe(false);
+  });
+
+  it("rejects PNG bytes labeled image/webp (content/type mismatch)", () => {
+    expect(cleanImageBytesMatchMime(PNG, "image/webp")).toBe(false);
+  });
+
+  it("rejects WebP bytes labeled image/jpeg (content/type mismatch)", () => {
+    expect(cleanImageBytesMatchMime(WEBP, "image/jpeg")).toBe(false);
+  });
+
+  it("rejects an accepted image type under a non-accepted MIME (e.g. image/png)", () => {
+    expect(cleanImageBytesMatchMime(PNG, "image/png")).toBe(false);
+    expect(cleanImageBytesMatchMime(WEBP, "image/png")).toBe(false);
   });
 });
 
