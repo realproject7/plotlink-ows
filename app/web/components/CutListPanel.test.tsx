@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
+import { installObjectUrlStub } from "./asset-test-utils";
 
 beforeAll(() => {
+  installObjectUrlStub();
   global.ResizeObserver = class {
     callback: ResizeObserverCallback;
     constructor(callback: ResizeObserverCallback) { this.callback = callback; }
@@ -23,11 +25,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function mockAuthFetch(response: { ok: boolean; status?: number; data?: unknown }) {
-  return vi.fn().mockResolvedValue({
-    ok: response.ok,
-    status: response.status ?? (response.ok ? 200 : 400),
-    json: () => Promise.resolve(response.data ?? {}),
-  });
+  return vi.fn((url: string) =>
+    Promise.resolve(
+      url.includes("/asset/")
+        ? { ok: true, status: 200, blob: () => Promise.resolve(new Blob(["img"], { type: "image/webp" })) }
+        : {
+            ok: response.ok,
+            status: response.status ?? (response.ok ? 200 : 400),
+            json: () => Promise.resolve(response.data ?? {}),
+          },
+    ),
+  );
 }
 
 function makeCut(overrides: Record<string, unknown> = {}) {
@@ -256,13 +264,12 @@ describe("CutListPanel", () => {
     await waitFor(() => expect(screen.getByText("Open editor")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Open editor"));
 
-    // Simulate image load in editor
-    const img = document.querySelector("img");
-    if (img) {
-      Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
-      Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
-      act(() => { fireEvent.load(img); });
-    }
+    // Simulate image load in editor — the clean image loads asynchronously via
+    // authFetch -> blob -> object URL, so await the <img> before firing load.
+    const img = await screen.findByRole("img");
+    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
+    act(() => { fireEvent.load(img); });
 
     // Click the overlay to see inspector font
     await waitFor(() => expect(screen.getByTestId("overlay-kr-overlay")).toBeInTheDocument());

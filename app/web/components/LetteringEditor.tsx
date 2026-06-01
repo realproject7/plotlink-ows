@@ -6,6 +6,7 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
+import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
 
@@ -74,11 +75,6 @@ interface LetteringEditorProps {
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
 }
 
-function assetUrl(storyName: string, assetPath: string): string {
-  const relative = assetPath.startsWith("assets/") ? assetPath.slice(7) : assetPath;
-  return `/api/stories/${storyName}/asset/${relative}`;
-}
-
 const TYPE_LABEL: Record<OverlayType, string> = {
   speech: "Speech",
   narration: "Narration",
@@ -107,6 +103,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     loadFont(bodyFont);
     loadFont(displayFont);
   }, [bodyFont, displayFont]);
+
+  // Clean image lives behind requireAuth, so a raw <img src> would 401. Load it
+  // via authFetch into a blob object URL and reuse that same URL for export.
+  const cleanAsset = useAuthedAsset(storyName, cut.cleanImagePath, authFetch);
   const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -233,7 +233,18 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         return;
       }
 
-      const imgUrl = cut.cleanImagePath ? assetUrl(storyName, cut.cleanImagePath) : null;
+      // Export the actual loaded clean image, never a blank canvas standing in
+      // for an image that simply failed to load.
+      if (cut.cleanImagePath && !cleanAsset.url) {
+        setExportError(
+          cleanAsset.error
+            ? "Clean image failed to load — cannot export. Retry once it renders."
+            : "Clean image still loading — wait for it to render, then export.",
+        );
+        setExporting(false);
+        return;
+      }
+      const imgUrl = cleanAsset.url;
       const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
         narration: cut.narration,
         dialogue: cut.dialogue,
@@ -258,7 +269,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     } finally {
       setExporting(false);
     }
-  }, [cut, overlays, storyName, plotFile, bodyFont, displayFont, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
+  }, [cut, cleanAsset, overlays, storyName, plotFile, bodyFont, displayFont, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
@@ -303,10 +314,18 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
           onClick={handleBackgroundClick}
           data-testid="editor-surface"
         >
-          {cut.cleanImagePath ? (
+          {cut.cleanImagePath && cleanAsset.error ? (
+            <div className="w-full h-full flex items-center justify-center text-muted text-xs" data-testid="clean-image-error">
+              Clean image not available
+            </div>
+          ) : cut.cleanImagePath && !cleanAsset.url ? (
+            <div className="w-full h-full flex items-center justify-center text-muted text-xs" data-testid="clean-image-loading">
+              Loading clean image…
+            </div>
+          ) : cut.cleanImagePath ? (
             <img
               ref={imgRef}
-              src={assetUrl(storyName, cut.cleanImagePath)}
+              src={cleanAsset.url!}
               alt={`Cut ${cut.id} clean`}
               className="w-full h-full object-contain"
               draggable={false}

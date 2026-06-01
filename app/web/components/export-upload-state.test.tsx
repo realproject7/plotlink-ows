@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
+import { installObjectUrlStub } from "./asset-test-utils";
 
 beforeAll(() => {
+  installObjectUrlStub();
   global.ResizeObserver = class {
     callback: ResizeObserverCallback;
     constructor(callback: ResizeObserverCallback) { this.callback = callback; }
@@ -40,7 +42,13 @@ describe("export state refresh and save-before-export", () => {
     const callOrder: string[] = [];
     const onSave = vi.fn().mockImplementation(async () => { callOrder.push("save"); });
     const onExported = vi.fn().mockImplementation(() => { callOrder.push("exported"); });
-    const authFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, finalImagePath: "x.webp" }) });
+    const authFetch = vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes("/asset/")
+          ? { ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) }
+          : { ok: true, status: 200, json: () => Promise.resolve({ ok: true, finalImagePath: "x.webp" }) },
+      ),
+    );
 
     render(
       <LetteringEditor
@@ -54,6 +62,9 @@ describe("export state refresh and save-before-export", () => {
       />,
     );
 
+    // Wait for the clean image to load (authFetch -> blob -> object URL) before
+    // exporting; export refuses to run on a not-yet-loaded image.
+    await screen.findByRole("img");
     fireEvent.click(screen.getByTestId("export-btn"));
 
     await waitFor(() => {
