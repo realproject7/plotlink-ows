@@ -11,10 +11,14 @@ import type { AgentProvider } from "../routes/stories";
  *   - resume: `claude --resume <sessionId>`
  *   - bypass: append `--dangerously-skip-permissions`
  *
- * Codex (net-new):
+ * Codex (net-new). Both fresh AND resume carry the story cwd (`--cd`) and the
+ * `image_generation` capability — a resumed cartoon session needs the same
+ * working directory and image-gen feature as a fresh one (see #265):
  *   - fresh:  `codex --enable image_generation --cd <storyDir>`
- *   - resume: `codex resume <sessionId>` (subcommand style) when an id is
- *             stored, otherwise `codex resume --last`. NEVER `--resume <id>`.
+ *   - resume: `codex resume <sessionId> --enable image_generation --cd <storyDir>`
+ *             (subcommand style) when an id is stored, otherwise
+ *             `codex resume --last --enable image_generation --cd <storyDir>`.
+ *             NEVER `--resume <id>`.
  *   - bypass: append `--dangerously-bypass-approvals-and-sandbox`
  *
  * Claude-only and Codex-only flags are never mixed across providers.
@@ -62,16 +66,18 @@ function buildClaudeArgs(opts: BuildAgentCommandOptions): AgentCommand {
 function buildCodexCommand(opts: BuildAgentCommandOptions): AgentCommand {
   const args: string[] = [];
   if (opts.resume) {
-    // Codex resume is a subcommand, never `--resume <id>`.
+    // Codex resume is a subcommand (never `--resume <id>`). The subcommand and
+    // its target come first, then the capability/cwd flags.
     if (opts.sessionId) {
       args.push("resume", opts.sessionId);
     } else {
       args.push("resume", "--last");
     }
-  } else {
-    // Fresh Codex session: enable image generation + set cwd.
-    args.push("--enable", "image_generation", "--cd", opts.storyDir);
   }
+  // Both fresh and resume need the image-generation capability and the story
+  // cwd so a resumed cartoon session lands in the right directory with image
+  // generation enabled (not just whatever global session `--last` would pick).
+  args.push("--enable", "image_generation", "--cd", opts.storyDir);
   if (opts.mode === "bypass") {
     args.push("--dangerously-bypass-approvals-and-sandbox");
   }
