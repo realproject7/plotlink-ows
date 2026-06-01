@@ -69,7 +69,7 @@ function makeAuthFetch(opts?: { readiness?: unknown; readinessFails?: boolean })
   // Default: codex installed + image generation enabled -> no cartoon warning.
   const readiness = opts?.readiness ?? {
     claude: { installed: true },
-    codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+    codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" },
     checkedAt: 1748000000000,
   };
   const calls: FetchCall[] = [];
@@ -227,7 +227,7 @@ function makeListAuthFetch() {
         ok: true,
         json: () => Promise.resolve({
           claude: { installed: true },
-          codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled" },
+          codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" },
           checkedAt: 1748000000000,
         }),
       });
@@ -299,7 +299,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch({
       readiness: {
         claude: { installed: true },
-        codex: { installed: false, version: null, imageGeneration: "unknown" },
+        codex: { installed: false, version: null, imageGeneration: "unknown", auth: "unknown" },
         checkedAt: 1748000000000,
       },
     });
@@ -315,7 +315,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch({
       readiness: {
         claude: { installed: true },
-        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled", auth: "ok" },
         checkedAt: 1748000000000,
       },
     });
@@ -335,7 +335,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch({
       readiness: {
         claude: { installed: true },
-        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled" },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "disabled", auth: "ok" },
         checkedAt: 1748000000000,
       },
     });
@@ -359,19 +359,23 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     expect(cartoonButton()).not.toBeDisabled();
   });
 
-  it("warns AND disables Cartoon when image generation is unknown (not ready)", async () => {
+  it("shows the distinct auth-unknown message (not the enable-feature one) AND disables Cartoon when codex auth is unclear (#263)", async () => {
+    // Codex installed but `features list` unreadable → imageGeneration:unknown +
+    // auth:unknown. The actionable next step is a Codex login, not feature-enable.
     const { fn } = makeAuthFetch({
       readiness: {
         claude: { installed: true },
-        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "unknown" },
+        codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "unknown", auth: "unknown" },
         checkedAt: 1748000000000,
       },
     });
     render(<StoriesPage token="t" authFetch={fn} />);
     fireEvent.click(screen.getByTestId("mock-new-story"));
     await waitFor(() => {
-      expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
+      expect(screen.getByTestId("cartoon-codex-auth-unknown")).toBeInTheDocument();
     });
+    // The generic enable-feature warning must NOT show in the auth-unclear case.
+    expect(screen.queryByTestId("cartoon-codex-warning")).not.toBeInTheDocument();
     expect(cartoonButton()).toBeDisabled();
   });
 
@@ -391,7 +395,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch({
       readiness: {
         claude: { installed: true },
-        codex: { installed: false, version: null, imageGeneration: "unknown" },
+        codex: { installed: false, version: null, imageGeneration: "unknown", auth: "unknown" },
         checkedAt: 1748000000000,
       },
     });

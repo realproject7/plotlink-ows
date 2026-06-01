@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
-import type { AgentReadiness } from "@app-lib/agent-readiness";
+import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface TerminalPanelProps {
   token: string;
@@ -598,6 +598,10 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
                   Codex was not detected. Install the Codex CLI and sign in
                   (e.g. <span className="font-mono">npm i -g @openai/codex</span> then{" "}
                   <span className="font-mono">codex login</span>), then reopen this story.
+                </p>
+              ) : isCodexAuthUnclear(readiness) ? (
+                <p className="text-xs text-amber-700" data-testid="codex-auth-unknown-launch">
+                  {CODEX_AUTH_UNCLEAR_MESSAGE} Then reopen this story.
                 </p>
               ) : (
                 <div className="space-y-1">

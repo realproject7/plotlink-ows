@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { WalletCard } from "./WalletCard";
-import type { AgentReadiness } from "@app-lib/agent-readiness";
+import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 export function Settings({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [newPassphrase, setNewPassphrase] = useState("");
@@ -244,6 +244,17 @@ export function Settings({ token, onLogout }: { token: string; onLogout: () => v
               {readiness?.codex.imageGeneration ?? "unknown"}
             </span>
           </div>
+          <div className="flex items-center justify-between">
+            <span className="text-foreground text-sm">Codex auth</span>
+            <span className="text-muted text-xs" data-testid="codex-auth-status">
+              {readiness?.codex.installed ? (readiness.codex.auth === "ok" ? "ok" : "unclear") : "—"}
+            </span>
+          </div>
+          {isCodexAuthUnclear(readiness) && (
+            <p className="text-[11px] text-amber-700" data-testid="codex-auth-unknown-settings">
+              {CODEX_AUTH_UNCLEAR_MESSAGE}
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-foreground text-sm">Last checked</span>
             <span className="text-muted text-xs">

@@ -12,11 +12,33 @@
 
 export type ImageGenStatus = "enabled" | "disabled" | "unknown";
 
+// Codex auth/login hint. "ok" when `codex features list` could actually be read
+// (so we trust the imageGeneration verdict); "unknown" when Codex is installed
+// but its capabilities couldn't be read — commonly a logged-out / unclear-auth
+// state. Best-effort and conservative: default "unknown", never blocks fiction.
+export type AuthStatus = "ok" | "unknown";
+
 export interface AgentReadiness {
   claude: { installed: boolean };
-  codex: { installed: boolean; version: string | null; imageGeneration: ImageGenStatus };
+  codex: { installed: boolean; version: string | null; imageGeneration: ImageGenStatus; auth: AuthStatus };
   checkedAt: number; // epoch ms — added by the route, NOT by the pure probe.
 }
+
+/**
+ * Distinct "you may not be logged in to Codex" signal (#263): Codex is installed
+ * but `codex features list` couldn't be read, so the actionable next step is a
+ * Codex login (outside OWS), NOT enabling a feature. Pure + shared so the New
+ * Story flow, the terminal launch-blocked panel, and Settings stay consistent.
+ */
+export function isCodexAuthUnclear(
+  readiness: Pick<AgentReadiness, "codex"> | null | undefined,
+): boolean {
+  return !!readiness && readiness.codex.installed && readiness.codex.auth === "unknown";
+}
+
+/** Operator-facing copy for the auth-unclear case (#263). Shared across surfaces. */
+export const CODEX_AUTH_UNCLEAR_MESSAGE =
+  "Codex is installed but its capabilities couldn't be read — you may need to log in to Codex (resolve outside OWS), then re-check.";
 
 /** First non-empty, trimmed line of a command's stdout (or null). */
 function firstNonEmptyTrimmedLine(stdout: string): string | null {
@@ -78,10 +100,15 @@ export async function probeAgentReadiness(
     : null;
 
   let imageGeneration: ImageGenStatus = "unknown";
+  // Conservative default: until we can actually read `codex features list`, treat
+  // auth as unclear (covers not-installed and logged-out states alike).
+  let auth: AuthStatus = "unknown";
 
   if (codexInstalled) {
     const features = await run("codex features list");
     if (features.ok && features.stdout.trim().length > 0) {
+      // A readable feature listing means Codex auth/login is working.
+      auth = "ok";
       // Accept either `image_generation` or `image-generation` naming.
       const matchLine = features.stdout
         .split("\n")
@@ -101,6 +128,6 @@ export async function probeAgentReadiness(
 
   return {
     claude: { installed: claudeInstalled },
-    codex: { installed: codexInstalled, version: codexVersion, imageGeneration },
+    codex: { installed: codexInstalled, version: codexVersion, imageGeneration, auth },
   };
 }

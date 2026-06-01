@@ -4,7 +4,7 @@ import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline } from "../lib/publish-helpers";
-import type { AgentReadiness } from "@app-lib/agent-readiness";
+import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
   token: string;
@@ -629,8 +629,17 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     <span className="font-mono">codex login</span>) to create cartoons.
                   </p>
                 )}
+                {isCodexAuthUnclear(readiness) && (
+                  <p
+                    className="text-[11px] text-amber-700 text-left"
+                    data-testid="cartoon-codex-auth-unknown"
+                  >
+                    {CODEX_AUTH_UNCLEAR_MESSAGE}
+                  </p>
+                )}
                 {readiness &&
                   readiness.codex.installed &&
+                  !isCodexAuthUnclear(readiness) &&
                   readiness.codex.imageGeneration !== "enabled" && (
                     <div data-testid="cartoon-codex-warning">
                       <p className="text-[11px] text-amber-700 text-left">

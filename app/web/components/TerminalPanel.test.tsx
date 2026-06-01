@@ -25,10 +25,13 @@ vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 function readiness(
   installed: boolean,
   imageGeneration: "enabled" | "disabled" | "unknown",
+  // Realistic default: imageGeneration:"unknown" only arises when `features list`
+  // can't be read, i.e. auth is unclear; otherwise auth is "ok".
+  auth: "ok" | "unknown" = imageGeneration === "unknown" ? "unknown" : "ok",
 ): AgentReadiness {
   return {
     claude: { installed: true },
-    codex: { installed, version: installed ? "codex-cli 0.135.0" : null, imageGeneration },
+    codex: { installed, version: installed ? "codex-cli 0.135.0" : null, imageGeneration, auth },
     checkedAt: 1748000000000,
   };
 }
@@ -164,6 +167,18 @@ describe("TerminalPanel cartoon launch gate", () => {
     renderPanel({ contentType: "cartoon", readiness: readiness(true, "disabled") });
     expect(screen.getByTestId("cartoon-launch-blocked")).toBeInTheDocument();
     expect(screen.getByText("codex features enable image_generation")).toBeInTheDocument();
+    // Auth is OK here, so the auth-unclear message must NOT appear.
+    expect(screen.queryByTestId("codex-auth-unknown-launch")).not.toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(wsConstructed).toHaveLength(0);
+  });
+
+  it("cartoon + codex installed but auth unclear => distinct login message, NOT the enable-feature command (#263)", async () => {
+    renderPanel({ contentType: "cartoon", readiness: readiness(true, "unknown") });
+    expect(screen.getByTestId("cartoon-launch-blocked")).toBeInTheDocument();
+    expect(screen.getByTestId("codex-auth-unknown-launch")).toBeInTheDocument();
+    // The enable-feature command must NOT be shown for an auth-unclear state.
+    expect(screen.queryByText("codex features enable image_generation")).not.toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 20));
     expect(wsConstructed).toHaveLength(0);
   });
