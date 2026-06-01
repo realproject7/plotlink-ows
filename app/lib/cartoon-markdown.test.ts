@@ -169,6 +169,25 @@ describe("mergeCartoonMarkdown", () => {
     expect(markdown).not.toContain("A quiet street.");
   });
 
+  it("strips pre-generation placeholder prose so Generate MD output is image-only (#286)", async () => {
+    const existing = [
+      "Placeholder only. OWS should generate the publish markdown from `plot-01.cuts.json` after clean images are approved, lettered final images are created, and final images are uploaded.",
+      "",
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Old](https://old.com)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+
+    const cuts = [makeCut({ uploadedUrl: "https://new.com" })];
+    const { markdown } = mergeCartoonMarkdown(existing, cuts);
+    expect(markdown).not.toContain("Placeholder only");
+    expect(markdown).not.toContain("OWS should generate");
+    expect(markdown).toContain("https://new.com");
+    // The result must now pass the readiness gate (no leftover placeholder prose).
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    expect(checkMarkdownReadiness(markdown, cuts).ready).toBe(true);
+  });
+
   it("fiction markdown is unaffected (no markers)", () => {
     const fiction = "# Chapter 1\n\nOnce upon a time...";
     const { markdown } = mergeCartoonMarkdown(fiction, []);

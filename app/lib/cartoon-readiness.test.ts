@@ -321,6 +321,59 @@ describe("classifyCartoonReadiness", () => {
   });
 });
 
+describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
+  const block = (id: string, url: string) =>
+    `<!-- ows:cartoon-cut ${id} start -->\n![Scene](${url})\n<!-- ows:cartoon-cut ${id} end -->`;
+  // The exact prose that leaked on-chain in storyline #57 / plot 1.
+  const PILOT_PROSE =
+    "Placeholder only. OWS should generate the publish markdown from `plot-01.cuts.json` after clean images are approved, lettered final images are created, and final images are uploaded.";
+
+  it("rejects placeholder prose BEFORE the first cut block", () => {
+    const url = "https://ipfs/QmA";
+    const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+  });
+
+  it("rejects placeholder prose BETWEEN/AFTER cut blocks", () => {
+    const url = "https://ipfs/QmA";
+    const md = [
+      block("cut-001", url),
+      "OWS should generate the publish markdown from cuts.json after clean images are approved.",
+      block("cut-002", url),
+    ].join("\n\n");
+    const cuts = [makeCut({ uploadedUrl: url }), makeCut({ id: 2, uploadedUrl: url })];
+    const { ready, issues } = checkMarkdownReadiness(md, cuts);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+  });
+
+  it("rejects generic template leftovers (TODO/FIXME)", () => {
+    const url = "https://ipfs/QmA";
+    const md = `TODO: replace this episode intro\n\n${block("cut-001", url)}`;
+    const { ready } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(ready).toBe(false);
+  });
+
+  it("passes for normal image-only cartoon markdown (no placeholder prose)", () => {
+    const url = "https://ipfs/QmA";
+    const md = [block("cut-001", url), block("cut-002", url)].join("\n\n");
+    const cuts = [makeCut({ uploadedUrl: url }), makeCut({ id: 2, uploadedUrl: url })];
+    const { ready, issues } = checkMarkdownReadiness(md, cuts);
+    expect(ready).toBe(true);
+    expect(issues).toEqual([]);
+  });
+
+  it("classifyCartoonReadiness surfaces placeholder prose as an error (publish blocked)", () => {
+    const url = "https://ipfs/QmA";
+    const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
+    const result = classifyCartoonReadiness(md, [makeCut({ uploadedUrl: url })]);
+    expect(result.stage).toBe("error");
+    expect(result.issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+  });
+});
+
 describe("checkExportSize", () => {
   it("passes for file under 1MB", () => {
     expect(checkExportSize(500 * 1024)).toBeNull();

@@ -37,6 +37,43 @@ export function checkCartoonReadiness(cuts: Cut[]): { ready: boolean; issues: st
   return { ready: issues.length === 0, issues };
 }
 
+/**
+ * Known pre-generation / instructional placeholder prose that an AI writer or a
+ * stale template can leave in plot-NN.md. None of this belongs in publish-facing
+ * cartoon markdown, which is image-only (plus `ows:cartoon-cut` marker comments).
+ * Published immutably, such prose renders as junk above the comic — exactly what
+ * happened in storyline #57 / plot 1 (#286): the line "Placeholder only. OWS
+ * should generate the publish markdown from `plot-01.cuts.json` ..." survived the
+ * readiness check because it sat OUTSIDE the cut marker blocks and carried no
+ * image reference. Matched case-insensitively anywhere in the markdown.
+ *
+ * Because the published content is immutable, this list errs toward catching
+ * leftovers: a false positive only asks the writer to delete a stray line before
+ * publishing, while a false negative bakes the junk on-chain forever.
+ */
+export const PLACEHOLDER_PROSE_PATTERNS: RegExp[] = [
+  /placeholder only/i,
+  /\bOWS (?:should )?generates? the publish markdown/i,
+  /generate(?:s|d)? the publish markdown from/i,
+  /after clean images are approved/i,
+  /lettered final images are created/i,
+  /do not hand-?write/i,
+  /\b(?:TODO|FIXME)\b/,
+];
+
+/**
+ * Return the first matched placeholder-prose snippet found in the markdown, or
+ * null if none. Shared by the publish readiness gate and the markdown generator
+ * (which strips these paragraphs so "Generate MD" output stays image-only).
+ */
+export function findPlaceholderProse(markdown: string): string | null {
+  for (const re of PLACEHOLDER_PROSE_PATTERNS) {
+    const m = markdown.match(re);
+    if (m) return m[0];
+  }
+  return null;
+}
+
 function extractCutBlock(markdown: string, id: string): string | null {
   const start = `<!-- ows:cartoon-cut ${id} start -->`;
   const end = `<!-- ows:cartoon-cut ${id} end -->`;
@@ -97,6 +134,15 @@ export function checkMarkdownReadiness(
 
   if (/awaiting upload|image pending|final image pending|pending upload/i.test(markdown)) {
     issues.push("Markdown contains awaiting-upload placeholders");
+  }
+
+  // Reject pre-generation / instructional placeholder prose anywhere in the
+  // markdown — not just inside cut blocks. This is what leaked on-chain in #286.
+  const placeholderProse = findPlaceholderProse(markdown);
+  if (placeholderProse) {
+    issues.push(
+      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Generate MD so the published markdown is image-only`,
+    );
   }
 
   // Every image reference anywhere in the markdown must be (1) an http(s) URL
