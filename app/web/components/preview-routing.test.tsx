@@ -1,15 +1,32 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { CartoonPreview } from "./CartoonPreview";
+import { installObjectUrlStub, MOCK_BLOB_URL } from "./asset-test-utils";
+
+beforeAll(() => {
+  installObjectUrlStub();
+});
 
 afterEach(cleanup);
 
 function mockAuthFetch(response: { ok: boolean; status?: number; data?: unknown }) {
-  return vi.fn().mockResolvedValue({
-    ok: response.ok,
-    status: response.status ?? (response.ok ? 200 : 400),
-    json: () => Promise.resolve(response.data ?? {}),
-  });
+  // Asset routes load via blob (browsers can't attach the Bearer header to a
+  // raw <img src>); the cuts data route returns JSON.
+  return vi.fn((url: string) =>
+    Promise.resolve(
+      url.includes("/asset/")
+        ? {
+            ok: true,
+            status: 200,
+            blob: () => Promise.resolve(new Blob(["img"], { type: "image/webp" })),
+          }
+        : {
+            ok: response.ok,
+            status: response.status ?? (response.ok ? 200 : 400),
+            json: () => Promise.resolve(response.data ?? {}),
+          },
+    ),
+  );
 }
 
 function shouldUseCartoonPreview(
@@ -98,7 +115,7 @@ describe("CartoonPreview", () => {
       expect(screen.getByText("Mira")).toBeInTheDocument();
       const img = screen.getByAltText("City at dawn");
       expect(img).toBeInTheDocument();
-      expect(img).toHaveAttribute("src", "/api/stories/test-story/asset/plot-01/cut-01-final.webp");
+      expect(img).toHaveAttribute("src", MOCK_BLOB_URL);
     });
   });
 
@@ -120,7 +137,7 @@ describe("CartoonPreview", () => {
 
     await waitFor(() => {
       const img = screen.getByAltText("Market scene");
-      expect(img).toHaveAttribute("src", "/api/stories/my-story/asset/plot-01/cut-01-clean.webp");
+      expect(img).toHaveAttribute("src", MOCK_BLOB_URL);
       const overlay = screen.getByTestId("cut-1-overlay");
       expect(overlay).toBeInTheDocument();
       expect(screen.getByText("Mira:")).toBeInTheDocument();

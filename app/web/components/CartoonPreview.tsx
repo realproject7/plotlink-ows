@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { AssetImage } from "./asset-image";
+
+type AuthFetch = (url: string, opts?: RequestInit) => Promise<Response>;
 
 interface CutDialogue {
   speaker: string;
@@ -32,32 +35,6 @@ interface CartoonPreviewProps {
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
 }
 
-function assetUrl(storyName: string, assetPath: string): string {
-  const relative = assetPath.startsWith("assets/") ? assetPath.slice(7) : assetPath;
-  return `/api/stories/${storyName}/asset/${relative}`;
-}
-
-function CutImage({ src, alt }: { src: string; alt: string }) {
-  const [error, setError] = useState(false);
-
-  if (error) {
-    return (
-      <div className="w-full aspect-video bg-surface border border-border rounded flex items-center justify-center">
-        <span className="text-xs text-muted">Image not available</span>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setError(true)}
-      className="w-full rounded border border-border"
-    />
-  );
-}
-
 function TextOverlay({ cut }: { cut: Cut }) {
   const hasText = cut.dialogue.length > 0 || cut.narration || cut.sfx;
   if (!hasText) return null;
@@ -82,7 +59,7 @@ function TextOverlay({ cut }: { cut: Cut }) {
   );
 }
 
-function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
+function CutCard({ cut, storyName, authFetch }: { cut: Cut; storyName: string; authFetch: AuthFetch }) {
   const hasFinal = !!cut.finalImagePath;
   const hasClean = !!cut.cleanImagePath;
   const hasImage = hasFinal || hasClean;
@@ -108,8 +85,10 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
 
       {/* Final image — lettered, no overlay needed */}
       {hasFinal && (
-        <CutImage
-          src={assetUrl(storyName, cut.finalImagePath!)}
+        <AssetImage
+          storyName={storyName}
+          assetPath={cut.finalImagePath!}
+          authFetch={authFetch}
           alt={cut.description || `Cut ${cut.id}`}
         />
       )}
@@ -117,8 +96,10 @@ function CutCard({ cut, storyName }: { cut: Cut; storyName: string }) {
       {/* Clean image with text overlay */}
       {!hasFinal && hasClean && (
         <div className="border border-border rounded overflow-hidden">
-          <CutImage
-            src={assetUrl(storyName, cut.cleanImagePath!)}
+          <AssetImage
+            storyName={storyName}
+            assetPath={cut.cleanImagePath!}
+            authFetch={authFetch}
             alt={cut.description || `Cut ${cut.id}`}
           />
           <div className="px-3 py-2 bg-surface/80 border-t border-border">
@@ -235,7 +216,7 @@ export function CartoonPreview({ storyName, fileName, authFetch }: CartoonPrevie
     <div className="h-full overflow-y-auto">
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         {cutsFile.cuts.map((cut) => (
-          <CutCard key={cut.id} cut={cut} storyName={storyName} />
+          <CutCard key={cut.id} cut={cut} storyName={storyName} authFetch={authFetch} />
         ))}
       </div>
     </div>

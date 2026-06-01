@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
+import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 
@@ -77,11 +78,6 @@ const STATUS_DOT: Record<CutStatus, string> = {
   lettered: "bg-amber-500",
   uploaded: "bg-green-600",
 };
-
-function assetUrl(storyName: string, assetPath: string): string {
-  const relative = assetPath.startsWith("assets/") ? assetPath.slice(7) : assetPath;
-  return `/api/stories/${storyName}/asset/${relative}`;
-}
 
 function CutRow({
   cut,
@@ -166,14 +162,16 @@ function CutRow({
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t border-border">
-          {/* Clean image preview */}
+          {/* Clean image preview — loaded through authFetch since the asset
+              route is behind requireAuth (a raw <img src> can't send the token). */}
           {cut.cleanImagePath && (
             <div className="mt-2">
-              <img
-                src={assetUrl(storyName, cut.cleanImagePath)}
+              <AssetImage
+                storyName={storyName}
+                assetPath={cut.cleanImagePath}
+                authFetch={authFetch}
                 alt={`Cut ${cut.id} clean`}
                 className="w-full max-h-48 object-contain rounded border border-border bg-white"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
             </div>
           )}
