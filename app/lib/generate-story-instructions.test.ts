@@ -246,6 +246,25 @@ describe("generateStoryInstructions", () => {
     expect(out).not.toContain("prose synopsis hook");
   });
 
+  // #380: strengthen the prologue + Episode 01 buildup requirements so generated
+  // cartoons don't start cold — explicit multi-paragraph buildup and an Episode 01
+  // opening beat that continues from Genesis.
+  it("requires a multi-paragraph Genesis prologue with real buildup (#380)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // Explicit paragraph count (not a single block / one-line premise).
+    // (\s+ tolerates the source's line wrapping inside the instruction prose.)
+    expect(out).toMatch(/3[–-]6\s+short\s+paragraphs/i);
+    expect(out).toMatch(/single\s+(dense\s+)?paragraph|one-line premise|single block/i);
+    // Names the buildup beats: what the lead wants + stakes.
+    expect(out).toMatch(/what the lead wants/i);
+  });
+
+  it("requires Episode 01 to open on a titled beat continuing from Genesis, not a cold jump (#380)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toMatch(/titled\s+beat continuing directly from where Genesis leaves off/i);
+    expect(out).toMatch(/not a cold jump|cold jump/i);
+  });
+
   // #352: cartoon instructions must teach Codex when/how to plan text panels.
   it("documents text/interstitial panels (kind:text) and when to use them", () => {
     const out = generateStoryInstructions("cartoon", "codex");
