@@ -1040,3 +1040,87 @@ describe("GET /api/stories/:name/cover-asset (#296 auto-detect)", () => {
     expect(data.path).toBe("assets/cover.webp");
   });
 });
+
+describe("generate-markdown produces publish-ready cartoon markdown (#319)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-test-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function seedCuts(story: string, urls: (string | null)[]) {
+    const storyDir = path.join(tmpDir, story);
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("plot-01", urls.length);
+    cf.cuts.forEach((cut, i) => {
+      cut.description = `Scene ${i + 1}`;
+      cut.uploadedUrl = urls[i];
+    });
+    writeCutsFile(storyDir, "plot-01", cf);
+    return storyDir;
+  }
+
+  it("rewrites a scaffold-prose plot into a pure image sequence when all cuts are uploaded", async () => {
+    const storyDir = seedCuts("toon", ["https://ipfs.example/Qm1", "https://ipfs.example/Qm2"]);
+    // A scaffold plot-01.md full of instructional prose (the #211 starting state).
+    fs.writeFileSync(
+      path.join(storyDir, "plot-01.md"),
+      [
+        "# Swipe Right, Refund Later",
+        "",
+        "Upload the lettered final images, then click Generate MD to assemble the episode.",
+        "",
+        "TODO: remember to double-check the order before publishing.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const res = await app.request("/api/stories/toon/cuts/plot-01/generate-markdown", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toEqual([]);
+
+    const md = fs.readFileSync(path.join(storyDir, "plot-01.md"), "utf-8");
+    // Pure image sequence: both uploaded URLs present, no scaffold prose survives.
+    expect(md).toContain("![Scene 1](https://ipfs.example/Qm1)");
+    expect(md).toContain("![Scene 2](https://ipfs.example/Qm2)");
+    expect(md).not.toContain("Upload the lettered final images");
+    expect(md).not.toContain("# Swipe Right, Refund Later");
+    expect(md).not.toMatch(/TODO/);
+
+    const { checkMarkdownReadiness } = await import("../lib/cartoon-readiness");
+    const cuts = readCutsFile(storyDir, "plot-01")!.cuts;
+    expect(checkMarkdownReadiness(md, cuts).ready).toBe(true);
+  });
+
+  it("keeps a clear not-ready state (no misleading publish markdown) when uploads are missing", async () => {
+    const storyDir = seedCuts("toon2", ["https://ipfs.example/Qm1", null]);
+    fs.writeFileSync(path.join(storyDir, "plot-01.md"), "Placeholder scaffold.\n", "utf-8");
+
+    const res = await app.request("/api/stories/toon2/cuts/plot-01/generate-markdown", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.warnings).toContain("Cut 2: missing upload URL");
+
+    const md = fs.readFileSync(path.join(storyDir, "plot-01.md"), "utf-8");
+    expect(md).toContain("![Scene 1](https://ipfs.example/Qm1)");
+    // Missing cut is an awaiting-upload marker, never a fake/local image ref.
+    expect(md).toContain("<!-- Cut 2: awaiting upload -->");
+    expect(md).not.toContain("![Scene 2]");
+    expect(md).not.toContain("Placeholder scaffold.");
+
+    // Publish stays blocked while a cut is unuploaded.
+    const { checkMarkdownReadiness } = await import("../lib/cartoon-readiness");
+    const cuts = readCutsFile(storyDir, "plot-01")!.cuts;
+    expect(checkMarkdownReadiness(md, cuts).ready).toBe(false);
+  });
+});
