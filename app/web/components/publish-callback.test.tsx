@@ -49,6 +49,21 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
     expect(deps).toContain("storyContentTypes");
     expect(deps).toContain("walletAddress");
   });
+
+  // #331: a headingless genesis.md must not publish as the bare "genesis"
+  // filename. handlePublish must derive the title via derivePublishTitle and
+  // fetch structure.md for genesis (so its H1 can stand in), not use the old
+  // `fileName.replace(".md", "")` fallback.
+  it("derives the publish title via derivePublishTitle and reads structure.md for genesis", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    expect(source).toContain("derivePublishTitle");
+    // genesis fetches structure.md so its title can stand in for a missing H1.
+    expect(source).toMatch(/genesis\.md[\s\S]*?structure\.md/);
+    // The old bare-filename fallback is gone.
+    expect(source).not.toContain('fileName.replace(".md", "")');
+  });
 });
 
 describe("publish callback boundary (stale closure regression)", () => {

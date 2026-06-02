@@ -52,6 +52,61 @@ export async function attachCoverToStoryline(
   return cid;
 }
 
+/** The first markdown H1 (`# Title`) in `content`, trimmed; null when none. */
+export function extractH1Title(content: string): string | null {
+  const m = content.match(/^#\s+(.+)$/m);
+  const t = m ? m[1].trim() : "";
+  return t ? t : null;
+}
+
+/**
+ * Prettify a story folder slug into a human title:
+ * "swipe-right-refund-later" → "Swipe Right Refund Later". Used only as the
+ * last-resort genesis title so a storyline never publishes as the bare
+ * "genesis" filename.
+ */
+export function prettifyStorySlug(slug: string): string {
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/**
+ * Resolve the title used when publishing a story file to PlotLink (#331).
+ *
+ * The storyline title is set once, at genesis publish, and is immutable
+ * on-chain — so a headingless `genesis.md` must NOT fall back to the bare
+ * "genesis" filename (pilot QA published storyline #59 titled "genesis").
+ * For `genesis.md` the title resolves in order:
+ *   1. an explicit `# Title` H1 inside genesis.md, then
+ *   2. the `# Title` H1 from the story's structure.md, then
+ *   3. a prettified story folder slug — never raw "genesis".
+ *
+ * Non-genesis files (plot-*.md, etc.) keep the prior H1-or-filename behavior:
+ * the title passed for a plot does not change the storyline title on-chain
+ * (createStoryline already set the title; chainPlot uses it for the chapter),
+ * so fiction publish behavior is unchanged. Result is capped at 60 chars.
+ */
+export function derivePublishTitle(opts: {
+  fileName: string;
+  fileContent: string;
+  storySlug: string;
+  structureContent?: string | null;
+}): string {
+  const { fileName, fileContent, storySlug, structureContent } = opts;
+  const ownH1 = extractH1Title(fileContent);
+  if (fileName !== "genesis.md") {
+    return (ownH1 ?? fileName.replace(/\.md$/, "")).slice(0, 60);
+  }
+  const structureH1 = structureContent ? extractH1Title(structureContent) : null;
+  const resolved = ownH1 ?? structureH1 ?? prettifyStorySlug(storySlug);
+  return resolved.slice(0, 60);
+}
+
 export function getContentTypeForPublish(
   storyContentTypes: Record<string, string>,
   storyName: string,

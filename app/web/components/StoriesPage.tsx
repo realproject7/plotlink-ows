@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -274,9 +274,24 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       if (!fileRes.ok) throw new Error("Failed to read file");
       const fileData = await fileRes.json();
 
-      // Extract title from first heading or filename
-      const titleMatch = fileData.content.match(/^#\s+(.+)$/m);
-      const title = titleMatch ? titleMatch[1].slice(0, 60) : fileName.replace(".md", "");
+      // Derive the publish title (#331). The storyline title is set once at
+      // genesis publish and is immutable on-chain, so a headingless genesis.md
+      // must not fall back to the bare "genesis" filename. For genesis, fetch
+      // structure.md so its `# Title` H1 can stand in, with a prettified folder
+      // slug as the last resort. Best-effort: structure.md may be absent.
+      let structureContent: string | null = null;
+      if (fileName === "genesis.md") {
+        try {
+          const structRes = await authFetch(`/api/stories/${storyName}/structure.md`);
+          if (structRes.ok) structureContent = (await structRes.json()).content ?? null;
+        } catch { /* best effort — fall back to the prettified slug */ }
+      }
+      const title = derivePublishTitle({
+        fileName,
+        fileContent: fileData.content,
+        storySlug: storyName,
+        structureContent,
+      });
 
       // For plot files, find the storylineId from the genesis publish status
       let storylineId: number | undefined;
