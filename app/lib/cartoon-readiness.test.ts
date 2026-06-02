@@ -428,12 +428,14 @@ describe("summarizeCutProgress (#335)", () => {
     expect(p).toEqual({ total: 4, needClean: 4, withClean: 3, withText: 2, exported: 1, uploaded: 1 });
   });
 
-  it("treats a narration-only cut as not needing a clean image, but still countable for upload", () => {
-    const cuts = [makeCut({ id: 1, narration: "Later that night...", uploadedUrl: "https://ipfs/QmN" })];
+  it("counts EVERY cut as image-required for MVP, incl. a narrated/dialogue cut (#338 fix)", () => {
+    // A planned cut carries narration/dialogue before any art exists — it must
+    // still be counted as needing a clean image, not inferred as narration-only.
+    const cuts = [makeCut({ id: 1, narration: "Later that night...", dialogue: [{ speaker: "A", text: "Hi" }] })];
     const p = summarizeCutProgress(cuts);
-    expect(p.needClean).toBe(0);
+    expect(p.needClean).toBe(1);
     expect(p.total).toBe(1);
-    expect(p.uploaded).toBe(1);
+    expect(p.withClean).toBe(0); // no clean image yet
   });
 });
 
@@ -470,6 +472,19 @@ describe("cartoonChecklist (#335)", () => {
     expect(statusOf(r, "publish")).toBe("todo");
     expect(r.nextStep).toMatch(/clean image for each cut/i);
     expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 2 cuts");
+  });
+
+  // #338 operator finding: a planned cut WITH narration/dialogue but no clean
+  // image must still show "Create clean images" as current at 0/1 — it must not
+  // be treated as a no-image narration-only cut that skips straight to upload.
+  it("a planned narrated/dialogue cut with null cleanImagePath shows Create clean images current at 0/1", () => {
+    const r = cartoonChecklist({
+      cuts: [makeCut({ id: 1, cleanImagePath: null, narration: "Dawn.", dialogue: [{ speaker: "Mira", text: "We're here." }] })],
+    });
+    expect(statusOf(r, "clean")).toBe("current");
+    expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 1 cut");
+    expect(statusOf(r, "upload")).toBe("todo");
+    expect(r.nextStep).toMatch(/clean image for each cut/i);
   });
 
   it("clean images done, lettering current", () => {

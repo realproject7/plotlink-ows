@@ -265,13 +265,18 @@ export const CARTOON_CLEAN_IMAGE_HELP =
  * paths + uploaded URLs (#335). Drives the granular workflow checklist so each
  * production step shows real status, not just a coarse stage.
  *
- * A "narration-only" cut (no clean image, but it has narration/dialogue) is its
- * own kind of cut: it needs no clean image or lettering, so it is excluded from
- * the image-cut denominators (`needClean`) while still counting toward uploads.
+ * MVP rule (#335, operator finding on PR #338): EVERY current-schema cut is
+ * treated as image-required, so `needClean === total`. A planned cut carries its
+ * dialogue/narration in cuts.json before any art exists, so it looks identical
+ * to a deliberately text-only cut — inferring "narration-only" from
+ * `!cleanImagePath && narration/dialogue` would wrongly mark a brand-new planned
+ * cut as needing no image and skip the writer straight past "Create clean
+ * images". Counting all cuts as image-required matches the agent guidance that
+ * every publishable cut gets a clean → final → uploaded image.
  */
 export interface CartoonCutProgress {
   total: number;
-  /** Cuts that require a hand-made clean image (i.e. not narration-only). */
+  /** Cuts that require a clean image. For MVP this is every cut (= total). */
   needClean: number;
   /** Of `needClean`, how many have a clean image recorded. */
   withClean: number;
@@ -279,29 +284,25 @@ export interface CartoonCutProgress {
   withText: number;
   /** Of the clean-image cuts, how many have an exported final image. */
   exported: number;
-  /** Cuts (any kind) with a recorded uploaded URL. */
+  /** Cuts with a recorded uploaded URL. */
   uploaded: number;
 }
 
 export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
-  let needClean = 0;
   let withClean = 0;
   let withText = 0;
   let exported = 0;
   let uploaded = 0;
   for (const cut of cuts) {
-    const narrationOnly = !cut.cleanImagePath && (!!cut.narration?.trim() || cut.dialogue.length > 0);
-    if (!narrationOnly) {
-      needClean++;
-      if (cut.cleanImagePath) {
-        withClean++;
-        if (cut.overlays.length > 0) withText++;
-        if (cut.finalImagePath && cut.exportedAt) exported++;
-      }
+    if (cut.cleanImagePath) {
+      withClean++;
+      if (cut.overlays.length > 0) withText++;
+      if (cut.finalImagePath && cut.exportedAt) exported++;
     }
     if (cut.uploadedUrl) uploaded++;
   }
-  return { total: cuts.length, needClean, withClean, withText, exported, uploaded };
+  // MVP: every cut is image-required, so needClean === total.
+  return { total: cuts.length, needClean: cuts.length, withClean, withText, exported, uploaded };
 }
 
 export type CartoonStepKey = "plan" | "clean" | "letter" | "export" | "upload" | "publish";
@@ -367,11 +368,13 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const order: CartoonStepKey[] = ["plan", "clean", "letter", "export", "upload", "publish"];
   const currentIdx = order.findIndex((k) => !complete[k]);
 
+  // needClean === total (every cut is image-required for MVP), and total > 0
+  // here, so the image-step denominators are always countable.
   const detail: Record<CartoonStepKey, string | null> = {
     plan: fraction(p.total, p.total),
-    clean: p.needClean > 0 ? fraction(p.withClean, p.needClean) : "no image cuts",
-    letter: p.needClean > 0 ? fraction(p.withText, p.needClean) : "no image cuts",
-    export: p.needClean > 0 ? fraction(p.exported, p.needClean) : "no image cuts",
+    clean: fraction(p.withClean, p.needClean),
+    letter: fraction(p.withText, p.needClean),
+    export: fraction(p.exported, p.needClean),
     upload: fraction(p.uploaded, p.total),
     publish: null,
   };
