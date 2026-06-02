@@ -27,11 +27,11 @@ afterEach(() => {
 const WALLET = "test-wallet-address";
 const DRAFT_GENESIS = { file: "genesis.md", status: "draft", content: "# A story\n\nHook." };
 
-/** authFetch double: genesis content + no auto-detected cover + import-cover OK. */
-function makeAuthFetch(importCoverOk = true) {
+/** authFetch double: genesis content + configurable cover detection + import-cover OK. */
+function makeAuthFetch(importCoverOk = true, coverAsset: Record<string, unknown> | null = null) {
   return vi.fn((url: string, opts?: RequestInit) => {
     if (url.endsWith("/cover-asset")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ found: false }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(coverAsset ?? { found: false }) });
     }
     if (url.endsWith("/import-cover")) {
       return Promise.resolve({
@@ -85,6 +85,29 @@ describe("PreviewPanel cover import (#301)", () => {
     const importCall = authFetch.mock.calls.find((c) => String(c[0]).endsWith("/import-cover"))!;
     const body = importCall[1].body as FormData;
     expect((body.get("file") as File).type).toBe("image/webp");
+  });
+
+  it("clears an invalid generated-cover warning after a successful import", async () => {
+    mockConvert.mockResolvedValue(new Blob([new Uint8Array(3000)], { type: "image/webp" }));
+    const authFetch = makeAuthFetch(true, {
+      found: true,
+      valid: false,
+      path: "assets/cover.webp",
+      type: "image/webp",
+      error: "assets/cover.webp is 1200KB, exceeds the 1MB cover limit",
+    });
+    await renderDraft(authFetch);
+    expect(await screen.findByTestId("prepublish-cover-detected-warning")).toHaveTextContent("exceeds the 1MB");
+
+    const input = screen.getByTestId("prepublish-cover-import-input") as HTMLInputElement;
+    const png = new File([new Uint8Array(2 * 1024 * 1024)], "generated.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [png] } });
+
+    await waitFor(() => expect(screen.queryByTestId("prepublish-cover-detected-warning")).not.toBeInTheDocument());
+    expect(await screen.findByTestId("prepublish-cover-will-upload")).toHaveTextContent(
+      "uploaded as the PlotLink storyline cover",
+    );
+    expect(screen.queryByTestId("prepublish-cover-detected")).not.toBeInTheDocument();
   });
 
   it("surfaces a clear error and saves nothing when conversion fails", async () => {

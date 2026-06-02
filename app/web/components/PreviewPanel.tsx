@@ -119,6 +119,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // label); detectedCoverWarning = an invalid/oversize detected asset we won't use.
   const [detectedCover, setDetectedCover] = useState<string | null>(null);
   const [detectedCoverWarning, setDetectedCoverWarning] = useState<string | null>(null);
+  // Outcome of the generated-cover detection for an unpublished genesis (#312),
+  // so the publish flow can state explicitly whether a generated assets/cover.webp
+  // will be uploaded as the PlotLink cover, is invalid, or is missing.
+  const [coverStatus, setCoverStatus] = useState<"unknown" | "detected" | "selected" | "invalid" | "none">("unknown");
   // Once the writer manually picks or removes a cover, stop auto-applying the
   // detected one (so removal/override sticks and detection doesn't loop).
   const coverUserTouchedRef = useRef(false);
@@ -284,6 +288,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     // A manual pick overrides any auto-detected cover and stops re-detection.
     coverUserTouchedRef.current = true;
     setDetectedCover(null);
+    setDetectedCoverWarning(null);
     // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
     // immediate feedback instead of a late error at save (the server enforces
     // the same WebP/JPEG ≤1MB constraint).
@@ -296,11 +301,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       if (coverInputRef.current) coverInputRef.current.value = "";
       setEditError(error);
+      setCoverStatus("unknown");
       return;
     }
     setCoverFile(file);
     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setEditError(null);
+    setCoverStatus("selected");
   }, []);
 
   // Import a Codex-generated image (e.g. a large PNG) as the cover (#301). The
@@ -343,6 +350,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       }
       setCoverFile(imported);
       setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(imported); });
+      setDetectedCoverWarning(null);
+      setCoverStatus("selected");
       setEditError(null);
     } catch {
       setEditError("Cover import failed");
@@ -457,6 +466,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setIllustrationError(null);
     setDetectedCover(null);
     setDetectedCoverWarning(null);
+    setCoverStatus("unknown");
     coverUserTouchedRef.current = false;
   }, [storyName, fileName]);
 
@@ -480,9 +490,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         const res = await authFetch(`/api/stories/${storyName}/cover-asset`);
         if (cancelled || !res.ok) return;
         const data = await res.json();
-        if (cancelled || !data?.found) return;
+        if (cancelled) return;
+        if (!data?.found) { setCoverStatus("none"); return; }
         if (!data.valid) {
           setDetectedCoverWarning(data.error || "Detected cover asset is invalid and was not used");
+          setCoverStatus("invalid");
           return;
         }
         const assetRes = await authFetch(`/api/stories/${storyName}/asset/${data.path.replace(/^assets\//, "")}`);
@@ -494,6 +506,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         setCoverFile(file);
         setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
         setDetectedCover(data.path);
+        setCoverStatus("detected");
       } catch { /* best-effort: no detected cover */ }
     })();
     return () => { cancelled = true; };
@@ -866,7 +879,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                           className="w-16 h-24 object-cover rounded border border-border"
                         />
                         <button
-                          onClick={() => { setCoverFile(null); setCoverPreview(null); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                          onClick={() => { setCoverFile(null); setCoverPreview(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); if (coverInputRef.current) coverInputRef.current.value = ""; }}
                           className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
                         >
                           x
@@ -1060,7 +1073,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                         className="w-16 h-24 object-cover rounded border border-border"
                       />
                       <button
-                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
                       >
                         x
@@ -1098,14 +1111,29 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     >
                       {coverImporting ? "Importing…" : "Import generated image (PNG ok)"}
                     </button>
+                    {/* #312: make the generated-cover → PlotLink-cover connection
+                        explicit. Whenever a cover is selected (auto-detected,
+                        imported, or manually picked) it WILL be uploaded as the
+                        storyline cover at publish; an invalid or missing generated
+                        cover gets a clear action. */}
+                    {coverFile && (
+                      <span className="text-green-700 text-xs" data-testid="prepublish-cover-will-upload">
+                        This cover will be uploaded as the PlotLink storyline cover when you publish.
+                      </span>
+                    )}
                     {detectedCover && (
                       <span className="text-accent text-xs" data-testid="prepublish-cover-detected">
-                        Detected {detectedCover} — will be used as the cover. Pick a file to override.
+                        Auto-detected generated cover {detectedCover} — pick a file to override.
                       </span>
                     )}
                     {detectedCoverWarning && (
                       <span className="text-amber-700 text-xs" data-testid="prepublish-cover-detected-warning">
-                        {detectedCoverWarning}
+                        {detectedCoverWarning} Use &ldquo;Import generated image&rdquo; below to convert/compress it, or pick a file.
+                      </span>
+                    )}
+                    {contentType === "cartoon" && coverStatus === "none" && !coverFile && (
+                      <span className="text-muted text-xs" data-testid="prepublish-cover-none">
+                        No generated cover detected. Create <span className="font-mono">assets/cover.webp</span> or use &ldquo;Import generated image&rdquo; — it will be uploaded as the PlotLink storyline cover when you publish.
                       </span>
                     )}
                     {editError && <span className="text-error text-xs" data-testid="prepublish-cover-error">{editError}</span>}
@@ -1158,6 +1186,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     // re-applied by cover auto-detection.
                     coverUserTouchedRef.current = true;
                     setDetectedCover(null);
+                    setDetectedCoverWarning(null);
+                    setCoverStatus("unknown");
                     setCoverFile(null);
                     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                     if (coverInputRef.current) coverInputRef.current.value = "";
