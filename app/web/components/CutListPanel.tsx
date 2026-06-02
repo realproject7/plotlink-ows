@@ -3,7 +3,7 @@ import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
-import { isTextPanel } from "@app-lib/cuts";
+import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
 import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 
@@ -40,6 +40,7 @@ interface Cut {
   kind?: "image" | "text";
   background?: string;
   aspectRatio?: string;
+  finalRendererVersion?: number;
 }
 
 interface CutsFile {
@@ -580,6 +581,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // Text/interstitial panels need no clean image (#351), so the clean-assets
   // banner/claims reason about IMAGE cuts only — never the total cut count.
   const imageCutCount = cutsFile.cuts.filter((c) => !isTextPanel(c)).length;
+  // #381: final images lettered by an older bubble renderer (separate-tail seam)
+  // must be re-exported before publish. Only tailed speech bubbles are affected.
+  const staleTailIds = cutsFile.cuts.filter((c) => isStaleTailedExport(c)).map((c) => c.id);
 
   return (
     <div className="h-full flex flex-col">
@@ -710,6 +714,18 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       <div className="px-3 py-1.5 border-b border-border text-[10px] text-muted" data-testid="cartoon-workflow-help">
         Build your webtoon top-to-bottom: letter each art panel’s bubbles &amp; captions, then export, upload, and prepare the episode for publishing. Use <span className="text-accent">Add narration/text panel</span> to drop a narration or title card between art panels — it’s a solid card exported as a final image, no drawing needed.
       </div>
+      {/* Stale bubble-renderer warning (#381): a final image lettered before the
+          current seamless-tail renderer may show the old separate-tail seam.
+          Mark those cuts so the writer re-exports (open lettering → Export) and
+          re-uploads them before publishing. */}
+      {staleTailIds.length > 0 && (
+        <div
+          className="px-3 py-1.5 border-b border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700"
+          data-testid="stale-bubble-export-warning"
+        >
+          {staleTailIds.length === 1 ? "Cut" : "Cuts"} {staleTailIds.join(", ")} {staleTailIds.length === 1 ? "was" : "were"} lettered with an older speech-bubble style whose tail can show a visible seam. Re-export {staleTailIds.length === 1 ? "it" : "them"} (open lettering → Export) and re-upload before publishing so the bubble tails are seamless.
+        </div>
+      )}
       {/* Clean-asset generation done-state (#311): when every cut has a present,
           valid clean image, surface a clear "done" signal so the operator knows
           Codex generation is complete even if the terminal session is still

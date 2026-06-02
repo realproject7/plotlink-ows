@@ -24,6 +24,7 @@ vi.mock("../lib/generate-story-instructions", () => ({
 
 import { readStoryMeta, writeStoryMeta, storiesRoutes, saveExportedCut } from "./stories";
 import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { Hono } from "hono";
 
 describe("story metadata (.story.json)", () => {
@@ -560,10 +561,33 @@ describe("POST /upload-clean/:cutId route", () => {
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
     expect(reloaded.cuts[0].exportedAt).toBeTruthy();
+    // #381: the export stamps the current bubble-renderer version so a later
+    // upgrade can flag this final image as stale (needing re-export).
+    expect(reloaded.cuts[0].finalRendererVersion).toBe(CARTOON_BUBBLE_RENDERER_VERSION);
 
     const assetFile = path.join(storyDir, "assets", "plot-01", "cut-01-final.jpg");
     expect(fs.existsSync(assetFile)).toBe(true);
     expect(fs.readFileSync(assetFile)).toEqual(buffer);
+  });
+
+  // #381 (re1): re-exporting an already-uploaded cut must invalidate its prior
+  // upload, or the bulk upload (which skips cuts with an uploadedCid) would keep
+  // publishing the OLD image after re-export.
+  it("saveExportedCut clears uploadedCid/uploadedUrl so a re-exported cut is upload-eligible again", () => {
+    const storyDir = path.join(tmpDir, "reexport-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("plot-01");
+    cf.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
+    cf.cuts[0].uploadedCid = "QmOldStaleCid";
+    cf.cuts[0].uploadedUrl = "https://ipfs.example.com/QmOldStaleCid";
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    saveExportedCut(storyDir, "plot-01", 1, Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), "image/jpeg");
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].uploadedCid).toBeNull();
+    expect(reloaded.cuts[0].uploadedUrl).toBeNull();
+    expect(reloaded.cuts[0].finalRendererVersion).toBe(CARTOON_BUBBLE_RENDERER_VERSION);
   });
 
   it("saveExportedCut uses webp extension for image/webp", () => {

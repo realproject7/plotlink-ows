@@ -14,6 +14,8 @@ import {
   detectOverlappingOverlays,
   isOverlayOutOfBounds,
   OVERLAP_AREA_THRESHOLD,
+  hasVisibleSpeechTail,
+  CARTOON_BUBBLE_RENDERER_VERSION,
 } from "./overlays";
 
 describe("toPixel", () => {
@@ -501,5 +503,29 @@ describe("isOverlayOutOfBounds (#336)", () => {
     expect(isOverlayOutOfBounds(box(0.1, -0.01, 0.3, 0.3))).toBe(true); // off the top
     expect(isOverlayOutOfBounds(box(0.8, 0.1, 0.3, 0.3))).toBe(true);   // past the right
     expect(isOverlayOutOfBounds(box(0.1, 0.8, 0.3, 0.3))).toBe(true);   // past the bottom
+  });
+});
+
+describe("hasVisibleSpeechTail (#381)", () => {
+  it("is true for a speech overlay whose tail tip falls outside the bubble", () => {
+    expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(true); // below
+    expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 1.3, y: 0.5 } })).toBe(true); // right
+  });
+  it("is false when the tail tip is inside the bubble (no tail drawn)", () => {
+    expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 0.5, y: 0.5 } })).toBe(false);
+  });
+  it("is false for a speech overlay with no tailAnchor", () => {
+    expect(hasVisibleSpeechTail({ type: "speech" })).toBe(false);
+  });
+  it("is false for non-speech overlays even with a tailAnchor", () => {
+    expect(hasVisibleSpeechTail({ type: "narration", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(false);
+    expect(hasVisibleSpeechTail({ type: "sfx", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(false);
+  });
+});
+
+describe("CARTOON_BUBBLE_RENDERER_VERSION (#381)", () => {
+  it("is a positive integer the export stamps and stale-detection compares against", () => {
+    expect(Number.isInteger(CARTOON_BUBBLE_RENDERER_VERSION)).toBe(true);
+    expect(CARTOON_BUBBLE_RENDERER_VERSION).toBeGreaterThan(0);
   });
 });
