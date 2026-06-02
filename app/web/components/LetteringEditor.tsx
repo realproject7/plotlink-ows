@@ -8,7 +8,7 @@ import {
 } from "@app-lib/fonts";
 import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
-import { cutLetteringChecklist, cutScriptLines, type ScriptLine } from "@app-lib/lettering-status";
+import { cutLetteringChecklist, cutScriptLines, isExportStale, type ScriptLine } from "@app-lib/lettering-status";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -364,10 +364,40 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // apart. Non-blocking: overlap can be intentional, so it never blocks export.
   const overlapPairs = useMemo(() => detectOverlappingOverlays(overlays), [overlays]);
 
+  // Baseline overlays captured when this cut opened (already normalized the same
+  // way as the live `overlays` state), so we can tell a real user edit from a
+  // load-time normalization (#336, re1). Re-baselines when a different cut opens
+  // without a remount.
+  const baselineRef = useRef<{ id: number; overlays: Overlay[] }>({
+    id: cut.id,
+    overlays: overlayNormalization.overlays as Overlay[],
+  });
+  if (baselineRef.current.id !== cut.id) {
+    baselineRef.current = { id: cut.id, overlays: overlayNormalization.overlays as Overlay[] };
+  }
+
+  // The recorded export/upload is stale once the writer edits bubbles since it
+  // was produced — the final image/uploaded URL no longer match the screen, so
+  // export & upload must be redone before they count again (#336, re1).
+  const staleExport = useMemo(
+    () =>
+      isExportStale({
+        exported: !!cut.finalImagePath || !!cut.exportedAt,
+        uploaded: !!cut.uploadedUrl || !!cut.uploadedCid,
+        baseline: baselineRef.current.overlays,
+        current: overlays,
+      }),
+    [cut.finalImagePath, cut.exportedAt, cut.uploadedUrl, cut.uploadedCid, overlays],
+  );
+
   // Per-cut lettering checklist + insertable script lines (#336). The checklist
   // shows progress (clean image → script text → bubbles placed → exported →
   // uploaded) right in the editor; the script lines power one-click insertion.
-  const checklist = useMemo(() => cutLetteringChecklist({ ...cut, overlays }), [cut, overlays]);
+  // A stale export marks the exported/uploaded steps incomplete until re-export.
+  const checklist = useMemo(
+    () => cutLetteringChecklist({ ...cut, overlays }, { staleExport }),
+    [cut, overlays, staleExport],
+  );
   const scriptLines = useMemo(() => cutScriptLines(cut), [cut]);
 
   // Likely export problems per overlay (#336): the body rect clipped by the
@@ -490,6 +520,18 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
           </span>
         ))}
       </div>
+
+      {/* Stale-export warning (#336, re1): bubbles changed since the recorded
+          export/upload, so the final image/uploaded URL are out of date. The
+          checklist already marks export/upload incomplete; this says why. */}
+      {staleExport && (
+        <div
+          className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700"
+          data-testid="lettering-stale-export-warning"
+        >
+          Bubbles changed since the last export — re-export this cut and upload the new final image before publishing.
+        </div>
+      )}
 
       {/* Likely export problems (#336): clipped/out-of-bounds bubbles or text that
           overflows even at the smallest font. Non-blocking guidance. */}

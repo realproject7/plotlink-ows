@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { cutLetteringChecklist, cutScriptLines } from "./lettering-status";
+import { cutLetteringChecklist, cutScriptLines, overlaysSignature, isExportStale } from "./lettering-status";
+import type { Overlay } from "./overlays";
+
+const ov = (over: Partial<Overlay> = {}): Overlay => ({
+  id: "o1", type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "Hi", ...over,
+});
 
 describe("cutLetteringChecklist (#336)", () => {
   it("reports nothing done for an empty cut", () => {
@@ -68,5 +73,45 @@ describe("cutScriptLines (#336)", () => {
 
   it("returns an empty list for a cut with no script", () => {
     expect(cutScriptLines({})).toEqual([]);
+  });
+});
+
+describe("cutLetteringChecklist staleExport (#336, re1)", () => {
+  const exportedCut = {
+    cleanImagePath: "c.webp", finalImagePath: "f.webp", exportedAt: "2026-01-01",
+    uploadedUrl: "https://ipfs/Qm", overlays: [ov()],
+  };
+  it("reports exported/uploaded done when not stale", () => {
+    const c = cutLetteringChecklist(exportedCut);
+    expect(c.exported).toBe(true);
+    expect(c.uploaded).toBe(true);
+  });
+  it("marks exported AND uploaded incomplete when the export is stale", () => {
+    const c = cutLetteringChecklist(exportedCut, { staleExport: true });
+    expect(c.exported).toBe(false);
+    expect(c.uploaded).toBe(false);
+  });
+});
+
+describe("overlaysSignature (#336)", () => {
+  it("is equal for identical overlays and changes on any rendered-field edit", () => {
+    expect(overlaysSignature([ov()])).toBe(overlaysSignature([ov()]));
+    expect(overlaysSignature([ov({ text: "Hi" })])).not.toBe(overlaysSignature([ov({ text: "Bye" })]));
+    expect(overlaysSignature([ov({ x: 0.1 })])).not.toBe(overlaysSignature([ov({ x: 0.5 })]));
+    // A different id alone (same geometry/text) does not count as an edit.
+    expect(overlaysSignature([ov({ id: "a" })])).toBe(overlaysSignature([ov({ id: "b" })]));
+  });
+});
+
+describe("isExportStale (#336, re1)", () => {
+  it("is false when the cut was never exported/uploaded", () => {
+    expect(isExportStale({ exported: false, uploaded: false, baseline: [ov()], current: [ov({ x: 0.9 })] })).toBe(false);
+  });
+  it("is false when overlays are unchanged since export", () => {
+    expect(isExportStale({ exported: true, uploaded: true, baseline: [ov()], current: [ov()] })).toBe(false);
+  });
+  it("is true when overlays changed after export/upload", () => {
+    expect(isExportStale({ exported: true, uploaded: false, baseline: [ov()], current: [ov({ text: "edited" })] })).toBe(true);
+    expect(isExportStale({ exported: false, uploaded: true, baseline: [ov()], current: [ov({ x: 0.4 })] })).toBe(true);
   });
 });

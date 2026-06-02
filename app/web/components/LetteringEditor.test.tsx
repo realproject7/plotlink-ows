@@ -833,4 +833,44 @@ describe("LetteringEditor", () => {
     expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
     expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
   });
+
+  // #336 (re1): editing bubbles after an export/upload must invalidate them — the
+  // checklist can't keep reporting "Final exported"/"Uploaded" for a stale image.
+  it("marks export/upload stale after overlays are edited post-export", async () => {
+    const overlay: Overlay = {
+      id: "stale", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 1.2 },
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({
+          overlays: [overlay],
+          finalImagePath: "assets/plot-01/cut-01-final.webp",
+          exportedAt: "2026-01-01T00:00:00Z",
+          uploadedUrl: "https://ipfs/QmExported",
+        })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    // On open (no edits) the recorded export/upload count as done, no warning.
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
+    expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument();
+
+    // Edit the bubble text → the prior export/upload no longer match the screen.
+    fireEvent.click(screen.getByTestId("overlay-stale"));
+    fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+  });
 });
