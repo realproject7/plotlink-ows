@@ -43,12 +43,15 @@ export function extractOgTitle(html: string): string | null {
 }
 
 /**
- * The leading segment of a page title — the PLOT title on a plot page, where
- * og:title is "<plotTitle> — <storylineTitle>". Returns the whole value when
- * there is no separator. Null for empty/missing input.
+ * The plot-title portion of a plot page title, where og:title is
+ * "<plotTitle> — <storylineTitle>". Strip only the FINAL storyline segment,
+ * not the first separator, because a real episode title may itself contain
+ * " — " (e.g. "Episode 1 — The Couple Coupon — Coupon Crush"). Returns the
+ * whole value when there is no separator. Null for empty/missing input.
  */
 export function leadingTitleSegment(title: string | null): string | null {
   if (!title) return null;
-  const seg = title.split(TITLE_SEP)[0]?.trim();
+  const idx = title.lastIndexOf(TITLE_SEP);
+  const seg = (idx === -1 ? title : title.slice(0, idx)).trim();
   return seg || null;
 }

@@ -9,6 +9,8 @@ const STORYLINE_PAGE = `<!DOCTYPE html><html><head><title>genesis — PlotLink</
   `<meta property="og:title" content="genesis"/></head><body>…</body></html>`;
 const GOOD_PLOT_PAGE = `<head><title>The Couple Coupon — Coupon Crush — PlotLink</title>` +
   `<meta property="og:title" content="The Couple Coupon — Coupon Crush"/></head>`;
+const NUMBERED_GOOD_PLOT_PAGE = `<head><title>Episode 1 — The Couple Coupon — Coupon Crush — PlotLink</title>` +
+  `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush"/></head>`;
 
 describe("extractOgTitle (#379)", () => {
   it("reads og:title from a plot page (real shape)", () => {
@@ -33,6 +35,7 @@ describe("leadingTitleSegment (#379)", () => {
   it("returns the plot title (leading segment) from a plot page og:title", () => {
     expect(leadingTitleSegment(extractOgTitle(PLOT_PAGE))).toBe("plot-01");
     expect(leadingTitleSegment(extractOgTitle(GOOD_PLOT_PAGE))).toBe("The Couple Coupon");
+    expect(leadingTitleSegment(extractOgTitle(NUMBERED_GOOD_PLOT_PAGE))).toBe("Episode 1 — The Couple Coupon");
   });
   it("returns the whole value when there is no separator", () => {
     expect(leadingTitleSegment("genesis")).toBe("genesis");
