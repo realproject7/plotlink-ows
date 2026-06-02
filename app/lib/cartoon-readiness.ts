@@ -407,6 +407,19 @@ export function cartoonGenesisReadiness(content: string): CartoonGenesisReadines
       warnings.push(
         "This reads like a synopsis or outline. Write the Genesis as a reader-facing opening scene that sets up the first beat and stakes, then bridges into Episode 01.",
       );
+    } else {
+      // 4. Real prose, but too little buildup (#380): a single dense block reads
+      // as a cold open rather than a prologue. A real opening builds across a few
+      // short paragraphs (premise → what the lead wants → hook → bridge into
+      // Episode 01). Count substantial prose paragraphs (not lists/metadata).
+      const proseParas = paragraphs.filter(
+        (p) => p.length >= 40 && !/^([-*+]|\d+[.)])\s/.test(p) && !GENESIS_METADATA_LABEL.test(p),
+      );
+      if (proseParas.length < 2) {
+        warnings.push(
+          "Give the opening room to build: a few short paragraphs — the premise, what the lead wants, and the hook — that lead naturally into Episode 01, instead of a single block that jumps straight into a scene.",
+        );
+      }
     }
   }
 

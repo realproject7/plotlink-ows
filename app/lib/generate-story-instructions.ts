@@ -342,22 +342,32 @@ synopsis, and NOT a cold jump into scene 1. It is text-only for this MVP (no
 image cuts) and **must start with a real \`# Title\` heading** (the published
 chapter title).
 
-Write it as polished reader-facing prose (~600–1000 characters) that:
+Write it as polished reader-facing prose (~600–1000 characters) across **3–6
+short paragraphs** that build — do NOT compress the opening into a single block
+or a one-line premise. Let the prologue breathe across these beats:
 
 - **Opens on the main character's situation** and their emotional or comedic
   problem — put us in a moment, not a pitch.
-- **Establishes tone, premise, and what's at stake** for the lead.
+- **What the lead wants** (their desire/goal) and **what's at stake** — give the
+  reader someone to root for before the first episode.
+- **Establishes tone and premise** — the comedic/romantic hook that makes this
+  story this story.
 - **Builds toward the first visual episode** and ends on a beat that hands off
-  into episode 1 — a clear bridge, so plot-01 feels like the story continuing,
+  into Episode 01 — a clear bridge, so plot-01 feels like the story continuing,
   not starting over.
 - **Avoids lore dumps** and worldbuilding exposition — reveal through the
   character's immediate situation.
 - For comedic romance / webtoon pacing: lead with the funny/awkward hook and the
   relationship tension; keep it warm and propulsive.
 
+A single dense paragraph or a bare logline is NOT enough — readers meet Genesis
+first, so it must onboard them with real buildup, not drop them cold into a scene.
+
 Genesis vs plot-01: **Genesis opens and onboards the reader** (prose prologue);
-**plot-01 is the first cut-based visual episode**. Do not start plot-01 without
-the setup Genesis provides, and do not duplicate the prologue inside plot-01.
+**plot-01 is the first cut-based visual episode** that must **open on a titled
+beat continuing directly from where Genesis leaves off** — not a cold jump and
+not a restart. Do not start plot-01 without the setup Genesis provides, and do
+not duplicate the prologue inside plot-01.
 
 ## Cut Planning — plot-NN.cuts.json
 

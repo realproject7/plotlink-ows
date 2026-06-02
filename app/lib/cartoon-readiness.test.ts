@@ -625,6 +625,34 @@ describe("cartoonGenesisReadiness (#359)", () => {
     expect(r.blockers).toHaveLength(0);
     expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
   });
+
+  // #380: a long single block of prose passes the length + synopsis-shape checks
+  // but reads as a cold open — warn that the opening needs buildup across a few
+  // short paragraphs that lead into Episode 01.
+  it("warns when real prose is a single dense block (no buildup) (#380)", () => {
+    const oneBlock =
+      "# Coupon Crush at Closing Time\n\n" +
+      "The mall's last fluorescent light buzzes as Mina slaps a clearance sticker on a rack of umbrellas, nine minutes to hit her quota or lose the bonus that covers rent, while the smug rival cashier from the kiosk across the hall grins and holds up a coupon she has never seen before and the standoff begins right there.";
+    const r = cartoonGenesisReadiness(oneBlock);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(false);
+    expect(r.warnings.some((w) => /room to build|buildup|short paragraphs/i.test(w))).toBe(true);
+  });
+
+  it("does NOT warn about buildup for a multi-paragraph prologue (#380)", () => {
+    const prologue = [
+      "# Coupon Crush at Closing Time",
+      "",
+      "The mall's last fluorescent light buzzes overhead as Mina slaps her final clearance sticker on a rack of forgotten umbrellas, nine minutes to hit her quota.",
+      "",
+      "She needs the closing bonus to make rent — and she is not about to lose it to the smug rival cashier from the kiosk across the hall.",
+      "",
+      "He grins, holding up a coupon she has never seen before. Game on, and the mall's last night just got interesting.",
+    ].join("\n");
+    const r = cartoonGenesisReadiness(prologue);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
+  });
 });
 
 describe("groupCartoonIssues (#360)", () => {
