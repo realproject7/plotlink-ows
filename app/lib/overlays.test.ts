@@ -4,6 +4,7 @@ import {
   toNorm,
   createOverlay,
   speechTailPoints,
+  balloonPathD,
   normalizeOverlay,
   normalizeOverlays,
   anchorFromPosition,
@@ -123,6 +124,53 @@ describe("speechTailPoints", () => {
   it("returns null when the tip falls inside the bubble (no visible tail)", () => {
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 0.5 })).toBeNull();
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.9, y: 0.9 })).toBeNull();
+  });
+});
+
+describe("balloonPathD (#327)", () => {
+  // Bubble rect: ox=100, oy=100, ow=200, oh=100 → bottom edge at y=200.
+  const ox = 100, oy = 100, ow = 200, oh = 100;
+
+  it("traces a plain rounded rectangle when there is no tail", () => {
+    const d = balloonPathD(ox, oy, ow, oh, null);
+    // One closed outline with rounded corners (arc commands).
+    expect(d.startsWith("M")).toBe(true);
+    expect(d.trim().endsWith("Z")).toBe(true);
+    expect((d.match(/A /g) || []).length).toBe(4); // four rounded corners
+    // No point extends beyond the rect bounds.
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(oy + oh + 1e-9);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(oy - 1e-9);
+  });
+
+  it("folds a downward tail into the same continuous path (no separate shape)", () => {
+    const tail = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 1.2 });
+    expect(tail).not.toBeNull();
+    const d = balloonPathD(ox, oy, ow, oh, tail);
+    // Still one closed path, still rounded corners.
+    expect(d.startsWith("M")).toBe(true);
+    expect(d.trim().endsWith("Z")).toBe(true);
+    expect((d.match(/A /g) || []).length).toBe(4);
+    // The tail tip (y=220, below the bottom edge at 200) is part of THIS path.
+    expect(d).toContain(`${tail!.tip.x} ${tail!.tip.y}`);
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    expect(Math.max(...ys)).toBe(220);
+  });
+
+  it("folds a sideways tail into the right edge of the path", () => {
+    const tail = speechTailPoints(ox, oy, ow, oh, { x: 1.3, y: 0.5 });
+    const d = balloonPathD(ox, oy, ow, oh, tail);
+    // Tail tip at x=360 (right of the 300 edge) is included along the path.
+    expect(d).toContain(`${tail!.tip.x} ${tail!.tip.y}`);
+    const xs = Array.from(d.matchAll(/[ML] ([\d.-]+) [\d.-]+/g)).map((m) => parseFloat(m[1]));
+    expect(Math.max(...xs)).toBe(360);
+  });
+
+  it("honors an explicit corner radius", () => {
+    const d0 = balloonPathD(ox, oy, ow, oh, null, 0);
+    // Radius 0 → corner arcs collapse onto the rect corners (still emitted but
+    // degenerate); the moveto starts exactly at the top-left corner.
+    expect(d0.startsWith(`M ${ox} ${oy}`)).toBe(true);
   });
 });
 
