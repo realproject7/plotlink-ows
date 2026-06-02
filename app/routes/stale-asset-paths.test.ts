@@ -166,4 +166,25 @@ describe("stale cartoon asset paths (#302)", () => {
     const body = await res.json();
     expect(body.stale).toEqual([]);
   });
+
+  it("treats a parent-traversal recorded path as stale even when a valid image exists outside assets/, and repair clears it (re1)", async () => {
+    const storyDir = seed("traversal", 1, {
+      // Recorded path escapes the assets/ tree via traversal.
+      1: { cleanImagePath: "assets/plot-01/../../evil.webp" },
+    });
+    // A real, valid WebP sitting OUTSIDE the assets/ tree.
+    fs.writeFileSync(path.join(storyDir, "evil.webp"), WEBP);
+
+    // Detect: the out-of-story path is reported stale (not trusted as a local asset).
+    const detect = await (await app.request("/api/stories/traversal/cuts/plot-01/detect-clean-images")).json();
+    expect(detect.stale).toHaveLength(1);
+    expect(detect.stale[0]).toMatchObject({ cutId: 1, field: "cleanImagePath" });
+
+    // Repair: the recorded traversal path is cleared; the out-of-story file is NOT deleted.
+    const repair = await (await app.request("/api/stories/traversal/cuts/plot-01/repair-asset-paths", { method: "POST" })).json();
+    expect(repair.changed).toBe(true);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+    expect(fs.existsSync(path.join(storyDir, "evil.webp"))).toBe(true);
+  });
 });

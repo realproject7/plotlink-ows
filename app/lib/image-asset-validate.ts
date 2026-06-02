@@ -23,11 +23,19 @@ export const CLEAN_IMAGE_EXT_TO_TYPE: Record<string, Exclude<SniffedType, "unkno
  * extension, <=1MB, magic-byte content matches the extension); otherwise a short
  * reason string. Filesystem read only — never mutates anything.
  *
- * `"missing"` covers a non-existent path, a non-regular file, or an unreadable
- * file; the other reasons describe a present-but-invalid asset.
+ * `"missing"` covers a non-existent path, a non-regular file, an unreadable
+ * file, or a path that escapes the story's `assets/` tree; the other reasons
+ * describe a present-but-invalid asset.
  */
 export function imageAssetIssue(storyDir: string, relPath: string): string | null {
-  const abs = path.join(storyDir, relPath);
+  // Recorded cut asset paths come from cuts.json and must stay inside the
+  // story's assets/ tree. Resolve and bound-check before any filesystem read so
+  // an absolute or parent-traversal path (e.g. "../../../etc/x.webp") cannot
+  // validate an out-of-story file and be trusted as a local asset.
+  const assetsRoot = path.resolve(storyDir, "assets");
+  const abs = path.resolve(storyDir, relPath);
+  if (abs !== assetsRoot && !abs.startsWith(assetsRoot + path.sep)) return "missing";
+
   if (!fs.existsSync(abs)) return "missing";
 
   let stat: fs.Stats;

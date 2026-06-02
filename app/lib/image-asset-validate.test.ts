@@ -58,4 +58,20 @@ describe("imageAssetIssue / isValidImageAsset (#302)", () => {
     fs.mkdirSync(path.join(dir, "assets/plot-01/cut-01-clean.webp"));
     expect(imageAssetIssue(dir, "assets/plot-01/cut-01-clean.webp")).toBe("missing");
   });
+
+  it("rejects a parent-traversal path even when a valid image exists outside assets/ (#302 / re1)", () => {
+    // A real, valid WebP sitting OUTSIDE the assets/ tree but inside the story dir.
+    write("outside.webp", WEBP);
+    expect(imageAssetIssue(dir, "../outside.webp")).toBe("missing");
+    expect(imageAssetIssue(dir, "assets/plot-01/../../outside.webp")).toBe("missing");
+    expect(isValidImageAsset(dir, "assets/plot-01/../../outside.webp")).toBe(false);
+  });
+
+  it("rejects an absolute recorded path", () => {
+    // Even a real valid WebP referenced by absolute path must not validate.
+    const outside = path.join(dir, "outside.webp");
+    fs.writeFileSync(outside, Buffer.from(WEBP));
+    expect(imageAssetIssue(dir, outside)).toBe("missing");
+    expect(isValidImageAsset(dir, outside)).toBe(false);
+  });
 });
