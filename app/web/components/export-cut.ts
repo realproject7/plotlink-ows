@@ -1,4 +1,7 @@
 import { speechTailPoints, balloonOutline, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
+import { textPanelDimensions } from "@app-lib/cuts";
+// Re-exported so existing importers/tests can keep getting it from export-cut.
+export { textPanelDimensions } from "@app-lib/cuts";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
@@ -205,19 +208,6 @@ export interface TextPanelStyle {
   background?: string;
   /** Aspect ratio "W:H" (e.g. "4:5") sizing the canvas. Defaults to 800×600. */
   aspectRatio?: string;
-}
-
-const TEXT_PANEL_BASE_WIDTH = 800;
-
-/** Parse an "W:H" aspect ratio into canvas dimensions; null if malformed. */
-export function textPanelDimensions(aspectRatio: string | undefined): { width: number; height: number } | null {
-  if (!aspectRatio) return null;
-  const m = aspectRatio.match(/^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/);
-  if (!m) return null;
-  const w = parseFloat(m[1]);
-  const h = parseFloat(m[2]);
-  if (!(w > 0) || !(h > 0)) return null;
-  return { width: TEXT_PANEL_BASE_WIDTH, height: Math.round((TEXT_PANEL_BASE_WIDTH * h) / w) };
 }
 
 export async function exportCut(

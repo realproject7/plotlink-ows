@@ -232,7 +232,10 @@ function CutRow({
             </div>
           )}
 
-          {/* Clean image: copy generation prompt + upload the generated file */}
+          {/* Clean image: copy generation prompt + upload the generated file.
+              Text/interstitial panels need no clean image (#351), so this whole
+              generation/upload handoff is image-cut only. */}
+          {!isTextPanel(cut) && (
           <div className="mt-2 space-y-2">
             <button
               onClick={() => {
@@ -309,6 +312,7 @@ function CutRow({
               <p className="text-xs text-error mt-1">{uploadError}</p>
             )}
           </div>
+          )}
 
           {/* Open editor — image cuts, narration cuts, and text panels (#351) */}
           {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0 || isTextPanel(cut)) && (

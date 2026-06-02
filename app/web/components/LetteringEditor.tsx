@@ -9,6 +9,7 @@ import {
 import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { cutLetteringChecklist, cutScriptLines, isExportStale, overlaysSignature, type ScriptLine } from "@app-lib/lettering-status";
+import { textPanelDimensions } from "@app-lib/cuts";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -193,17 +194,29 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
 
   const updateImageBounds = useCallback(() => {
     const container = containerRef.current;
-    const img = imgRef.current;
-    if (!container || !img || !img.naturalWidth) return;
+    if (!container) return;
     const cw = container.clientWidth;
     const ch = container.clientHeight;
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
+    let iw: number;
+    let ih: number;
+    if (cut.kind === "text") {
+      // A text panel has no image — size the editor canvas from the SAME aspect
+      // ratio the export uses, so lettering and the exported final agree (#351).
+      const dims = textPanelDimensions(cut.aspectRatio) ?? { width: 800, height: 600 };
+      iw = dims.width;
+      ih = dims.height;
+    } else {
+      const img = imgRef.current;
+      if (!img || !img.naturalWidth) return;
+      iw = img.naturalWidth;
+      ih = img.naturalHeight;
+    }
+    if (!cw || !ch) return;
     const scale = Math.min(cw / iw, ch / ih);
     const rw = iw * scale;
     const rh = ih * scale;
     setImageBounds({ x: (cw - rw) / 2, y: (ch - rh) / 2, width: rw, height: rh });
-  }, []);
+  }, [cut.kind, cut.aspectRatio]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -599,11 +612,27 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
               draggable={false}
               onLoad={updateImageBounds}
             />
+          ) : isTextPanel ? (
+            // Text panel: an aspect-ratio-contained canvas (imageBounds), so the
+            // lettering surface matches the exported final's shape (#351, re1).
+            imageBounds.width > 0 && (
+              <div
+                className="absolute flex items-center justify-center text-muted text-xs"
+                style={{
+                  left: imageBounds.x,
+                  top: imageBounds.y,
+                  width: imageBounds.width,
+                  height: imageBounds.height,
+                  background: cut.background || "#ffffff",
+                }}
+                data-testid="text-panel-canvas"
+              >
+                Text panel
+              </div>
+            )
           ) : (
             <div
               className="w-full h-full bg-white flex items-center justify-center text-muted text-xs"
-              style={isTextPanel ? { background: cut.background || "#ffffff" } : undefined}
-              data-testid={isTextPanel ? "text-panel-canvas" : undefined}
               ref={(el) => {
                 if (el && imageBounds.width === 0) {
                   const rect = el.getBoundingClientRect();
@@ -613,7 +642,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 }
               }}
             >
-              {isTextPanel ? "Text panel" : "Narration cut"}
+              Narration cut
             </div>
           )}
 
