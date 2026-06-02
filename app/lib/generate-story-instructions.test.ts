@@ -188,6 +188,28 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain('"title": "Episode 1 — First Rain"');
   });
 
+  // #348: cartoon genesis must be described as a reader-facing prologue/opening
+  // with buildup and a real title, clearly distinct from plot-01 — not a synopsis.
+  it("describes cartoon genesis as a reader-facing prologue with buildup and a title", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toMatch(/Reader-facing Prologue|story opening/i);
+    expect(out).toMatch(/real `# Title`|real \\?# title|# Title/i);
+    // Buildup + bridge into the first episode, not a cold jump or lore dump.
+    expect(out).toMatch(/build(s|ing)? toward the first (visual )?episode|bridge/i);
+    expect(out).toMatch(/avoid.*lore/i);
+    // Genesis vs plot-01 distinction + the structure.md onboarding plan.
+    expect(out).toMatch(/Genesis vs plot-01|Genesis opens and onboards/i);
+    expect(out).toContain("Genesis Opening Plan");
+    // No longer pitched as a plain synopsis hook.
+    expect(out).not.toContain("prose synopsis hook");
+  });
+
+  it("does NOT change fiction genesis guidance (still a synopsis hook)", () => {
+    const out = generateStoryInstructions("fiction");
+    expect(out).toMatch(/synopsis/i);
+    expect(out).not.toContain("Reader-facing Prologue");
+  });
+
   it("cartoon (claude/default) output also carries the no-shell-tools handoff", () => {
     const out = generateStoryInstructions("cartoon");
     expect(out).toContain("Asset Tooling");
