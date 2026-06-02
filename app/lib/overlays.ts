@@ -48,12 +48,38 @@ function clamp(v: number, min: number, max: number): number {
  * visible tail to draw). Shared by the export canvas and the editor preview so
  * both render the tail identically.
  */
+// The corner radius balloonOutline uses by default. speechTailPoints mirrors it
+// so the tail mouth is kept clear of the rounded corners (see fitTailMouth).
+function defaultBalloonRadius(ow: number, oh: number): number {
+  return Math.max(0, Math.min(8, ow / 2, oh / 2));
+}
+
+/**
+ * Place a tail mouth of nominal width `baseW`, centered as near `toward` as
+ * possible, but kept entirely on the STRAIGHT span of the edge — between the two
+ * rounded corners `[start + r, start + size - r]`. If the straight span is
+ * narrower than the mouth, the mouth shrinks to fit. This guarantees both base
+ * points sit on the flat edge, never inside a corner arc, so the unified balloon
+ * outline never back-tracks into a corner (which would render as an internal
+ * notch/seam between body and tail — #361). Returns the mouth center and
+ * half-width along the edge axis.
+ */
+function fitTailMouth(toward: number, start: number, size: number, r: number, baseW: number): { center: number; half: number } {
+  const span = Math.max(0, size - 2 * r); // flat edge length between the corners
+  const half = Math.max(1, Math.min(baseW, span) / 2);
+  const lo = start + r + half;
+  const hi = start + size - r - half;
+  const center = hi >= lo ? clamp(toward, lo, hi) : start + size / 2;
+  return { center, half };
+}
+
 export function speechTailPoints(
   ox: number,
   oy: number,
   ow: number,
   oh: number,
   tail: Point,
+  radius?: number,
 ): TailPoints | null {
   const cx = ox + ow / 2;
   const cy = oy + oh / 2;
@@ -66,24 +92,28 @@ export function speechTailPoints(
   const dx = tipX - cx;
   const dy = tipY - cy;
   const baseW = Math.max(6, Math.min(ow, oh) * 0.3);
+  // Match balloonOutline's corner radius so the mouth stays off the corners.
+  const r = radius ?? defaultBalloonRadius(ow, oh);
 
   // Anchor the base to the edge the tail points toward, perpendicular to the
-  // dominant direction, so the triangle reads as a comic speech tail.
+  // dominant direction, so the triangle reads as a comic speech tail. The mouth
+  // is fitted onto the flat part of that edge (fitTailMouth) so a tail aimed
+  // near a corner can't push a base point into the rounded corner.
   if (Math.abs(dy) >= Math.abs(dx)) {
     const edgeY = dy >= 0 ? oy + oh : oy;
-    const bx = clamp(tipX, ox + baseW / 2, ox + ow - baseW / 2);
+    const { center, half } = fitTailMouth(tipX, ox, ow, r, baseW);
     return {
       tip: { x: tipX, y: tipY },
-      base1: { x: bx - baseW / 2, y: edgeY },
-      base2: { x: bx + baseW / 2, y: edgeY },
+      base1: { x: center - half, y: edgeY },
+      base2: { x: center + half, y: edgeY },
     };
   }
   const edgeX = dx >= 0 ? ox + ow : ox;
-  const by = clamp(tipY, oy + baseW / 2, oy + oh - baseW / 2);
+  const { center, half } = fitTailMouth(tipY, oy, oh, r, baseW);
   return {
     tip: { x: tipX, y: tipY },
-    base1: { x: edgeX, y: by - baseW / 2 },
-    base2: { x: edgeX, y: by + baseW / 2 },
+    base1: { x: edgeX, y: center - half },
+    base2: { x: edgeX, y: center + half },
   };
 }
 
