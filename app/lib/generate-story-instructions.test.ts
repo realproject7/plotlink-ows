@@ -188,6 +188,48 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain('"title": "Episode 1 — First Rain"');
   });
 
+  // #362: Codex cartoon imagegen artifacts must be finalized into the OWS story
+  // folder — planning files first, generated images copied OUT of the codex cache
+  // into the asset paths, validated, with a recovery path for stranded images.
+  it("Codex cartoon output tells the agent to write planning files before generating images (#362)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("Write the planning files FIRST");
+    expect(out).toContain("never leave a story shell");
+    expect(out).toContain("structure.md");
+    expect(out).toContain("genesis.md");
+    expect(out).toContain("plot-NN.cuts.json");
+    expect(out).toContain("Image generation is the LAST step");
+  });
+
+  it("Codex cartoon output requires finalizing generated images out of the codex cache into the OWS asset path (#362)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // Names the actual cache the pilot's images were stranded in.
+    expect(out).toContain("~/.codex/generated_images");
+    // A cache file is not a finished asset; it must be copied/moved to the path.
+    expect(out).toContain("a generation cache");
+    expect(out).toContain("assets/plot-NN/cut-XX-clean.webp");
+    // A plain file copy is explicitly allowed (distinct from the magick/sharp ban).
+    expect(out).toMatch(/`cp`\/`mv`/);
+    // Validation at the OWS path before claiming success.
+    expect(out).toContain("Validate at the OWS path before reporting success");
+    expect(out).toMatch(/find assets\/plot-NN/);
+  });
+
+  it("Codex cartoon output gives a recovery path + post-run checklist for stranded images (#362)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("IMPORT NEEDED");
+    expect(out).toContain("Upload clean image");
+    expect(out).toContain("Import generated image");
+    expect(out).toContain("Post-run checklist");
+    expect(out).toContain("does not count as saved");
+  });
+
+  it("the codex-cache finalize guidance is Codex-only, not in the Claude handoff (#362)", () => {
+    const claude = generateStoryInstructions("cartoon", "claude");
+    expect(claude).not.toContain("~/.codex/generated_images");
+    expect(claude).not.toContain("Write the planning files FIRST");
+  });
+
   // #348: cartoon genesis must be described as a reader-facing prologue/opening
   // with buildup and a real title, clearly distinct from plot-01 — not a synopsis.
   it("describes cartoon genesis as a reader-facing prologue with buildup and a title", () => {
