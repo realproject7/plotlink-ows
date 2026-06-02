@@ -639,6 +639,38 @@ describe("CutListPanel", () => {
       expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
     });
 
+    it("does not show the done banner while detect-clean-images is still pending (#311 re1)", async () => {
+      const cutsData = {
+        version: 1, plotFile: "plot-01",
+        cuts: [makeCut({ id: 1, description: "Pending verify", cleanImagePath: "assets/plot-01/cut-01-clean.webp" })],
+      };
+      const authFetch = vi.fn((url: string) => {
+        if (url.includes("/detect-clean-images")) return new Promise(() => {}); // never resolves
+        if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"], { type: "image/webp" })) });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+      });
+      render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+      await waitFor(() => expect(screen.getByText("Pending verify")).toBeInTheDocument());
+      // Cut-plan fields say "clean" but detection has not confirmed disk state yet.
+      expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
+    });
+
+    it("does not show the done banner when detect-clean-images fails (#311 re1)", async () => {
+      const cutsData = {
+        version: 1, plotFile: "plot-01",
+        cuts: [makeCut({ id: 1, description: "Detect failed", cleanImagePath: "assets/plot-01/cut-01-clean.webp" })],
+      };
+      const authFetch = vi.fn((url: string) => {
+        if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: "boom" }) });
+        if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"], { type: "image/webp" })) });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+      });
+      render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+      await waitFor(() => expect(screen.getByText("Detect failed")).toBeInTheDocument());
+      // Detection failed → unverified → no false "complete" signal.
+      expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
+    });
+
     it("does not show the done banner when a recorded clean path is stale/missing on disk", async () => {
       const cutsData = {
         version: 1, plotFile: "plot-01",
