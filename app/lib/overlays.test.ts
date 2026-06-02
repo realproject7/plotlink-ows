@@ -8,6 +8,8 @@ import {
   normalizeOverlays,
   anchorFromPosition,
   validateOverlaysForExport,
+  detectOverlappingOverlays,
+  OVERLAP_AREA_THRESHOLD,
 } from "./overlays";
 
 describe("toPixel", () => {
@@ -228,5 +230,76 @@ describe("validateOverlaysForExport (#309)", () => {
       { id: "a", type: "sfx", x: 0.1, y: 0.1, width: 0, height: 0.1, text: "" },
     ]);
     expect(bad.valid).toBe(false);
+  });
+});
+
+describe("detectOverlappingOverlays (#318)", () => {
+  type O = Parameters<typeof detectOverlappingOverlays>[0][number];
+  const speech = (id: string, x: number, y: number, w = 0.3, h = 0.2, over: Partial<O> = {}): O =>
+    ({ id, type: "speech", x, y, width: w, height: h, text: "", ...over });
+
+  it("returns no pairs for a single bubble", () => {
+    expect(detectOverlappingOverlays([speech("a", 0.1, 0.1)])).toEqual([]);
+  });
+
+  it("returns no pairs for bubbles that do not touch", () => {
+    const pairs = detectOverlappingOverlays([speech("a", 0.0, 0.0), speech("b", 0.6, 0.6)]);
+    expect(pairs).toEqual([]);
+  });
+
+  it("flags two heavily overlapping bubbles with their indexes and ids", () => {
+    // a covers [0.1,0.4]x[0.1,0.3]; b covers [0.2,0.5]x[0.15,0.35] → large overlap.
+    const pairs = detectOverlappingOverlays([speech("a", 0.1, 0.1), speech("b", 0.2, 0.15)]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({ indexA: 0, indexB: 1, idA: "a", idB: "b" });
+    expect(pairs[0].ratio).toBeGreaterThan(OVERLAP_AREA_THRESHOLD);
+  });
+
+  it("ignores a tiny nick below the readability threshold", () => {
+    // b's top-left corner just clips a's bottom-right corner: intersection is a
+    // sliver, well under 12% of the smaller bubble.
+    const pairs = detectOverlappingOverlays([
+      speech("a", 0.1, 0.1, 0.3, 0.2),
+      speech("b", 0.39, 0.29, 0.3, 0.2),
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it("does not flag overlap involving an SFX overlay (transparent, non-occluding)", () => {
+    const pairs = detectOverlappingOverlays([
+      speech("a", 0.1, 0.1, 0.3, 0.2),
+      { id: "f", type: "sfx", x: 0.12, y: 0.12, width: 0.3, height: 0.2, text: "BOOM" },
+    ]);
+    expect(pairs).toEqual([]);
+  });
+
+  it("flags an overlapping speech/narration pair", () => {
+    const pairs = detectOverlappingOverlays([
+      speech("a", 0.1, 0.1, 0.3, 0.2),
+      { id: "n", type: "narration", x: 0.15, y: 0.12, width: 0.3, height: 0.2, text: "..." },
+    ]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({ idA: "a", idB: "n" });
+  });
+
+  it("reports every overlapping pair among three stacked bubbles", () => {
+    const pairs = detectOverlappingOverlays([
+      speech("a", 0.1, 0.1, 0.4, 0.4),
+      speech("b", 0.15, 0.15, 0.4, 0.4),
+      speech("c", 0.2, 0.2, 0.4, 0.4),
+    ]);
+    expect(pairs.map((p) => [p.idA, p.idB])).toEqual([
+      ["a", "b"],
+      ["a", "c"],
+      ["b", "c"],
+    ]);
+  });
+
+  it("skips overlays with non-finite geometry rather than throwing", () => {
+    const pairs = detectOverlappingOverlays([
+      { id: "bad", type: "speech", x: NaN, y: 0.1, width: 0.3, height: 0.2, text: "" } as unknown as O,
+      speech("b", 0.1, 0.1),
+    ]);
+    expect(pairs).toEqual([]);
   });
 });

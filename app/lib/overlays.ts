@@ -269,3 +269,76 @@ export function validateOverlaysForExport(overlays: Overlay[]): { valid: boolean
   }
   return { valid: true };
 }
+
+// ---------------------------------------------------------------------------
+// Overlapping-bubble detection (#318)
+//
+// Pilot QA found cuts where two speech bubbles overlapped, leaving the back
+// bubble's text faintly visible behind the front one — unpolished and hard to
+// read. This is an MVP readability guard (not a layout engine): flag pairs of
+// bubbles whose filled bodies overlap enough to occlude each other, so the
+// editor can warn before export/publish. Only speech and narration bubbles have
+// an opaque fill that hides what's behind them; SFX is transparent stroked text
+// laid over the art, so it is not treated as occluding.
+// ---------------------------------------------------------------------------
+
+const OCCLUDING_TYPES: ReadonlySet<OverlayType> = new Set(["speech", "narration"]);
+
+/**
+ * Minimum overlap, as a fraction of the SMALLER bubble's area, for a pair to be
+ * reported. A small nick where two bubbles barely touch is ignored; once an
+ * eighth of the smaller bubble is covered the back text starts to be obscured.
+ */
+export const OVERLAP_AREA_THRESHOLD = 0.12;
+
+export interface OverlapPair {
+  /** Indexes into the overlays array (stable, 0-based). */
+  indexA: number;
+  indexB: number;
+  idA: string;
+  idB: string;
+  /** Intersection area as a fraction of the smaller bubble's area (0–1). */
+  ratio: number;
+}
+
+function hasFiniteRect(o: Overlay): boolean {
+  return (
+    isFiniteNumber(o?.x) &&
+    isFiniteNumber(o?.y) &&
+    isFiniteNumber(o?.width) &&
+    isFiniteNumber(o?.height) &&
+    o.width > 0 &&
+    o.height > 0
+  );
+}
+
+/**
+ * Find pairs of occluding bubbles (speech/narration) that overlap by at least
+ * `threshold` of the smaller bubble's area. Pure and geometry-only so it can be
+ * reused by the editor warning and any pre-publish preflight. Overlays with
+ * non-finite geometry are skipped (those are caught by validateOverlaysForExport).
+ */
+export function detectOverlappingOverlays(
+  overlays: Overlay[],
+  threshold: number = OVERLAP_AREA_THRESHOLD,
+): OverlapPair[] {
+  const pairs: OverlapPair[] = [];
+  for (let i = 0; i < overlays.length; i++) {
+    const a = overlays[i];
+    if (!OCCLUDING_TYPES.has(a?.type) || !hasFiniteRect(a)) continue;
+    for (let j = i + 1; j < overlays.length; j++) {
+      const b = overlays[j];
+      if (!OCCLUDING_TYPES.has(b?.type) || !hasFiniteRect(b)) continue;
+      const overlapW = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const overlapH = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      if (overlapW <= 0 || overlapH <= 0) continue;
+      const intersection = overlapW * overlapH;
+      const minArea = Math.min(a.width * a.height, b.width * b.height);
+      const ratio = minArea > 0 ? intersection / minArea : 0;
+      if (ratio >= threshold) {
+        pairs.push({ indexA: i, indexB: j, idA: a.id, idB: b.id, ratio });
+      }
+    }
+  }
+  return pairs;
+}
