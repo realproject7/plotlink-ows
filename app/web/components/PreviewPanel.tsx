@@ -728,7 +728,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </span>
         ) : episodeTitleMissing ? (
           <span className="text-[10px] text-error" data-testid="publish-title-episode-required">
-            No episode title set — “{resolvedPublishTitle}” is a placeholder and can’t be published. Set a title in the cut plan (or add a “# Title” to the episode) before publishing.
+            “{resolvedPublishTitle}” is a generic placeholder, not a reader-facing title, so it can’t be published. Set a real episode title in the cut plan (or add a “# Title” to the episode) — e.g. “Episode 01 — The Couple Coupon” — before publishing.
           </span>
         ) : null}
       </div>

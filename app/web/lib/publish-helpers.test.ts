@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle, hasExplicitEpisodeTitle } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle, hasExplicitEpisodeTitle, isGenericEpisodeTitle } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -262,6 +262,34 @@ describe("hasExplicitEpisodeTitle (#365)", () => {
     expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: null })).toBe(false);
     expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "   " })).toBe(false);
     expect(hasExplicitEpisodeTitle({ fileContent: SKELETON })).toBe(false);
+  });
+  // #368: a generic explicit title (real H1 or cut-plan) no longer counts.
+  it("is false when the cut-plan title is a generic 'Episode 01' label (#368)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "Episode 01" })).toBe(false);
+  });
+  it("is false when the H1 is a generic '# Episode 01' label (#368)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: "# Episode 01\n\n" + SKELETON, episodeTitle: null })).toBe(false);
+  });
+  it("is true when an episode number is paired with real title text (#368)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "Episode 01 — The Couple Coupon" })).toBe(true);
+    expect(hasExplicitEpisodeTitle({ fileContent: "# Episode 01 — The Couple Coupon\n\n" + SKELETON, episodeTitle: null })).toBe(true);
+  });
+});
+
+describe("isGenericEpisodeTitle (#368)", () => {
+  it("flags generic number-label titles", () => {
+    for (const t of ["Episode 01", "Episode 1", "episode 7", "Ep 01", "Ep. 01", "Ep.01", "Chapter 01", "Ch 1", "Ch. 02", "Part 3", "Pt 4", "Plot 01", "plot-01", "plot_1", "plot 2", "01", "7", "  Episode  01  "]) {
+      expect(isGenericEpisodeTitle(t)).toBe(true);
+    }
+  });
+  it("treats empty/whitespace as generic (unusable)", () => {
+    expect(isGenericEpisodeTitle("")).toBe(true);
+    expect(isGenericEpisodeTitle("   ")).toBe(true);
+  });
+  it("allows real reader-facing titles, including number + title text", () => {
+    for (const t of ["The Couple Coupon", "Closing-Time Confession", "Episode 01 — The Couple Coupon", "Episode 1: The Heist", "Chapter 2 - Aftermath", "Episode One"]) {
+      expect(isGenericEpisodeTitle(t)).toBe(false);
+    }
   });
 });
 
