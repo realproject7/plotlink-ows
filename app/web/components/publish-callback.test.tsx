@@ -187,12 +187,15 @@ describe("handlePublish public-title verification (#379 source guard)", () => {
     return fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
   }
 
-  it("reads the indexed PlotLink storyline detail and verifies it for cartoon publishes", async () => {
+  it("reads the indexed public title via the OWS server route and verifies it for cartoon publishes", async () => {
     const source = await readSource();
     expect(source).toContain("verifyPublicCartoonTitle");
     expect(source).toContain("publicTitleWarning");
-    // Uses the existing public read endpoint (no PlotLink API change).
-    expect(source).toContain("https://plotlink.xyz/api/storyline/");
+    // Reads the indexed public title through the OWS server route (which fetches
+    // the rendered public page server-side) — NOT a nonexistent PlotLink JSON
+    // endpoint, and NOT a cross-origin page fetch from the browser.
+    expect(source).toContain("/api/publish/public-title?");
+    expect(source).not.toContain("plotlink.xyz/api/storyline/");
     // Only for cartoon publishes.
     expect(source).toMatch(/publishContentType === "cartoon" && data\.storylineId/);
     // The verification CALL runs after the on-chain `done` event (post-index).

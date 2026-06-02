@@ -485,17 +485,27 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
                 // #379: end-to-end public-title verification. Local guards ensure
                 // OWS sends a reader-facing title, but the pilot showed PlotLink
-                // can still index a raw "genesis"/"plot-NN" title. Once indexed,
-                // read the public storyline detail and verify the indexed title.
-                // Inconclusive reads (network error / field absent) never warn —
-                // only a confirmed raw/generic public title does. The publish is
-                // already on-chain + immutable, so this can only warn.
+                // can still index a raw "genesis"/"plot-NN" title. There is no
+                // public JSON read endpoint, so an OWS server route reads the
+                // rendered public page's og:title (no CORS) and returns the
+                // indexed title; verify it here. Inconclusive reads (page
+                // unreachable / no title) never warn — only a confirmed
+                // raw/generic public title does. The publish is already on-chain +
+                // immutable, so this can only warn.
                 if (publishContentType === "cartoon" && data.storylineId) {
                   try {
-                    const detailRes = await fetch(`https://plotlink.xyz/api/storyline/${data.storylineId}`);
-                    const detail = detailRes.ok ? await detailRes.json() : null;
-                    const verdict = verifyPublicCartoonTitle({ fileName, detail, plotIndex: data.plotIndex });
-                    if (!verdict.ok) titleVerifyWarning = publicTitleWarning(verdict);
+                    const isPlot = fileName !== "genesis.md";
+                    const q = `storylineId=${data.storylineId}` +
+                      (isPlot && data.plotIndex != null ? `&plotIndex=${data.plotIndex}` : "");
+                    const pubRes = await authFetch(`/api/publish/public-title?${q}`);
+                    if (pubRes.ok) {
+                      const pub = await pubRes.json();
+                      const detail = isPlot
+                        ? { plots: pub.plotTitle != null ? [{ plotIndex: data.plotIndex, title: pub.plotTitle }] : [] }
+                        : { title: pub.storylineTitle };
+                      const verdict = verifyPublicCartoonTitle({ fileName, detail, plotIndex: data.plotIndex });
+                      if (!verdict.ok) titleVerifyWarning = publicTitleWarning(verdict);
+                    }
                   } catch { /* inconclusive — don't false-warn on a read failure */ }
                 }
               }

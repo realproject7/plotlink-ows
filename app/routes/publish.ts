@@ -10,6 +10,7 @@ import { checkMarkdownReadiness } from "../lib/cartoon-readiness";
 import { readStoryMeta } from "./stories";
 import { sniffImageType, findStaleAssetPaths } from "../lib/clean-image-sync";
 import { isValidImageAsset } from "../lib/image-asset-validate";
+import { extractOgTitle, leadingTitleSegment } from "../lib/public-title";
 
 /**
  * Validate that an uploaded image's actual magic bytes match its claimed
@@ -103,6 +104,42 @@ publish.get("/preflight", async (c) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Preflight check failed";
     return c.json({ ready: false, error: message });
+  }
+});
+
+/**
+ * GET /api/publish/public-title — read the INDEXED public title from PlotLink
+ * after a publish (#379). There is no public JSON read endpoint, so this fetches
+ * the rendered public page server-side (no CORS) and extracts its og:title:
+ *   - genesis/storyline (`/story/<id>`)      → { storylineTitle }
+ *   - plot (`/story/<id>/<plotIndex>`)       → { plotTitle } (leading title segment)
+ * `fetched:false` when the page is unreachable / has no title, so the caller
+ * treats it as inconclusive rather than a false pass. The client then runs the
+ * pure title verifier on the result.
+ */
+publish.get("/public-title", async (c) => {
+  const storylineId = c.req.query("storylineId");
+  const plotIndex = c.req.query("plotIndex");
+  if (!storylineId || !/^\d+$/.test(storylineId)) {
+    return c.json({ ok: false, error: "Valid storylineId required" }, 400);
+  }
+  const isPlot = plotIndex != null && plotIndex !== "" && /^\d+$/.test(plotIndex);
+  const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
+  const url = isPlot
+    ? `${PLOTLINK_URL}/story/${storylineId}/${plotIndex}`
+    : `${PLOTLINK_URL}/story/${storylineId}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return c.json({ ok: true, fetched: false });
+    const og = extractOgTitle(await res.text());
+    if (!og) return c.json({ ok: true, fetched: false });
+    return isPlot
+      ? c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(og) })
+      : c.json({ ok: true, fetched: true, storylineTitle: og });
+  } catch {
+    // Network/parse failure → inconclusive; never block on a flaky read.
+    return c.json({ ok: true, fetched: false });
   }
 });
 
