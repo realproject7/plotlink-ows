@@ -570,6 +570,26 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(fs.readFileSync(assetFile)).toEqual(buffer);
   });
 
+  // #381 (re1): re-exporting an already-uploaded cut must invalidate its prior
+  // upload, or the bulk upload (which skips cuts with an uploadedCid) would keep
+  // publishing the OLD image after re-export.
+  it("saveExportedCut clears uploadedCid/uploadedUrl so a re-exported cut is upload-eligible again", () => {
+    const storyDir = path.join(tmpDir, "reexport-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("plot-01");
+    cf.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
+    cf.cuts[0].uploadedCid = "QmOldStaleCid";
+    cf.cuts[0].uploadedUrl = "https://ipfs.example.com/QmOldStaleCid";
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    saveExportedCut(storyDir, "plot-01", 1, Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), "image/jpeg");
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].uploadedCid).toBeNull();
+    expect(reloaded.cuts[0].uploadedUrl).toBeNull();
+    expect(reloaded.cuts[0].finalRendererVersion).toBe(CARTOON_BUBBLE_RENDERER_VERSION);
+  });
+
   it("saveExportedCut uses webp extension for image/webp", () => {
     const storyDir = path.join(tmpDir, "webp-story");
     fs.mkdirSync(storyDir, { recursive: true });

@@ -424,6 +424,13 @@ function saveExportedCut(
   // Stamp the bubble-renderer revision so a later renderer upgrade can flag this
   // final image as stale (needing re-export) before publish (#381).
   cut.finalRendererVersion = CARTOON_BUBBLE_RENDERER_VERSION;
+  // A NEW final image invalidates any prior upload (#381): the old PlotLink asset
+  // is the previous render (e.g. the stale separated-tail one). Clear the upload
+  // record so the cut becomes upload-eligible again — otherwise the bulk upload
+  // skips it (it filters out cuts that already have an uploadedCid) and the old
+  // image would keep publishing even after re-export.
+  cut.uploadedCid = null;
+  cut.uploadedUrl = null;
   writeCutsFile(storyDir, plotFile, cutsFile);
 
   return { finalImagePath };
