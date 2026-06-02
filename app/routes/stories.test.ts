@@ -950,3 +950,77 @@ describe("GET /:name/asset/:assetPath — serve story asset (real route)", () =>
     expect(res.status).toBe(400);
   });
 });
+
+describe("GET /api/stories/:name/cover-asset (#296 auto-detect)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  // RIFF…WEBP and JPEG magic bytes (mirrors the upload byte-sniff fixtures).
+  const WEBP_BYTES = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-cover-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeCover(story: string, file: string, bytes: Uint8Array) {
+    const dir = path.join(tmpDir, story, "assets");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, file), Buffer.from(bytes));
+  }
+
+  it("found:false when no cover asset exists", async () => {
+    fs.mkdirSync(path.join(tmpDir, "no-cover"), { recursive: true });
+    const res = await app.request("/api/stories/no-cover/cover-asset");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ found: false });
+  });
+
+  it("detects a valid assets/cover.webp", async () => {
+    writeCover("has-webp", "cover.webp", WEBP_BYTES);
+    const res = await app.request("/api/stories/has-webp/cover-asset");
+    const data = await res.json();
+    expect(data).toMatchObject({ found: true, valid: true, path: "assets/cover.webp", type: "image/webp" });
+  });
+
+  it("detects a valid assets/cover.jpg", async () => {
+    writeCover("has-jpg", "cover.jpg", JPEG_BYTES);
+    const data = await (await app.request("/api/stories/has-jpg/cover-asset")).json();
+    expect(data).toMatchObject({ found: true, valid: true, path: "assets/cover.jpg", type: "image/jpeg" });
+  });
+
+  it("flags a spoofed cover (PNG bytes named cover.webp) as invalid, not offered", async () => {
+    writeCover("spoofed", "cover.webp", PNG_BYTES);
+    const data = await (await app.request("/api/stories/spoofed/cover-asset")).json();
+    expect(data.found).toBe(true);
+    expect(data.valid).toBe(false);
+    expect(data.error).toMatch(/not a valid WEBP/i);
+  });
+
+  it("flags an oversize cover as invalid", async () => {
+    // 1MB + 1 byte, valid WEBP header.
+    const big = new Uint8Array(1024 * 1024 + 1);
+    big.set(WEBP_BYTES, 0);
+    writeCover("oversize", "cover.webp", big);
+    const data = await (await app.request("/api/stories/oversize/cover-asset")).json();
+    expect(data).toMatchObject({ found: true, valid: false });
+    expect(data.error).toMatch(/exceeds the 1MB/i);
+  });
+
+  it("prefers cover.webp over cover.jpg when both exist", async () => {
+    writeCover("both", "cover.webp", WEBP_BYTES);
+    writeCover("both", "cover.jpg", JPEG_BYTES);
+    const data = await (await app.request("/api/stories/both/cover-asset")).json();
+    expect(data.path).toBe("assets/cover.webp");
+  });
+});

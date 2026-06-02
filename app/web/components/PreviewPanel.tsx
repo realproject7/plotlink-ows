@@ -111,6 +111,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  // Auto-detected agent-created cover (assets/cover.webp|jpg) for genesis (#296).
+  // detectedCover = the path actually loaded into the cover selection (status
+  // label); detectedCoverWarning = an invalid/oversize detected asset we won't use.
+  const [detectedCover, setDetectedCover] = useState<string | null>(null);
+  const [detectedCoverWarning, setDetectedCoverWarning] = useState<string | null>(null);
+  // Once the writer manually picks or removes a cover, stop auto-applying the
+  // detected one (so removal/override sticks and detection doesn't loop).
+  const coverUserTouchedRef = useRef(false);
 
   // Inline illustration state
   const [showIllustrations, setShowIllustrations] = useState(false);
@@ -270,6 +278,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // A manual pick overrides any auto-detected cover and stops re-detection.
+    coverUserTouchedRef.current = true;
+    setDetectedCover(null);
     // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
     // immediate feedback instead of a late error at save (the server enforces
     // the same WebP/JPEG ≤1MB constraint).
@@ -393,7 +404,49 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setShowIllustrations(false);
     setUploadedImages([]);
     setIllustrationError(null);
+    setDetectedCover(null);
+    setDetectedCoverWarning(null);
+    coverUserTouchedRef.current = false;
   }, [storyName, fileName]);
+
+  // Auto-detect an agent-created cover (assets/cover.webp|jpg) for an UNPUBLISHED
+  // genesis and offer it as the default pre-publish cover (#296). Loads the file
+  // into the same coverFile/coverPreview the manual picker uses, so the existing
+  // publish flow attaches it (upload-cover → update-storyline) with no special
+  // casing. Invalid/oversize detected assets surface as a warning and are NOT used.
+  useEffect(() => {
+    if (fileName !== "genesis.md" || !storyName) return;
+    // Wait for the file to load AND confirm it is genuinely unpublished before
+    // touching the shared coverFile/coverPreview. On first render fileData is
+    // null, so without this an auto-detected cover could be set before the file
+    // load resolves and then leak into the published Edit Story panel (re1).
+    if (!fileData) return;
+    if (fileData.storylineId || fileData.status === "published" || fileData.status === "published-not-indexed") return;
+    if (coverUserTouchedRef.current) return; // a manual pick/removal wins
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch(`/api/stories/${storyName}/cover-asset`);
+        if (cancelled || !res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data?.found) return;
+        if (!data.valid) {
+          setDetectedCoverWarning(data.error || "Detected cover asset is invalid and was not used");
+          return;
+        }
+        const assetRes = await authFetch(`/api/stories/${storyName}/asset/${data.path.replace(/^assets\//, "")}`);
+        if (cancelled || !assetRes.ok) return;
+        const blob = await assetRes.blob();
+        const file = new File([blob], data.path.split("/").pop() || "cover.webp", { type: data.type });
+        // Reuse the exact client validation the manual picker uses.
+        if (validateCoverImage(file) || cancelled || coverUserTouchedRef.current) return;
+        setCoverFile(file);
+        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+        setDetectedCover(data.path);
+      } catch { /* best-effort: no detected cover */ }
+    })();
+    return () => { cancelled = true; };
+  }, [storyName, fileName, fileData, fileData?.status, fileData?.storylineId, authFetch]);
 
   // Fetch current storyline metadata when edit panel opens
   useEffect(() => {
@@ -956,7 +1009,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                         className="w-16 h-24 object-cover rounded border border-border"
                       />
                       <button
-                        onClick={() => { setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
                       >
                         x
@@ -973,6 +1026,16 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                       data-testid="prepublish-cover-input"
                     />
                     <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
+                    {detectedCover && (
+                      <span className="text-accent text-xs" data-testid="prepublish-cover-detected">
+                        Detected {detectedCover} — will be used as the cover. Pick a file to override.
+                      </span>
+                    )}
+                    {detectedCoverWarning && (
+                      <span className="text-amber-700 text-xs" data-testid="prepublish-cover-detected-warning">
+                        {detectedCoverWarning}
+                      </span>
+                    )}
                     {editError && <span className="text-error text-xs" data-testid="prepublish-cover-error">{editError}</span>}
                   </div>
                 </div>
@@ -1012,11 +1075,17 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   // files never do. Only pass the 6th arg when a cover is
                   // actually selected, so the no-cover call signature (and
                   // existing fiction/plot publish behavior) is unchanged.
+                  // The cover may be a manual pick OR an auto-detected
+                  // assets/cover.webp loaded into coverFile (#296) — both flow
+                  // through the same attach path.
                   const cover = isGenesis ? coverFile : null;
                   if (cover) {
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
                     // Hand the file to the parent's publish flow, then drop the
-                    // local selection so it can't linger into the Edit panel.
+                    // local selection so it can't linger into the Edit panel or be
+                    // re-applied by cover auto-detection.
+                    coverUserTouchedRef.current = true;
+                    setDetectedCover(null);
                     setCoverFile(null);
                     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                     if (coverInputRef.current) coverInputRef.current.value = "";
