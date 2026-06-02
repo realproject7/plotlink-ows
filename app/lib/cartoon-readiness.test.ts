@@ -54,6 +54,22 @@ describe("checkCartoonReadiness", () => {
     expect(issues.some((i) => i.includes("not uploaded"))).toBe(true);
   });
 
+  it("reports stale tailed exports that must be re-exported before publish (#389)", () => {
+    const { ready, issues } = checkCartoonReadiness([makeCut({
+      cleanImagePath: "x.webp",
+      finalImagePath: "f.webp",
+      exportedAt: "2026-01-01",
+      uploadedCid: "Qm",
+      uploadedUrl: "https://ipfs/Qm",
+      overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi", tailAnchor: { x: 0.5, y: 1.2 } }],
+      // No finalRendererVersion stamp => pre-#381 export, treated as stale.
+    })]);
+    expect(ready).toBe(false);
+    expect(issues).toContain(
+      "Cut 1: re-export required before publish — this final image uses an older speech-bubble tail style that can show a visible seam",
+    );
+  });
+
   it("blank narration cut skips image checks", () => {
     const cuts = [makeCut({ narration: "Text only", uploadedUrl: "https://ipfs/Qm" })];
     const { ready } = checkCartoonReadiness(cuts);
@@ -133,6 +149,26 @@ describe("checkMarkdownReadiness", () => {
     ].join("\n");
     const { ready } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: "https://ipfs.example.com/QmAbc" })]);
     expect(ready).toBe(true);
+  });
+
+  it("blocks stale tailed exports even when markdown and uploaded URL look valid (#389)", () => {
+    const url = "https://ipfs.example.com/QmAbc";
+    const md = [
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      `![Cut 1](${url})`,
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const { ready, issues } = checkMarkdownReadiness(md, [makeCut({
+      uploadedUrl: url,
+      uploadedCid: "QmAbc",
+      finalImagePath: "assets/plot-01/cut-01-final.webp",
+      exportedAt: "2026-01-01",
+      overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi", tailAnchor: { x: 0.5, y: 1.2 } }],
+    })]);
+    expect(ready).toBe(false);
+    expect(issues).toContain(
+      "Cut 1: re-export required before publish — this final image uses an older speech-bubble tail style that can show a visible seam",
+    );
   });
 
   it("fails when cut.uploadedUrl is null even with a valid-looking URL in markdown", () => {
@@ -287,6 +323,22 @@ describe("classifyCartoonReadiness", () => {
     const result = classifyCartoonReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(result.stage).toBe("error");
     expect(result.issues.some((i) => i.includes("exactly one image reference"))).toBe(true);
+  });
+
+  it("classifies stale tailed exports as an error even with otherwise-valid markdown (#389)", () => {
+    const url = "https://ipfs/QmA";
+    const md = block("cut-001", `![A](${url})`);
+    const result = classifyCartoonReadiness(md, [makeCut({
+      uploadedUrl: url,
+      uploadedCid: "QmA",
+      finalImagePath: "assets/plot-01/cut-01-final.webp",
+      exportedAt: "2026-01-01",
+      overlays: [{ id: "1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi", tailAnchor: { x: 0.5, y: 1.2 } }],
+    })]);
+    expect(result.stage).toBe("error");
+    expect(result.issues).toEqual([
+      "Cut 1: re-export required before publish — this final image uses an older speech-bubble tail style that can show a visible seam",
+    ]);
   });
 
   it("classifies fully uploaded markdown as ready", () => {

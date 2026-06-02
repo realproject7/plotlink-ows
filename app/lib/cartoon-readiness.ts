@@ -1,4 +1,4 @@
-import { isTextPanel, type Cut } from "./cuts";
+import { isStaleTailedExport, isTextPanel, type Cut } from "./cuts";
 
 const MAX_EXPORT_SIZE = 1024 * 1024;
 
@@ -36,12 +36,19 @@ export function checkCartoonReadiness(cuts: Cut[]): { ready: boolean; issues: st
     if (cut.finalImagePath && !cut.exportedAt) {
       issues.push(`${label}: export metadata missing`);
     }
+    if (isStaleTailedExport(cut)) {
+      issues.push(staleTailedExportIssue(label));
+    }
     if (!cut.uploadedUrl) {
       issues.push(`${label}: not uploaded`);
     }
   }
 
   return { ready: issues.length === 0, issues };
+}
+
+function staleTailedExportIssue(label: string): string {
+  return `${label}: re-export required before publish — this final image uses an older speech-bubble tail style that can show a visible seam`;
 }
 
 /**
@@ -119,6 +126,9 @@ export function checkMarkdownReadiness(
     // Every publishable cut must have a recorded uploaded URL.
     if (!cut.uploadedUrl) {
       issues.push(`${label}: not uploaded (no recorded uploaded URL)`);
+    }
+    if (isStaleTailedExport(cut)) {
+      issues.push(staleTailedExportIssue(label));
     }
 
     const block = extractCutBlock(markdown, id);
@@ -276,6 +286,7 @@ export interface CartoonIssueGroup {
 // per-cut technical errors (#360). Ordered by where the step sits in the flow.
 const CARTOON_ISSUE_CATEGORIES: { key: string; title: string; test: RegExp }[] = [
   { key: "assemble", title: "Prepare the episode for publish", test: /markdown block|missing or incomplete/i },
+  { key: "export", title: "Export final images", test: /re-export|older speech-bubble|visible seam/i },
   { key: "upload", title: "Upload final images", test: /not uploaded|no recorded uploaded url/i },
   { key: "images", title: "Fix image references", test: /image reference|not an http|does not match|exactly one image/i },
   { key: "cleanup", title: "Remove leftover text", test: /placeholder|instructional|awaiting-upload|awaiting upload/i },
