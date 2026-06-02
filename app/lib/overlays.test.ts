@@ -127,6 +127,68 @@ describe("speechTailPoints", () => {
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 0.5 })).toBeNull();
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.9, y: 0.9 })).toBeNull();
   });
+
+  // #361: a tail aimed near a corner must keep BOTH base points on the straight
+  // part of the edge (clear of the rounded corners). Otherwise the unified
+  // body+tail outline back-tracks into a corner arc and renders as a visible
+  // internal notch/seam between the body and the tail.
+  describe("tail mouth stays clear of rounded corners (#361)", () => {
+    const r = Math.max(0, Math.min(8, ow / 2, oh / 2)); // default balloon radius
+    const eps = 1e-9;
+
+    it("keeps the default centered tail unchanged (no regression)", () => {
+      // ow=200 → baseW = max(6, min(200,100)*0.3) = 30, centered under tip x=200.
+      const pts = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 1.2 })!;
+      expect(pts.base1.x).toBe(185);
+      expect(pts.base2.x).toBe(215);
+    });
+
+    it("never places a base point inside the corner radius, for any near-corner anchor", () => {
+      const coords = [-0.5, 0.02, 0.5, 0.98, 1.5];
+      for (const ax of coords) {
+        for (const ay of coords) {
+          const pts = speechTailPoints(ox, oy, ow, oh, { x: ax, y: ay });
+          if (!pts) continue; // tip inside the bubble → no tail
+          const onHorizontalEdge = pts.base1.y === pts.base2.y;
+          if (onHorizontalEdge) {
+            // base spans the x axis → must sit within [ox+r, ox+ow-r].
+            expect(pts.base1.x).toBeGreaterThanOrEqual(ox + r - eps);
+            expect(pts.base2.x).toBeLessThanOrEqual(ox + ow - r + eps);
+          } else {
+            // base spans the y axis → must sit within [oy+r, oy+oh-r].
+            expect(pts.base1.y).toBeGreaterThanOrEqual(oy + r - eps);
+            expect(pts.base2.y).toBeLessThanOrEqual(oy + oh - r + eps);
+          }
+        }
+      }
+    });
+
+    it("a corner-aimed tail outline does not back-track into a corner arc", () => {
+      // Tail aimed down-and-right (toward the bottom-right corner). Pre-fix this
+      // pushed a base point onto the corner, so the bottom edge run reversed
+      // (…→corner→up→arc), leaving a seam. Assert the edge run is monotonic.
+      const tail = speechTailPoints(ox, oy, ow, oh, { x: 0.95, y: 1.6 })!;
+      const cmds = balloonOutline(ox, oy, ow, oh, tail);
+      // The tail sits on the bottom edge (y = oy+oh). Collect, in trace order,
+      // the x of every vertex sitting on that edge; the tail makes the run dip
+      // out to the tip and back, but the on-edge xs must stay within the flat
+      // span and march monotonically right→left without overshooting a corner.
+      const bottom = oy + oh;
+      const onEdgeXs = cmds
+        .filter((c) => c.k !== "A" && Math.abs((c as { y: number }).y - bottom) < eps)
+        .map((c) => (c as { x: number }).x);
+      // Every on-edge vertex is within the straight span (never on a corner).
+      for (const x of onEdgeXs) {
+        expect(x).toBeGreaterThanOrEqual(ox + r - eps);
+        expect(x).toBeLessThanOrEqual(ox + ow - r + eps);
+      }
+      // …and strictly non-increasing (bottom edge is traced right→left), so the
+      // path never reverses back toward the corner it just rounded.
+      for (let i = 1; i < onEdgeXs.length; i++) {
+        expect(onEdgeXs[i]).toBeLessThanOrEqual(onEdgeXs[i - 1] + eps);
+      }
+    });
+  });
 });
 
 describe("balloonOutline (#341 — shared body+tail geometry)", () => {
