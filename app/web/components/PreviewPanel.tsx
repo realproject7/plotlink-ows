@@ -55,9 +55,9 @@ interface PreviewPanelProps {
   storyName: string | null;
   fileName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  // Resolves to true once the publish actually proceeded past the pre-stream
-  // gates (so a selected cover may be dropped); false/void when blocked before
-  // the stream (e.g. insufficient-balance preflight), so the cover is kept (#375).
+  // Resolves to true only on a confirmed-successful publish (so a selected cover
+  // may be dropped); false/void when blocked before the stream (#375) or when the
+  // publish fails/aborts before completing (#376), so the cover is kept.
   onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void | Promise<boolean | void>;
   publishingFile?: string | null;
   walletAddress?: string | null;
@@ -1376,12 +1376,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   // through the same attach path.
                   const cover = isGenesis ? coverFile : null;
                   if (cover) {
-                    // Drop the local cover selection ONLY after the publish was
-                    // actually attempted (onPublish resolves truthy). A blocked
-                    // preflight (insufficient balance) resolves falsy, so the
-                    // writer's selected cover stays put for the retry (#375).
-                    const attempted = await onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
-                    if (attempted) {
+                    // Drop the local cover selection ONLY on a confirmed-successful
+                    // publish (onPublish resolves truthy). A publish blocked before
+                    // the stream (#375) or one that opens then fails before `done`
+                    // (#376) resolves falsy, so the writer's selected/auto-detected
+                    // cover stays put for the retry.
+                    const published = await onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
+                    if (published) {
                       coverUserTouchedRef.current = true;
                       setDetectedCover(null);
                       setDetectedCoverWarning(null);

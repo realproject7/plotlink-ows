@@ -273,11 +273,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setPublishProgress("Reading file...");
     setPublishError(null); // clear any prior durable block on a fresh attempt (#375)
     let coverAttachFailed = false;
-    // Whether the publish proceeded past every pre-stream gate (title, duplicate,
-    // storyline, preflight) and actually opened the publish stream. Returned to
-    // the caller so PreviewPanel drops the selected genesis cover ONLY once the
-    // publish was really attempted — a blocked publish keeps the cover (#375).
-    let attempted = false;
+    // Whether the publish actually SUCCEEDED on-chain (the SSE `done` event with a
+    // txHash). Returned to the caller so PreviewPanel drops the selected genesis
+    // cover ONLY on a confirmed-successful publish. A publish that is blocked
+    // before the stream (#375) OR opens then fails/errors before `done` (#376)
+    // leaves this false, so the writer's cover stays selected for the retry.
+    let succeeded = false;
 
     try {
       // Get file content
@@ -408,10 +409,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         }
       } catch { /* preflight unreachable — don't hard-block; let the publish stream report */ }
 
-      // Past every pre-stream gate — the publish is now being attempted, so the
-      // caller may drop the selected cover (#375).
-      attempted = true;
-
       // Run publish flow via SSE
       setPublishProgress("Publishing...");
       const publishRes = await authFetch("/api/publish/file", {
@@ -443,6 +440,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               const data = JSON.parse(line.slice(6));
               if (data.step) setPublishProgress(data.message || data.step);
               if (data.step === "done" && data.txHash) {
+                // Publish confirmed on-chain — the only point at which the cover
+                // selection may be dropped (#376). Anything short of this (a
+                // pre-stream block, a non-ok response, an error before `done`, or
+                // a stream that ends without `done`) leaves `succeeded` false so
+                // PreviewPanel keeps the selected/auto-detected cover for retry.
+                succeeded = true;
                 // Update publish status with gasCost
                 await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
                   method: "POST",
@@ -494,9 +497,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         setPublishProgress("");
       }, 3000);
     }
-    // true once the stream was opened (cover handed off → safe to clear); false
-    // on any pre-stream block so PreviewPanel keeps the writer's cover (#375).
-    return attempted;
+    // true ONLY on a confirmed-successful publish (cover attached → safe to
+    // clear); false on a pre-stream block (#375) or a failed/aborted publish
+    // (#376), so PreviewPanel keeps the writer's selected cover for the retry.
+    return succeeded;
   }, [authFetch, storyContentTypes, walletAddress]);
 
   const handleDestroySession = useCallback((name: string) => {
