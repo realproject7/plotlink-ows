@@ -497,10 +497,15 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         setPublishProgress("");
       }, 3000);
     }
-    // true ONLY on a confirmed-successful publish (cover attached → safe to
-    // clear); false on a pre-stream block (#375) or a failed/aborted publish
-    // (#376), so PreviewPanel keeps the writer's selected cover for the retry.
-    return succeeded;
+    // Tell PreviewPanel whether it may drop the selected cover. Clear ONLY when
+    // the publish is confirmed on-chain AND the cover was actually attached:
+    // - pre-stream block (#375) or failed/aborted publish (#376) → succeeded false → keep,
+    // - published on-chain but the cover upload/attach failed (#376/re1) →
+    //   coverAttachFailed true → keep, so the writer doesn't silently lose the
+    //   cover that never made it onto the storyline (settable via Edit Story).
+    // A publish with no selected cover (coverAttachFailed stays false) clears as
+    // before once it succeeds.
+    return succeeded && !coverAttachFailed;
   }, [authFetch, storyContentTypes, walletAddress]);
 
   const handleDestroySession = useCallback((name: string) => {

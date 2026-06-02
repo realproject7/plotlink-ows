@@ -57,9 +57,10 @@ function sseBody(eventJson: string) {
 
 /**
  * authFetch double answering every route handlePublish hits for a genesis
- * publish. `publishFile` decides what POST /api/publish/file returns.
+ * publish. `publishFile` decides what POST /api/publish/file returns; `coverOk`
+ * decides whether the cover upload/attach (#284) succeeds.
  */
-function makeAuthFetch(publishFile: () => unknown) {
+function makeAuthFetch(publishFile: () => unknown, coverOk = true) {
   return vi.fn((url: string) => {
     if (url === "/api/wallet") return json({ address: "test-wallet-address", balances: {} });
     if (url === "/api/agent/readiness") return json(null); // leaves readiness null → no codex gating in render
@@ -69,20 +70,34 @@ function makeAuthFetch(publishFile: () => unknown) {
     if (url.endsWith("/preflight")) return json({ ready: true, hasEnoughEth: true });
     if (url.endsWith("/api/publish/file")) return Promise.resolve(publishFile());
     if (url.includes("/publish-status")) return json({ ok: true });
+    if (url.includes("/api/publish/upload-cover")) {
+      return coverOk
+        ? json({ cid: "QmCover" })
+        : Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: "upload failed" }) });
+    }
+    if (url.includes("/api/publish/update-storyline")) return json({ ok: true });
     return json({});
   });
 }
 
-async function runPublish(publishFile: () => unknown): Promise<boolean | void> {
-  const authFetch = makeAuthFetch(publishFile);
+async function runPublish(publishFile: () => unknown, opts: { cover?: File | null; coverOk?: boolean } = {}): Promise<boolean | void> {
+  const authFetch = makeAuthFetch(publishFile, opts.coverOk ?? true);
   render(<StoriesPage token="t" authFetch={authFetch as never} />);
   // PreviewPanel is rendered unconditionally → onPublish is captured on mount.
   expect(captured.onPublish).toBeTruthy();
   let result: boolean | void;
   await act(async () => {
-    result = await captured.onPublish!("my-story", "genesis.md", "Romance", "English", false);
+    result = await captured.onPublish!("my-story", "genesis.md", "Romance", "English", false, opts.cover ?? null);
   });
   return result;
+}
+
+const DONE_EVENT = '{"step":"done","txHash":"tx-success","storylineId":1}';
+function donePublish() {
+  return { ok: true, status: 200, body: sseBody(DONE_EVENT) };
+}
+function coverFile() {
+  return new File([new Uint8Array(3000)], "cover.webp", { type: "image/webp" });
 }
 
 describe("StoriesPage.handlePublish outcome signaling (#376)", () => {
@@ -111,5 +126,17 @@ describe("StoriesPage.handlePublish outcome signaling (#376)", () => {
       body: sseBody('{"step":"uploading"}'), // progresses, then ends with no done
     }));
     expect(result).toBe(false);
+  });
+
+  // #376/re1: publish confirmed on-chain but the cover upload/attach fails — the
+  // cover was never attached, so the selection must be kept (return false).
+  it("resolves FALSE when publish succeeds on-chain but the cover attach fails", async () => {
+    const result = await runPublish(donePublish, { cover: coverFile(), coverOk: false });
+    expect(result).toBe(false);
+  });
+
+  it("resolves TRUE when publish succeeds AND the selected cover is attached", async () => {
+    const result = await runPublish(donePublish, { cover: coverFile(), coverOk: true });
+    expect(result).toBe(true);
   });
 });
