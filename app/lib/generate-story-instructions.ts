@@ -230,7 +230,7 @@ function cartoonInstructions(provider: AgentProvider): string {
 \`\`\`
 .story.json              — { "contentType": "cartoon" }
 structure.md             — Style guide, character bible, episode format
-genesis.md               — Synopsis hook (~1000 chars, text only)
+genesis.md               — Reader-facing prologue / story opening (text only, real # title)
 plot-NN.cuts.json        — Cut plan for episode NN
 plot-NN.md               — Episode publish markdown (image sequence)
 assets/
@@ -274,13 +274,37 @@ assets/
    - When to use wide vs. close-up shots
    - Transition conventions between scenes
 
-## genesis.md Format
+6. **Genesis Opening Plan (Reader Onboarding)**
+   - How Genesis opens the story for readers: the lead's situation and their
+     emotional/comedic problem, the tone, and what's at stake.
+   - The bridge from Genesis into episode 1 — what plot-01 picks up, so the
+     prologue and the first episode connect without restarting or repeating.
+   - Keep it text-only for MVP; note the intended title.
 
-Same as fiction: a prose synopsis hook, ~1000 characters. This is text only — no images.
+## genesis.md Format — Reader-facing Prologue / Story Opening
 
-- Create immediate intrigue or emotional hook
-- Introduce the visual world and core premise
-- End with tension that pulls readers forward
+On PlotLink the story page **opens at Genesis**, so for a cartoon write \`genesis.md\`
+as the actual **prologue / story opening readers see first** — NOT a back-cover
+synopsis, and NOT a cold jump into scene 1. It is text-only for this MVP (no
+image cuts) and **must start with a real \`# Title\` heading** (the published
+chapter title).
+
+Write it as polished reader-facing prose (~600–1000 characters) that:
+
+- **Opens on the main character's situation** and their emotional or comedic
+  problem — put us in a moment, not a pitch.
+- **Establishes tone, premise, and what's at stake** for the lead.
+- **Builds toward the first visual episode** and ends on a beat that hands off
+  into episode 1 — a clear bridge, so plot-01 feels like the story continuing,
+  not starting over.
+- **Avoids lore dumps** and worldbuilding exposition — reveal through the
+  character's immediate situation.
+- For comedic romance / webtoon pacing: lead with the funny/awkward hook and the
+  relationship tension; keep it warm and propulsive.
+
+Genesis vs plot-01: **Genesis opens and onboards the reader** (prose prologue);
+**plot-01 is the first cut-based visual episode**. Do not start plot-01 without
+the setup Genesis provides, and do not duplicate the prologue inside plot-01.
 
 ## Cut Planning — plot-NN.cuts.json
 
