@@ -154,7 +154,7 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             <div className="text-center space-y-2">
               <h1 className="text-2xl font-serif text-foreground">Write. Publish. Earn.</h1>
               <p className="text-muted text-sm">
-                Claude CLI writes stories. You publish them on-chain.
+                Claude or Codex helps create your story. You publish it on-chain.
               </p>
             </div>
 
@@ -173,12 +173,15 @@ export function Layout({ token, onLogout }: { token: string; onLogout: () => voi
             <div className="rounded border border-border p-4 space-y-2 text-xs text-muted">
               <p className="font-medium text-foreground text-sm">How it works</p>
               <ol className="space-y-1.5 list-decimal list-inside">
-                <li>Open the <strong>Stories</strong> tab — Claude CLI launches in the terminal</li>
-                <li>Tell Claude your story idea — it brainstorms, outlines, and writes</li>
-                <li>Review the live preview as Claude creates files</li>
+                <li>Open the <strong>Stories</strong> tab — your writing agent launches in the terminal</li>
+                <li>Tell the agent your story idea — it brainstorms, outlines, and writes</li>
+                <li>Review the live preview as the agent creates files</li>
                 <li>Click <strong>Publish</strong> to put your story on-chain</li>
                 <li>Earn 5% royalties on every trade at <a href="https://plotlink.xyz" target="_blank" rel="noopener noreferrer" className="text-accent underline">plotlink.xyz</a></li>
               </ol>
+              <p className="text-[11px] text-muted">
+                Fiction defaults to Claude; cartoon mode uses Codex for clean-image generation.
+              </p>
             </div>
 
             <div className="text-center">
