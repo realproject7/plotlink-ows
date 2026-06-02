@@ -28,10 +28,17 @@ export const CLEAN_IMAGE_EXT_TO_TYPE: Record<string, Exclude<SniffedType, "unkno
  * describe a present-but-invalid asset.
  */
 export function imageAssetIssue(storyDir: string, relPath: string): string | null {
-  // Recorded cut asset paths come from cuts.json and must stay inside the
-  // story's assets/ tree. Resolve and bound-check before any filesystem read so
-  // an absolute or parent-traversal path (e.g. "../../../etc/x.webp") cannot
-  // validate an out-of-story file and be trusted as a local asset.
+  // Recorded cut asset paths come from cuts.json and must be a canonical
+  // RELATIVE path inside the story's assets/ tree. Reject non-canonical forms
+  // before any filesystem read so a recorded path cannot be trusted as a local
+  // asset on a technicality:
+  //  - absolute paths (even ones that point inside assets/);
+  //  - any `..` path segment (even when it resolves back inside assets/, e.g.
+  //    "assets/plot-01/../evil.webp" → "assets/evil.webp").
+  // Then a resolved-boundary check rejects anything that still escapes assets/.
+  if (path.isAbsolute(relPath)) return "missing";
+  if (relPath.split(/[/\\]/).includes("..")) return "missing";
+
   const assetsRoot = path.resolve(storyDir, "assets");
   const abs = path.resolve(storyDir, relPath);
   if (abs !== assetsRoot && !abs.startsWith(assetsRoot + path.sep)) return "missing";

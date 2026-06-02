@@ -67,11 +67,21 @@ describe("imageAssetIssue / isValidImageAsset (#302)", () => {
     expect(isValidImageAsset(dir, "assets/plot-01/../../outside.webp")).toBe(false);
   });
 
-  it("rejects an absolute recorded path", () => {
-    // Even a real valid WebP referenced by absolute path must not validate.
-    const outside = path.join(dir, "outside.webp");
-    fs.writeFileSync(outside, Buffer.from(WEBP));
-    expect(imageAssetIssue(dir, outside)).toBe("missing");
-    expect(isValidImageAsset(dir, outside)).toBe(false);
+  it("rejects a `..` segment even when it resolves back INSIDE assets/ (re1)", () => {
+    // Valid WebP at the EXACT normalized target: assets/plot-01/../evil.webp → assets/evil.webp
+    write("assets/evil.webp", WEBP);
+    expect(fs.existsSync(path.join(dir, "assets/evil.webp"))).toBe(true);
+    expect(imageAssetIssue(dir, "assets/plot-01/../evil.webp")).toBe("missing");
+    expect(isValidImageAsset(dir, "assets/plot-01/../evil.webp")).toBe(false);
+  });
+
+  it("rejects an absolute path pointing at a real valid image INSIDE assets/ (re1)", () => {
+    write("assets/plot-01/cut-01-clean.webp", WEBP); // real, valid, canonical-relative would pass
+    const absInside = path.join(dir, "assets/plot-01/cut-01-clean.webp");
+    expect(path.isAbsolute(absInside)).toBe(true);
+    expect(imageAssetIssue(dir, absInside)).toBe("missing");
+    expect(isValidImageAsset(dir, absInside)).toBe(false);
+    // ...but the canonical relative form of the same file is valid.
+    expect(isValidImageAsset(dir, "assets/plot-01/cut-01-clean.webp")).toBe(true);
   });
 });

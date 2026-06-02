@@ -187,4 +187,23 @@ describe("stale cartoon asset paths (#302)", () => {
     expect(reloaded.cuts[0].cleanImagePath).toBeNull();
     expect(fs.existsSync(path.join(storyDir, "evil.webp"))).toBe(true);
   });
+
+  it("treats a `..` recorded path that resolves back INSIDE assets/ as stale, and repair clears it (re1)", async () => {
+    const storyDir = seed("traversal-inside", 1, {
+      // Non-canonical: resolves to assets/evil.webp, which exists and is a valid WebP.
+      1: { cleanImagePath: "assets/plot-01/../evil.webp" },
+    });
+    writeAsset(storyDir, "assets/evil.webp"); // valid WebP at the EXACT normalized target
+
+    const detect = await (await app.request("/api/stories/traversal-inside/cuts/plot-01/detect-clean-images")).json();
+    expect(detect.stale).toHaveLength(1);
+    expect(detect.stale[0]).toMatchObject({ cutId: 1, field: "cleanImagePath" });
+
+    const repair = await (await app.request("/api/stories/traversal-inside/cuts/plot-01/repair-asset-paths", { method: "POST" })).json();
+    expect(repair.changed).toBe(true);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+    // The real file at the normalized target is NOT deleted by the repair.
+    expect(fs.existsSync(path.join(storyDir, "assets/evil.webp"))).toBe(true);
+  });
 });
