@@ -508,3 +508,56 @@ describe("cartoonChecklist (#335)", () => {
     expect(r.nextStep).toMatch(/live on plotlink/i);
   });
 });
+
+describe("text panels (#350)", () => {
+  const imageDone = (id: number): Partial<Cut> => ({
+    id, cleanImagePath: "c.webp",
+    overlays: [{ id: `o${id}`, type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }],
+    finalImagePath: "f.webp", exportedAt: "2026-01-01", uploadedUrl: `https://ipfs/Qm${id}`,
+  });
+
+  it("summarizeCutProgress excludes text panels from needClean but counts their export/upload", () => {
+    const cuts = [
+      makeCut(imageDone(1)),
+      makeCut({ id: 2, kind: "text", finalImagePath: "t.webp", exportedAt: "2026-01-01", uploadedUrl: "https://ipfs/QmT" }),
+    ];
+    const p = summarizeCutProgress(cuts);
+    expect(p.total).toBe(2);
+    expect(p.needClean).toBe(1); // only the image cut
+    expect(p.withClean).toBe(1);
+    expect(p.exported).toBe(2); // both panels exported
+    expect(p.uploaded).toBe(2);
+  });
+
+  it("a planned text panel never reports 'missing clean image' (checkCartoonReadiness)", () => {
+    const cuts = [makeCut({ id: 1, kind: "text" })];
+    const { issues } = checkCartoonReadiness(cuts);
+    expect(issues.some((i) => /missing clean image/.test(i))).toBe(false);
+    // It still needs export + upload before publish.
+    expect(issues).toContain("Cut 1: not exported");
+    expect(issues).toContain("Cut 1: not uploaded");
+  });
+
+  it("a fully-prepared text panel is ready (no clean image required)", () => {
+    const cuts = [makeCut({ id: 1, kind: "text", finalImagePath: "t.webp", exportedAt: "2026-01-01", uploadedCid: "Qm", uploadedUrl: "https://ipfs/QmT" })];
+    expect(checkCartoonReadiness(cuts).ready).toBe(true);
+  });
+
+  it("cartoonChecklist: an all-text episode skips clean/letter and points at export", () => {
+    const r = cartoonChecklist({ cuts: [makeCut({ id: 1, kind: "text" })] });
+    const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
+    expect(statusOf("clean")).toBe("done"); // no image cuts to clean
+    expect(statusOf("letter")).toBe("done");
+    expect(statusOf("export")).toBe("current");
+    expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("no image cuts");
+    expect(r.nextStep).toMatch(/export/i);
+  });
+
+  it("cartoonChecklist: a mixed plan still gates clean on the image cut", () => {
+    const cuts = [makeCut({ id: 1 /* image, no clean */ }), makeCut({ id: 2, kind: "text" })];
+    const r = cartoonChecklist({ cuts });
+    const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
+    expect(statusOf("clean")).toBe("current");
+    expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 1 cut");
+  });
+});
