@@ -5,6 +5,7 @@ import {
   createOverlay,
   speechTailPoints,
   balloonPathD,
+  balloonOutline,
   normalizeOverlay,
   normalizeOverlays,
   anchorFromPosition,
@@ -125,6 +126,41 @@ describe("speechTailPoints", () => {
   it("returns null when the tip falls inside the bubble (no visible tail)", () => {
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 0.5 })).toBeNull();
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.9, y: 0.9 })).toBeNull();
+  });
+});
+
+describe("balloonOutline (#341 — shared body+tail geometry)", () => {
+  // Bubble rect: ox=100, oy=100, ow=200, oh=100 → bottom edge at y=200.
+  const ox = 100, oy = 100, ow = 200, oh = 100;
+
+  it("is one continuous outline: a single moveto, four rounded corners, tail folded in", () => {
+    const tail = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 1.2 });
+    const cmds = balloonOutline(ox, oy, ow, oh, tail);
+    // Exactly one move (start), four corner arcs (one per body corner).
+    expect(cmds.filter((c) => c.k === "M")).toHaveLength(1);
+    expect(cmds[0]).toMatchObject({ k: "M" });
+    expect(cmds.filter((c) => c.k === "A")).toHaveLength(4);
+    // The tail tip is a vertex IN this same outline (folded into the perimeter),
+    // not a separate shape — and it sits between its two base points.
+    const tipIdx = cmds.findIndex((c) => c.k === "L" && Math.abs(c.x - tail!.tip.x) < 1e-9 && Math.abs(c.y - tail!.tip.y) < 1e-9);
+    expect(tipIdx).toBeGreaterThan(0);
+    expect(cmds[tipIdx - 1]).toMatchObject({ y: oy + oh }); // base on the bottom edge
+    expect(cmds[tipIdx + 1]).toMatchObject({ y: oy + oh });
+  });
+
+  it("a tailless bubble is a plain rounded rectangle (4 corners, no out-of-rect vertex)", () => {
+    const cmds = balloonOutline(ox, oy, ow, oh, null);
+    expect(cmds.filter((c) => c.k === "A")).toHaveLength(4);
+    const ys = cmds.filter((c) => c.k !== "A").map((c) => (c as { y: number }).y);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(oy + oh + 1e-9);
+  });
+
+  it("balloonPathD is derived from balloonOutline (same corner count, tip included)", () => {
+    const tail = speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 1.2 });
+    const d = balloonPathD(ox, oy, ow, oh, tail);
+    const cmds = balloonOutline(ox, oy, ow, oh, tail);
+    expect((d.match(/A /g) || []).length).toBe(cmds.filter((c) => c.k === "A").length);
+    expect(d).toContain(`${tail!.tip.x} ${tail!.tip.y}`);
   });
 });
 

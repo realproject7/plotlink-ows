@@ -151,6 +151,42 @@ describe("renderOverlays speech-bubble tail", () => {
     expect(seam).toBe(false);
   });
 
+  // #341: the export canvas and the editor-preview SVG must trace the IDENTICAL
+  // outline. Both now come from the shared balloonOutline, so the canvas op
+  // sequence (moveTo/lineTo/arcTo) must equal that command list exactly — one
+  // unified path, tail folded in, no separate tail primitive.
+  it("traces the shared balloonOutline command-for-command (preview == export)", async () => {
+    const { speechTailPoints, balloonOutline } = await import("@app-lib/overlays");
+    // ox=0,oy=0,ow=200,oh=72 (matches speechOverlay at 800x600).
+    const tail = speechTailPoints(0, 0, 200, 72, { x: 0.5, y: 1.2 });
+    const expected = balloonOutline(0, 0, 200, 72, tail);
+
+    const ops: Array<{ op: string; args: number[] }> = [];
+    const ctx = {
+      fillStyle: "", strokeStyle: "", lineWidth: 0, font: "", textAlign: "", textBaseline: "",
+      beginPath() { ops.push({ op: "begin", args: [] }); },
+      closePath() { ops.push({ op: "close", args: [] }); },
+      moveTo(x: number, y: number) { ops.push({ op: "M", args: [x, y] }); },
+      lineTo(x: number, y: number) { ops.push({ op: "L", args: [x, y] }); },
+      arcTo(x1: number, y1: number, x2: number, y2: number, r: number) { ops.push({ op: "A", args: [x1, y1, x2, y2, r] }); },
+      measureText() { return { width: 10 } as TextMetrics; },
+      fillText() {}, strokeText() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
+    };
+    renderOverlays(ctx as unknown as CanvasRenderingContext2D, [speechOverlay({ tailAnchor: { x: 0.5, y: 1.2 } })], 800, 600, "Body", "Display");
+
+    // Exactly one balloon sub-path.
+    expect(ops.filter((o) => o.op === "begin")).toHaveLength(1);
+    expect(ops.filter((o) => o.op === "close")).toHaveLength(1);
+    // The path ops, in order, equal the shared outline.
+    const pathOps = ops.filter((o) => ["M", "L", "A"].includes(o.op));
+    const asShared = pathOps.map((o) =>
+      o.op === "A"
+        ? { k: "A", cornerX: o.args[0], cornerY: o.args[1], x: o.args[2], y: o.args[3], r: o.args[4] }
+        : { k: o.op, x: o.args[0], y: o.args[1] },
+    );
+    expect(asShared).toEqual(expected);
+  });
+
   it("does not draw a tail for narration or sfx overlays", () => {
     const { ctx, lineTos } = recordingCtx();
     renderOverlays(
