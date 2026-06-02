@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -248,6 +248,39 @@ describe("shouldBlockDuplicatePlotPublish (#332)", () => {
     expect(shouldBlockDuplicatePlotPublish({ status: "pending" })).toBe(false);
     expect(shouldBlockDuplicatePlotPublish({ status: "draft" })).toBe(false);
     expect(shouldBlockDuplicatePlotPublish(undefined)).toBe(false);
+  });
+});
+
+describe("cartoonCoverReadiness (#337)", () => {
+  it("reports 'none' when there is no cover", () => {
+    const r = cartoonCoverReadiness({ hasSelectedCover: false, invalid: false, attached: false });
+    expect(r.state).toBe("none");
+    expect(r.label).toMatch(/no cover yet/i);
+  });
+
+  it("reports 'selected' when a valid local cover is queued", () => {
+    const r = cartoonCoverReadiness({ hasSelectedCover: true, invalid: false, attached: false });
+    expect(r.state).toBe("selected");
+    expect(r.label).toMatch(/uploaded when you publish/i);
+  });
+
+  it("reports 'invalid' over a queued selection (error is never hidden)", () => {
+    const r = cartoonCoverReadiness({ hasSelectedCover: true, invalid: true, attached: false });
+    expect(r.state).toBe("invalid");
+    expect(r.label).toMatch(/WebP or JPEG, max 1MB/i);
+  });
+
+  it("reports 'attached' once a cover is on the storyline (wins over everything)", () => {
+    const r = cartoonCoverReadiness({ hasSelectedCover: true, invalid: true, attached: true });
+    expect(r.state).toBe("attached");
+    expect(r.tone).toBe("success");
+  });
+
+  it("guidance names the format, size, shape, and the AI-text caveat", () => {
+    expect(COVER_GUIDANCE).toMatch(/WebP/);
+    expect(COVER_GUIDANCE).toMatch(/1MB/);
+    expect(COVER_GUIDANCE).toMatch(/600.?900/);
+    expect(COVER_GUIDANCE).toMatch(/AI text|unreadable/i);
   });
 });
 
