@@ -161,10 +161,10 @@ describe("LetteringEditor", () => {
     expect(screen.getByText("Hello!")).toBeInTheDocument();
   });
 
-  it("renders a visible tail for a speech overlay so tail-anchor edits are seen, not only exported", async () => {
-    // Regression: tailAnchor was editable and persisted but drawn nowhere in
-    // the editor — the writer got no feedback until export. The preview must
-    // render the tail polygon driven by tailAnchor.
+  // #327: the body and tail must render as ONE integrated balloon <path> so the
+  // editor preview shows no internal seam between them, and tail-anchor edits
+  // stay visible (they are part of the single outline, not a separate polygon).
+  it("renders the speech bubble body + tail as one integrated balloon path (no seamed polygon)", async () => {
     const overlay: Overlay = {
       id: "tail-speech",
       type: "speech",
@@ -185,14 +185,58 @@ describe("LetteringEditor", () => {
 
     await simulateImageLoad();
 
-    const tail = screen.getByTestId("tail-tail-speech");
-    expect(tail).toBeInTheDocument();
-    expect(tail.tagName.toLowerCase()).toBe("polygon");
-    // Three points: base1, tip, base2.
-    expect(tail.getAttribute("points")?.trim().split(/\s+/)).toHaveLength(3);
+    const balloon = screen.getByTestId("balloon-tail-speech");
+    expect(balloon).toBeInTheDocument();
+    expect(balloon.tagName.toLowerCase()).toBe("path");
+    const d = balloon.getAttribute("d") ?? "";
+    // One continuous outline: starts with a moveto, closes with Z, and includes
+    // rounded-corner arcs — the tail is a detour in this same path, not a
+    // separate shape laid under a fully-stroked body box.
+    expect(d.startsWith("M")).toBe(true);
+    expect(d.trim().endsWith("Z")).toBe(true);
+    expect(d).toContain("A"); // rounded body corners in the same path
+    // The default {0.5, 1.2} tail points straight down: its tip Y sits below the
+    // bubble's bottom edge, so the integrated path must reach past the bottom.
+    const bubbleBottom = 0.2 * 300 + 0.12 * 300; // oy + oh in display px (image 800x600 → 400x300)
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    expect(Math.max(...ys)).toBeGreaterThan(bubbleBottom); // tail tip extends below the body
+    // No separate stroked tail polygon — that was the old seamed rendering.
+    expect(document.querySelector("polygon")).toBeNull();
   });
 
-  it("does not render a tail polygon for narration overlays", async () => {
+  it("renders a tailless speech bubble as a plain rounded-rectangle path", async () => {
+    // A tail anchor whose tip falls inside the bubble yields no tail; the bubble
+    // must still render as a single rounded-rect balloon path (#327).
+    const overlay: Overlay = {
+      id: "no-tail-speech",
+      type: "speech",
+      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
+      text: "Hi", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 0.5 }, // tip inside the bubble → no tail
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await simulateImageLoad();
+
+    const balloon = screen.getByTestId("balloon-no-tail-speech");
+    expect(balloon.tagName.toLowerCase()).toBe("path");
+    const d = balloon.getAttribute("d") ?? "";
+    // Bounded by the body rect — no point extends past the bottom edge.
+    const bubbleBottom = 0.2 * 300 + 0.12 * 300;
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(bubbleBottom + 0.01);
+  });
+
+  it("does not render a balloon path for narration overlays", async () => {
     const overlay: Overlay = {
       id: "narr-tail",
       type: "narration",
@@ -212,7 +256,7 @@ describe("LetteringEditor", () => {
 
     await simulateImageLoad();
 
-    expect(screen.queryByTestId("tail-narr-tail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("balloon-narr-tail")).not.toBeInTheDocument();
   });
 
   it("shows inspector when overlay is clicked", async () => {

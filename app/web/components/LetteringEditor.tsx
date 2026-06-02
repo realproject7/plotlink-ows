@@ -6,7 +6,7 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
-import { speechTailPoints, normalizeOverlays, detectOverlappingOverlays } from "@app-lib/overlays";
+import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { useAuthedAsset } from "./asset-image";
 
@@ -453,25 +453,28 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             </div>
           )}
 
-          {/* Speech-bubble tails, drawn under the overlay boxes so the box
-              sits on top of the tail base — mirrors the export rendering so
-              tail-anchor edits are visible here, not only in the final image. */}
+          {/* Speech balloons, drawn under the overlay boxes (which carry the
+              text + drag/resize handles) so the box sits on top of the fill.
+              Body + tail are ONE integrated <path> per bubble (#327), mirroring
+              the export's traceBalloonPath (#317): one fill, one stroke, so the
+              tail reads as part of the balloon outline with no internal seam.
+              Tailless speech (no tailAnchor, or a tip inside the bubble) traces
+              a plain rounded rectangle. Tail-anchor edits update the path live. */}
           {imageBounds.width > 0 && (
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" data-testid="tail-layer">
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" data-testid="balloon-layer">
               {overlays.map((overlay) => {
-                if (overlay.type !== "speech" || !overlay.tailAnchor) return null;
+                if (overlay.type !== "speech") return null;
                 const ox = imageBounds.x + toPixel(overlay.x, imageBounds.width);
                 const oy = imageBounds.y + toPixel(overlay.y, imageBounds.height);
                 const ow = toPixel(overlay.width, imageBounds.width);
                 const oh = toPixel(overlay.height, imageBounds.height);
-                const pts = speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor);
-                if (!pts) return null;
+                const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
                 return (
-                  <polygon
+                  <path
                     key={overlay.id}
-                    data-testid={`tail-${overlay.id}`}
-                    points={`${pts.base1.x},${pts.base1.y} ${pts.tip.x},${pts.tip.y} ${pts.base2.x},${pts.base2.y}`}
-                    className="fill-white/80 stroke-foreground/40"
+                    data-testid={`balloon-${overlay.id}`}
+                    d={balloonPathD(ox, oy, ow, oh, tail)}
+                    className={`fill-white/80 ${overlay.id === selectedId ? "stroke-accent" : "stroke-foreground/40"}`}
                     strokeWidth={1}
                   />
                 );
@@ -485,6 +488,12 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             const width = toPixel(overlay.width, imageBounds.width);
             const height = toPixel(overlay.height, imageBounds.height);
             const isSelected = overlay.id === selectedId;
+            // Speech bubbles draw no body border here — the integrated balloon
+            // <path> in the layer below is their outline, so a box border would
+            // re-introduce the body/tail seam (#327). Their selection cue is the
+            // path's accent stroke (plus the resize handle). Narration/SFX keep
+            // their bordered box + selection ring as before.
+            const isSpeech = overlay.type === "speech";
 
             return (
               <div
@@ -492,9 +501,9 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 data-testid={`overlay-${overlay.id}`}
                 onClick={(e) => handleOverlayClick(e, overlay.id)}
                 onMouseDown={(e) => handleMouseDown(e, overlay.id, "move")}
-                className={`absolute border-2 rounded cursor-move select-none ${TYPE_BORDER[overlay.type]} ${
-                  isSelected ? "ring-2 ring-accent" : ""
-                }`}
+                className={`absolute rounded cursor-move select-none ${
+                  isSpeech ? "" : `border-2 ${TYPE_BORDER[overlay.type]}`
+                } ${isSelected && !isSpeech ? "ring-2 ring-accent" : ""}`}
                 style={{ left, top, width, height }}
               >
                 {(() => {

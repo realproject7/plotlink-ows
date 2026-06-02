@@ -87,6 +87,64 @@ export function speechTailPoints(
   };
 }
 
+/**
+ * SVG path `d` for a speech balloon — the rounded-rect body plus its pointer
+ * tail traced as ONE continuous outline (#327). This mirrors the canvas
+ * `traceBalloonPath` used by the export (#317): the tail is a detour in the
+ * body's perimeter on whichever edge it sits, so filling and stroking this
+ * single path yields an integrated balloon with no internal body/tail seam.
+ * Drawing the editor preview from one path (one fill, one stroke) removes the
+ * seam the old separate-stroked-polygon-under-a-stroked-box rendering left.
+ *
+ * `tail` is null for a tailless bubble (no tailAnchor, or a tip inside the
+ * bubble), which traces a plain rounded rectangle. Coordinates are in the same
+ * pixel space as the bubble rect, so the caller chooses the scale (export uses
+ * natural-image px; the preview uses display px).
+ */
+export function balloonPathD(
+  ox: number,
+  oy: number,
+  ow: number,
+  oh: number,
+  tail: TailPoints | null,
+  radius?: number,
+): string {
+  const r = radius ?? Math.max(0, Math.min(8, ow / 2, oh / 2));
+  const right = ox + ow;
+  const bottom = oy + oh;
+
+  // speechTailPoints anchors both base points exactly on one bubble edge, so the
+  // edge each comparison identifies is exact (no float fuzz needed) — same test
+  // as traceBalloonPath so preview and export agree on which edge the tail joins.
+  const onTop = !!tail && tail.base1.y === oy && tail.base2.y === oy;
+  const onRight = !!tail && tail.base1.x === right && tail.base2.x === right;
+  const onBottom = !!tail && tail.base1.y === bottom && tail.base2.y === bottom;
+  const onLeft = !!tail && tail.base1.x === ox && tail.base2.x === ox;
+
+  const cmds: string[] = [`M ${ox + r} ${oy}`];
+  // Top edge, traced left→right (base1.x < base2.x).
+  if (onTop && tail) {
+    cmds.push(`L ${tail.base1.x} ${oy}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${tail.base2.x} ${oy}`);
+  }
+  cmds.push(`L ${right - r} ${oy}`, `A ${r} ${r} 0 0 1 ${right} ${oy + r}`);
+  // Right edge, traced top→bottom (base1.y < base2.y).
+  if (onRight && tail) {
+    cmds.push(`L ${right} ${tail.base1.y}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${right} ${tail.base2.y}`);
+  }
+  cmds.push(`L ${right} ${bottom - r}`, `A ${r} ${r} 0 0 1 ${right - r} ${bottom}`);
+  // Bottom edge, traced right→left (so base2.x first, then base1.x).
+  if (onBottom && tail) {
+    cmds.push(`L ${tail.base2.x} ${bottom}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${tail.base1.x} ${bottom}`);
+  }
+  cmds.push(`L ${ox + r} ${bottom}`, `A ${r} ${r} 0 0 1 ${ox} ${bottom - r}`);
+  // Left edge, traced bottom→top (so base2.y first, then base1.y).
+  if (onLeft && tail) {
+    cmds.push(`L ${ox} ${tail.base2.y}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${ox} ${tail.base1.y}`);
+  }
+  cmds.push(`L ${ox} ${oy + r}`, `A ${r} ${r} 0 0 1 ${ox + r} ${oy}`, "Z");
+  return cmds.join(" ");
+}
+
 let counter = 0;
 
 export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
