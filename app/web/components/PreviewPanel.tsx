@@ -9,6 +9,7 @@ import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
 import { validateCoverImage } from "../lib/publish-helpers";
+import { importImageToCompliantBlob } from "../lib/import-image";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
 const sanitizeSchema = {
@@ -111,6 +112,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const coverImportInputRef = useRef<HTMLInputElement>(null);
+  const [coverImporting, setCoverImporting] = useState(false);
   // Auto-detected agent-created cover (assets/cover.webp|jpg) for genesis (#296).
   // detectedCover = the path actually loaded into the cover selection (status
   // label); detectedCoverWarning = an invalid/oversize detected asset we won't use.
@@ -299,6 +302,54 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setEditError(null);
   }, []);
+
+  // Import a Codex-generated image (e.g. a large PNG) as the cover (#301). The
+  // browser converts/compresses it to a compliant WebP/JPEG <=1MB, then OWS
+  // saves it as the deterministic local asset (assets/cover.webp) via
+  // import-cover and loads it into the same coverFile the manual picker uses, so
+  // the existing publish flow attaches it with no special casing. A source that
+  // cannot be decoded/compressed surfaces a clear error and saves nothing.
+  const handleCoverImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (coverImportInputRef.current) coverImportInputRef.current.value = "";
+    if (!file || !storyName) return;
+    // A deliberate import overrides any auto-detected cover, like a manual pick.
+    coverUserTouchedRef.current = true;
+    setDetectedCover(null);
+    setCoverImporting(true);
+    setEditError(null);
+    try {
+      let blob: Blob;
+      try {
+        blob = await importImageToCompliantBlob(file);
+      } catch (err) {
+        setCoverFile(null);
+        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+        setEditError(err instanceof Error ? err.message : "Could not import image");
+        return;
+      }
+      const ext = blob.type === "image/jpeg" ? "jpg" : "webp";
+      const imported = new File([blob], `cover.${ext}`, { type: blob.type });
+      const formData = new FormData();
+      formData.append("file", imported);
+      const res = await authFetch(`/api/stories/${storyName}/import-cover`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setEditError(data.error || "Cover import failed");
+        return;
+      }
+      setCoverFile(imported);
+      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(imported); });
+      setEditError(null);
+    } catch {
+      setEditError("Cover import failed");
+    } finally {
+      setCoverImporting(false);
+    }
+  }, [storyName, authFetch]);
 
   // Handle illustration image upload from File object
   const uploadIllustration = useCallback(async (file: File) => {
@@ -1026,6 +1077,27 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                       data-testid="prepublish-cover-input"
                     />
                     <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
+                    {/* Codex-image import (#301): convert a generated PNG (or any
+                        large image) to a compliant cover in-browser, save it as
+                        assets/cover.webp, and load it as the selected cover —
+                        no agent-side shell image tools. */}
+                    <input
+                      ref={coverImportInputRef}
+                      type="file"
+                      accept="image/png,image/webp,image/jpeg"
+                      onChange={handleCoverImport}
+                      className="hidden"
+                      data-testid="prepublish-cover-import-input"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => coverImportInputRef.current?.click()}
+                      disabled={coverImporting}
+                      className="self-start px-2 py-1 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
+                      data-testid="prepublish-cover-import"
+                    >
+                      {coverImporting ? "Importing…" : "Import generated image (PNG ok)"}
+                    </button>
                     {detectedCover && (
                       <span className="text-accent text-xs" data-testid="prepublish-cover-detected">
                         Detected {detectedCover} — will be used as the cover. Pick a file to override.

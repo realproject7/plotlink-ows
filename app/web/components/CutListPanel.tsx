@@ -4,6 +4,7 @@ import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
+import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 
 interface Overlay {
   id: string;
@@ -116,20 +117,27 @@ function CutRow({
   const status = getCutStatus(cut);
 
   const handleUpload = useCallback(async (file: File) => {
-    if (file.size > 1024 * 1024) {
-      setUploadError("File must be under 1MB");
-      return;
-    }
-    if (file.type !== "image/webp" && file.type !== "image/jpeg") {
-      setUploadError("Only WebP and JPEG supported");
-      return;
-    }
-
     setUploading(true);
     setUploadError(null);
     try {
+      // Accept Codex-generated images (e.g. large PNG) by converting/compressing
+      // them to a compliant WebP/JPEG <=1MB in the browser first (#301). An
+      // already-compliant WebP/JPEG is passed through untouched, so the manual
+      // upload behavior is unchanged. A source that cannot be decoded or
+      // compressed under 1MB surfaces a clear error instead of saving anything.
+      let upload: Blob = file;
+      if (!isCompliantImage(file)) {
+        try {
+          upload = await importImageToCompliantBlob(file);
+        } catch (err) {
+          setUploadError(err instanceof Error ? err.message : "Could not import image");
+          return;
+        }
+      }
+
+      const ext = upload.type === "image/jpeg" ? "jpg" : "webp";
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", new File([upload], `clean.${ext}`, { type: upload.type }));
       const res = await authFetch(
         `/api/stories/${storyName}/cuts/${plotFile}/upload-clean/${cut.id}`,
         { method: "POST", body: formData },
@@ -197,7 +205,7 @@ function CutRow({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/webp,image/jpeg"
+              accept="image/webp,image/jpeg,image/png"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -216,7 +224,7 @@ function CutRow({
             </div>
             {!cut.cleanImagePath && (
               <p className="text-xs text-muted" data-testid={`clean-image-handoff-${cut.id}`}>
-                Generate externally, then upload clean image
+                Generate externally, then upload clean image (PNG is converted to WebP automatically)
               </p>
             )}
             {status === "missing" && (

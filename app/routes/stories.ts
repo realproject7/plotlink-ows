@@ -777,6 +777,75 @@ stories.get("/:name/cover-asset", (c) => {
   return c.json({ found: false });
 });
 
+/**
+ * POST /api/stories/:name/import-cover — save a browser-converted cover image as
+ * the deterministic local asset `assets/cover.webp` (or `.jpg`) so a
+ * Codex-generated image can become a compliant cover without agent-side shell
+ * image tools (#301). The browser canvas path (import-image.ts) does the
+ * PNG→WebP conversion and size compression; this route only validates and
+ * persists. Mirrors the upload-clean byte/size checks: WebP/JPEG only, <=1MB,
+ * magic-byte validated so a renamed/oversize file cannot land as a cover.
+ *
+ * To keep #296 auto-detection unambiguous (it returns the FIRST existing
+ * candidate in webp>jpg>jpeg order), any sibling cover.* files are removed so
+ * exactly one cover asset remains after a successful import.
+ */
+stories.post("/:name/import-cover", async (c) => {
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+
+  const storyDir = path.join(STORIES_DIR, name);
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch {
+    return c.json({ error: "No file provided" }, 400);
+  }
+  const file = formData.get("file") as File | Blob | null;
+  if (!file || typeof file === "string") {
+    return c.json({ error: "No file provided" }, 400);
+  }
+
+  if (file.size > 1024 * 1024) {
+    return c.json({ error: "File must be under 1MB" }, 400);
+  }
+
+  const mime = file.type;
+  if (mime !== "image/webp" && mime !== "image/jpeg") {
+    return c.json({ error: "Only WebP and JPEG images are supported" }, 400);
+  }
+
+  // Validate by actual bytes, not the spoofable MIME label, so an unconverted
+  // PNG (or renamed text file) cannot be persisted as a cover. Mirrors
+  // upload-clean (#266).
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (!cleanImageBytesMatchMime(buffer, mime)) {
+    return c.json(
+      { error: "File content is not a valid WebP/JPEG image (bytes do not match the image type)" },
+      400,
+    );
+  }
+
+  const assetDir = path.join(storyDir, "assets");
+  fs.mkdirSync(assetDir, { recursive: true });
+
+  // Remove any existing cover.* so detection resolves to exactly this import.
+  for (const cand of COVER_CANDIDATES) {
+    const full = path.join(storyDir, cand.rel);
+    if (fs.existsSync(full)) fs.rmSync(full, { force: true });
+  }
+
+  const ext = mime === "image/webp" ? "webp" : "jpg";
+  const coverPath = `assets/cover.${ext}`;
+  fs.writeFileSync(path.join(storyDir, coverPath), buffer);
+
+  return c.json({ ok: true, path: coverPath, type: mime, size: buffer.length });
+});
+
 /** GET /api/stories/:name/asset/:assetPath — serve story asset file (supports nested paths) */
 // NOTE: uses a regex splat param (`{.+}`) rather than a bare `*` wildcard.
 // Hono v4 does not populate `c.req.param("*")` for a mixed named/wildcard route
