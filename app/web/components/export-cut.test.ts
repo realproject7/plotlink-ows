@@ -204,6 +204,64 @@ describe("renderOverlays speech-bubble tail", () => {
   });
 });
 
+// Capture the fill/stroke STYLES (not just counts) and roundRect calls, so we
+// can assert the webtoon balloon styling (#363).
+function styleCtx() {
+  const fills: Array<{ style: string }> = [];
+  const strokes: Array<{ style: string; width: number; join: string }> = [];
+  const roundRects: Array<{ x: number; y: number; w: number; h: number; r: number }> = [];
+  const ctx = {
+    fillStyle: "", strokeStyle: "", lineWidth: 0, lineJoin: "", font: "", textAlign: "", textBaseline: "",
+    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arcTo() {},
+    measureText(this: { font: string }, t: string) {
+      const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
+      return { width: t.length * fs * 0.5 } as TextMetrics;
+    },
+    roundRect(x: number, y: number, w: number, h: number, r: number) { roundRects.push({ x, y, w, h, r }); },
+    rect() {},
+    fill(this: { fillStyle: string }) { fills.push({ style: this.fillStyle }); },
+    stroke(this: { strokeStyle: string; lineWidth: number; lineJoin: string }) {
+      strokes.push({ style: this.strokeStyle, width: this.lineWidth, join: this.lineJoin });
+    },
+    fillRect() {}, strokeRect() {}, fillText() {}, strokeText() {},
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fills, strokes, roundRects };
+}
+
+describe("renderOverlays webtoon balloon styling (#363)", () => {
+  it("strokes a speech balloon with a strong near-black, rounded-join outline", () => {
+    const { ctx, fills, strokes } = styleCtx();
+    renderOverlays(ctx, [speechOverlay({ tailAnchor: { x: 0.5, y: 1.2 } })], 800, 600, "Body", "Display");
+    // One balloon fill (near-opaque white) + one strong dark stroke.
+    expect(fills[0].style).toBe("rgba(255, 255, 255, 0.95)");
+    expect(strokes).toHaveLength(1);
+    expect(strokes[0].style).toBe("#1a1a1a");
+    expect(strokes[0].join).toBe("round");
+    // Not the old 1px hairline.
+    expect(strokes[0].width).toBeGreaterThan(1);
+  });
+
+  it("scales the balloon outline weight with the panel height (consistent at any export size)", () => {
+    const small = styleCtx();
+    renderOverlays(small.ctx, [speechOverlay({})], 800, 600, "Body", "Display");
+    const large = styleCtx();
+    renderOverlays(large.ctx, [speechOverlay({})], 2000, 1500, "Body", "Display");
+    expect(small.strokes[0].width).toBeCloseTo(Math.max(2, 600 * 0.004), 5);
+    expect(large.strokes[0].width).toBeCloseTo(Math.max(2, 1500 * 0.004), 5);
+    expect(large.strokes[0].width).toBeGreaterThan(small.strokes[0].width);
+  });
+
+  it("draws narration as a rounded parchment card, not a hairline box", () => {
+    const { ctx, fills, strokes, roundRects } = styleCtx();
+    renderOverlays(ctx, [{ id: "n", type: "narration", x: 0, y: 0, width: 0.25, height: 0.12, text: "Later that night." }], 800, 600, "Body", "Display");
+    // Rounded card (roundRect with a positive radius), not a square fillRect/strokeRect box.
+    expect(roundRects).toHaveLength(1);
+    expect(roundRects[0].r).toBeGreaterThan(0);
+    expect(fills[0].style).toBe("rgba(244, 239, 230, 0.94)");
+    expect(strokes[0].style).toBe("rgba(26, 26, 26, 0.55)");
+  });
+});
+
 describe("textPanelDimensions (#351)", () => {
   it("sizes a text panel canvas from a W:H aspect ratio (base width 800)", () => {
     expect(textPanelDimensions("4:5")).toEqual({ width: 800, height: 1000 });

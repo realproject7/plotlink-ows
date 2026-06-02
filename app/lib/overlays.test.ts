@@ -6,6 +6,7 @@ import {
   speechTailPoints,
   balloonPathD,
   balloonOutline,
+  defaultBalloonRadius,
   normalizeOverlay,
   normalizeOverlays,
   anchorFromPosition,
@@ -133,7 +134,7 @@ describe("speechTailPoints", () => {
   // body+tail outline back-tracks into a corner arc and renders as a visible
   // internal notch/seam between the body and the tail.
   describe("tail mouth stays clear of rounded corners (#361)", () => {
-    const r = Math.max(0, Math.min(8, ow / 2, oh / 2)); // default balloon radius
+    const r = defaultBalloonRadius(ow, oh); // the shared default balloon radius
     const eps = 1e-9;
 
     it("keeps the default centered tail unchanged (no regression)", () => {
@@ -188,6 +189,41 @@ describe("speechTailPoints", () => {
         expect(onEdgeXs[i]).toBeLessThanOrEqual(onEdgeXs[i - 1] + eps);
       }
     });
+  });
+});
+
+describe("defaultBalloonRadius — webtoon rounding (#363)", () => {
+  it("rounds proportionally to the shorter side (a soft balloon, not a UI box)", () => {
+    // A typical export-scale bubble. The old flat 8px cap was ~3% of the height
+    // (nearly rectangular); the proportional radius is 40% of the shorter side.
+    expect(defaultBalloonRadius(400, 240)).toBeCloseTo(96, 5); // 0.4 * 240
+    expect(defaultBalloonRadius(240, 400)).toBeCloseTo(96, 5); // shorter side wins
+    // Much rounder than the previous absolute 8px cap at export scale.
+    expect(defaultBalloonRadius(400, 240)).toBeGreaterThan(8);
+  });
+
+  it("scales with size, so preview and export round identically (same %)", () => {
+    // A preview-size and an export-size bubble of the same aspect ratio get the
+    // same fraction of rounding — what keeps the two renderers visually matched.
+    const small = defaultBalloonRadius(100, 60);
+    const large = defaultBalloonRadius(400, 240);
+    expect(small / 60).toBeCloseTo(large / 240, 5);
+  });
+
+  it("never exceeds half the shorter side (corner arcs can't overrun the body)", () => {
+    for (const [w, h] of [[10, 10], [200, 4], [4, 200], [50, 50]]) {
+      expect(defaultBalloonRadius(w, h)).toBeLessThanOrEqual(Math.min(w, h) / 2 + 1e-9);
+      expect(defaultBalloonRadius(w, h)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("is the radius balloonOutline actually uses (single source of truth)", () => {
+    const ox = 0, oy = 0, ow = 200, oh = 120;
+    const cmds = balloonOutline(ox, oy, ow, oh, null);
+    const r = defaultBalloonRadius(ow, oh);
+    // The opening moveto starts r in from the top-left corner along the top edge.
+    expect(cmds[0]).toMatchObject({ k: "M", x: ox + r, y: oy });
+    expect(cmds.filter((c) => c.k === "A").every((c) => (c as { r: number }).r === r)).toBe(true);
   });
 });
 
