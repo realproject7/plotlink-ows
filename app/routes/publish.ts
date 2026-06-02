@@ -8,7 +8,8 @@ import { STORIES_DIR } from "../lib/paths";
 import { readCutsFile } from "../lib/cuts";
 import { checkMarkdownReadiness } from "../lib/cartoon-readiness";
 import { readStoryMeta } from "./stories";
-import { sniffImageType } from "../lib/clean-image-sync";
+import { sniffImageType, findStaleAssetPaths } from "../lib/clean-image-sync";
+import { isValidImageAsset } from "../lib/image-asset-validate";
 
 /**
  * Validate that an uploaded image's actual magic bytes match its claimed
@@ -151,6 +152,27 @@ publish.post("/file", async (c) => {
       if (!cutsFile) {
         return c.json({ error: `Cannot publish: ${plotFile}.cuts.json not found. Generate cuts and upload final images first.` }, 400);
       }
+
+      // Block on stale recorded asset paths — a cut whose cleanImagePath /
+      // finalImagePath points to a missing/invalid local file is not actually
+      // ready, and the generic markdown issues would obscure why (#302). Skip
+      // already-uploaded cuts: their content is on IPFS (uploadedUrl), so a
+      // missing LOCAL asset must not block re-publish.
+      const stale = findStaleAssetPaths(
+        cutsFile.cuts,
+        (rel) => isValidImageAsset(storyDir, rel),
+      ).filter((issue) => {
+        const cut = cutsFile.cuts.find((ct) => ct.id === issue.cutId);
+        return !cut?.uploadedUrl;
+      });
+      if (stale.length > 0) {
+        const messages = stale.map((s) => s.message);
+        return c.json(
+          { error: `Cartoon plot not ready to publish: ${messages.join("; ")}`, issues: messages },
+          400,
+        );
+      }
+
       const { ready, issues } = checkMarkdownReadiness(body.content, cutsFile.cuts);
       if (!ready) {
         return c.json({ error: `Cartoon plot not ready to publish: ${issues.join("; ")}`, issues }, 400);
