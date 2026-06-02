@@ -52,6 +52,10 @@ interface CutListPanelProps {
   // Rate-limit retry knobs (sleep/maxRetries/baseDelayMs) — injectable so tests
   // can run retries instantly. Production uses the defaults (#288).
   uploadRetry?: Pick<RetryDeps, "sleep" | "maxRetries" | "baseDelayMs">;
+  // Notified whenever the cut plan is (re)loaded after a mutation — export,
+  // upload, save overlays, generate-markdown (#343). Lets the parent PreviewPanel
+  // refresh its own readiness/Episode-steps fetch so all status surfaces agree.
+  onCutsChanged?: () => void;
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded";
@@ -326,8 +330,12 @@ function CutRow({
   );
 }
 
-export function CutListPanel({ storyName, fileName, authFetch, language, uploadRetry }: CutListPanelProps) {
+export function CutListPanel({ storyName, fileName, authFetch, language, uploadRetry, onCutsChanged }: CutListPanelProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
+  // Latest onCutsChanged in a ref so loadCuts can notify the parent without
+  // taking the callback as a dependency (which would churn loadCuts/effects).
+  const onCutsChangedRef = useRef(onCutsChanged);
+  onCutsChangedRef.current = onCutsChanged;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCut, setExpandedCut] = useState<number | null>(null);
@@ -364,6 +372,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       }
       setCutsFile(await res.json());
       setError(null);
+      // Tell the parent the cut plan changed so its readiness/Episode-steps view
+      // refreshes in lockstep (e.g. after a lettering export, #343).
+      onCutsChangedRef.current?.();
     } catch {
       setError("Failed to load cuts");
     } finally {

@@ -99,6 +99,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Granular 6-step production checklist for the cartoon plot workspace (#335),
   // computed from cuts.json + asset/upload/publish state in the readiness effect.
   const [cartoonChecklistData, setCartoonChecklistData] = useState<CartoonChecklist | null>(null);
+  // Bumped whenever the embedded cut editor mutates the cut plan (export/upload/
+  // save), so the readiness effect re-fetches and the Episode-steps panel stays
+  // in sync with the cut cards after a lettering export (#343).
+  const [cutsRefreshKey, setCutsRefreshKey] = useState(0);
   const [cartoonGenerating, setCartoonGenerating] = useState(false);
   const [cartoonGenWarnings, setCartoonGenWarnings] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -231,7 +235,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       }
     })();
     return () => { cancelled = true; };
-  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content, fileData?.status]);
+  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content, fileData?.status, cutsRefreshKey]);
 
   // Auto-detect genre from structure.md when story changes
   useEffect(() => {
@@ -764,7 +768,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         )
       ) : isCartoonPlot ? (
         <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
-          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} />
+          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} />
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
