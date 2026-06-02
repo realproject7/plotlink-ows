@@ -62,22 +62,52 @@ Each chapter is a self-contained prose section:
  * The clean-image-first rules (no dialogue/SFX/bubbles/watermark/signature baked
  * into art) are shared; only the "who creates the file" contract differs:
  *
- * - Codex: image generation is available, so the PRIMARY instruction is to create
- *   the real `assets/plot-NN/cut-XX-clean.webp` file and verify it exists. The
- *   manual prompt + import path is kept only as a fallback for when image
- *   generation is unavailable. Critically, Codex is never told it cannot create
- *   image files (see #274).
+ * - Codex: creating the real `assets/plot-NN/cut-XX-clean.webp` file is the
+ *   PRIMARY instruction, but it is gated behind a capability/checkpoint guardrail
+ *   (#307) so the session never sits in an indefinite `Working` state: Codex
+ *   makes one bounded attempt, and if image generation is unavailable it reports
+ *   the blocker and falls back to the manual prompt + import path instead of
+ *   hanging. Critically, Codex is never told it cannot create image files (#274)
+ *   — only to verify-and-report rather than stall.
  * - Claude / legacy (absent provider): Claude does not generate image files in the
  *   terminal, so the manual prompt + import handoff stays primary (unchanged
  *   behavior).
  */
 function cleanImageWorkflowSection(provider: AgentProvider): string {
   if (provider === "codex") {
-    return `### Create the clean image file directly — your primary job
+    return `### Before generating images: confirm capability, checkpoint, and never hang (#307)
 
-You are running as Codex with image generation available, so for each cut you
-CREATE THE REAL CLEAN-IMAGE FILE — you do not just return a prompt or description.
-Follow this file contract exactly:
+Image generation in this session is NOT guaranteed to be available. Before you
+rely on it, follow this guardrail so the terminal never sits in an indefinite
+\`Working\` state with no files and no blocker report:
+
+1. **Checkpoint first, then make ONE bounded attempt.** Before generating, post a
+   one-line status naming the file you are about to create (e.g. "generating
+   cut-01 clean image"). Make exactly ONE attempt per file — never retry image
+   generation in a loop or wait indefinitely for it to finish.
+2. **Confirm the capability on that attempt.** If there is no working in-session
+   image-generation capability — the attempt errors, returns no usable image
+   bytes, or you cannot confirm it quickly — treat image generation as
+   UNAVAILABLE for this session. (Per Asset Tooling, never shell out to
+   \`magick\`/\`sharp\`/Playwright to fake it.)
+3. **Fail visibly, never silently.** The moment image generation is
+   unavailable/blocked, report it in one clear line — "Image generation is
+   unavailable in this Codex session; switching to the prompt-and-import
+   handoff." — then use the Fallback below and stop cleanly. An unreported hang
+   is a bug; a clear blocker report is the correct, expected outcome.
+4. **Report progress per file.** After each saved image or each blocker, post a
+   one-line checkpoint ("cut 2/6 saved" / "cover saved" / "blocked: <reason>") so
+   the writer always sees progress, never a bare spinner.
+
+This guardrail applies to BOTH the cover and every clean cut image. Creating the
+files is still your primary job when generation works (below); the rule is only
+that you verify-and-report instead of stalling.
+
+### Create the clean image file directly — your primary job
+
+When image generation is available (confirm it per the guardrail above), for each
+cut you CREATE THE REAL CLEAN-IMAGE FILE — you do not just return a prompt or
+description. Follow this file contract exactly:
 
 1. Generate the clean image for the requested cut from its shot type + description
    + characters (the OWS UI's per-cut "Copy prompt" gives you the exact visual
@@ -146,8 +176,10 @@ has explicitly requested it.`;
 function episodeWorkflowImageStep(provider: AgentProvider): string {
   if (provider === "codex") {
     return `2. **Generate** — Create the real clean-image file for each cut at
-   \`assets/plot-NN/cut-XX-clean.webp\` and verify it exists (fall back to preparing
-   the prompt for the writer to import only if image generation is unavailable).`;
+   \`assets/plot-NN/cut-XX-clean.webp\` and verify it exists. Checkpoint per file
+   and make one bounded attempt; if image generation is unavailable, report the
+   blocker and fall back to preparing the prompt for the writer to import —
+   never sit in an indefinite \`Working\` state.`;
   }
   return `2. **Prompt & import** — Prepare the clean-image prompt for each cut; the writer
    generates it externally (or a configured image tool, if any) and uploads/
@@ -295,12 +327,19 @@ guessing at unavailable tooling is exactly what stalls a cartoon episode.
 | Letter & export final images | The writer, in the OWS lettering editor | Speech bubbles, captions, and SFX are placed in the OWS editor and exported to \`assets/plot-NN/cut-XX-final.webp\`. You do NOT composite or letter text — not with magick, not with sharp, not at all. |
 | Upload finals + build markdown | OWS | The writer runs "Upload & Generate"; OWS uploads each final image and emits the publish markdown. You never hand-write \`plot-NN.md\`. |
 
-**No agent-side image tools are required** — OWS provides image generation (your
-session), clean-image sync, the lettering/export editor, and upload/markdown
-generation. If a capability you genuinely need is missing (e.g. image generation
-itself is unavailable in this session), do NOT improvise with shell tools: fall
-back to the prompt-and-import handoff below and tell the writer, so the missing
-capability surfaces immediately instead of after a dead-end path.
+**No agent-side image tools are required** — OWS provides clean-image sync, the
+lettering/export editor, and upload/markdown generation. Image generation itself
+(the cover and clean cut images) runs in your session, but it is NOT guaranteed to
+be available — so treat it under the capability/checkpoint guardrail below: make
+one bounded attempt, and if it is unavailable or blocked, report that clearly and
+fall back instead of sitting in an indefinite \`Working\` state. Never improvise
+with shell tools to fake a missing capability.
+
+**Cover fallback:** if you cannot generate \`assets/cover.webp\` in this session,
+say so in one line and tell the writer to import a cover via the OWS
+"Import generated image" control on the genesis publish panel (it accepts a PNG
+and converts it) — do NOT hang on the cover. The same one-attempt-then-report
+rule applies to a cover-only request.
 
 ## CRITICAL: Clean-Image-First Workflow
 
