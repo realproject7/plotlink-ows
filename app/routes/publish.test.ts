@@ -401,6 +401,9 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   });
 
   const PLOT_PAGE = `<title>plot-01 — genesis — PlotLink</title><meta property="og:title" content="plot-01 — genesis"/>`;
+  const NUMBERED_GOOD_PLOT_PAGE =
+    `<title>Episode 1 — The Couple Coupon — Coupon Crush — PlotLink</title>` +
+    `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush"/>`;
   const STORYLINE_PAGE = `<title>genesis — PlotLink</title><meta property="og:title" content="genesis"/>`;
 
   function stubFetch(html: string, ok = true) {
@@ -415,6 +418,17 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
     // It fetched the public PLOT page, not a (nonexistent) JSON endpoint.
     const calledUrl = vi.mocked(fetch).mock.calls[0][0];
     expect(String(calledUrl)).toContain("/story/59/1");
+  });
+
+  it("preserves a numbered reader-facing title when the plot title itself contains an em dash (#394)", async () => {
+    stubFetch(NUMBERED_GOOD_PLOT_PAGE);
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({
+      ok: true,
+      fetched: true,
+      plotTitle: "Episode 1 — The Couple Coupon",
+    });
   });
 
   it("returns the storyline title from the storyline page (no plotIndex)", async () => {
