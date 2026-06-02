@@ -6,6 +6,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
+import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
 import { validateCoverImage } from "../lib/publish-helpers";
@@ -947,17 +948,27 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {/* Cartoon planning-stage callout: cut plan exists but markdown skeleton
-                is missing. Surface Generate MD as the next action instead of red errors. */}
+            {/* Creator-facing step checklist so a first-time user can see which
+                production step is next without internal jargon (#320). */}
+            {isCartoonPlot && (
+              <CartoonStepGuide
+                stage={cartoonStage}
+                awaitingCount={cartoonAwaitingCount}
+                totalCuts={cartoonTotalCuts}
+              />
+            )}
+            {/* Cartoon planning-stage callout: cut plan exists but the episode
+                hasn't been prepared for publish. Surface that action as the next
+                step instead of red errors. */}
             {isCartoonPlot && cartoonStage === "planning" && (
               <div
                 className="flex flex-col gap-2 border border-accent/30 bg-accent/5 rounded p-3"
                 data-testid="cartoon-planning-callout"
               >
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs font-medium text-foreground">Cut plan ready — generate the episode markdown</span>
+                  <span className="text-xs font-medium text-foreground">Cut plan ready — prepare the episode for publish</span>
                   <span className="text-xs text-muted">
-                    A valid cut plan exists, but the episode markdown skeleton hasn&apos;t been generated yet. Generate it before lettering and uploading images.
+                    A valid cut plan exists. Prepare the episode for publish to lay out each cut, then letter and upload the final images.
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -967,7 +978,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     className="px-3 py-1.5 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="generate-md-preview-btn"
                   >
-                    {cartoonGenerating ? "Generating..." : "Generate MD"}
+                    {cartoonGenerating ? "Preparing…" : "Prepare Publish Markdown"}
                   </button>
                   {cartoonGenWarnings.length > 0 && (
                     <span className="text-amber-600 text-xs">{cartoonGenWarnings.length} cut(s) still need images</span>
@@ -983,12 +994,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 className="flex flex-col gap-1 border border-accent/30 bg-accent/5 rounded p-3"
                 data-testid="cartoon-awaiting-upload"
               >
-                <span className="text-xs font-medium text-foreground">Markdown skeleton generated</span>
+                <span className="text-xs font-medium text-foreground">Episode prepared for publish</span>
                 <span className="text-xs text-muted">
-                  {cartoonAwaitingCount} of {cartoonTotalCuts} cuts awaiting final uploaded images
+                  {cartoonAwaitingCount} of {cartoonTotalCuts} cuts still need a final uploaded image
                 </span>
                 <span className="text-xs text-muted">
-                  Next: generate/import clean images, letter them, export final images, then upload.
+                  Next: add clean images, letter the bubbles, export the final images, then upload them.
                 </span>
               </div>
             )}
@@ -1204,10 +1215,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <span className="text-error text-xs">Reduce content to publish</span>
               )}
               {isCartoonPlot && cartoonStage === "error" && (
-                <span className="text-error text-xs">Not ready to publish</span>
+                <span className="text-error text-xs" data-testid="publish-disabled-reason">Fix the issues below before publishing</span>
               )}
               {isCartoonPlot && cartoonStage === "planning" && (
-                <span className="text-muted text-xs">Generate markdown to continue</span>
+                <span className="text-muted text-xs" data-testid="publish-disabled-reason">Prepare the episode for publish to continue</span>
+              )}
+              {isCartoonPlot && cartoonStage === "awaiting-upload" && (
+                <span className="text-muted text-xs" data-testid="publish-disabled-reason">
+                  Upload all final images, then Prepare Publish Markdown — {cartoonAwaitingCount} of {cartoonTotalCuts} still need an uploaded image
+                </span>
               )}
             </div>
             {isCartoonPlot && cartoonStage === "error" && cartoonIssues.length > 0 && (

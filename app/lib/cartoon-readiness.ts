@@ -141,7 +141,7 @@ export function checkMarkdownReadiness(
   const placeholderProse = findPlaceholderProse(markdown);
   if (placeholderProse) {
     issues.push(
-      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Generate MD so the published markdown is image-only`,
+      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Prepare Publish Markdown so the published markdown is image-only`,
     );
   }
 
@@ -252,4 +252,67 @@ export function classifyCartoonReadiness(
     awaitingCount: awaitingLabels.size,
     totalCuts,
   };
+}
+
+export interface CartoonWorkflowStep {
+  key: "plan" | "markdown" | "images" | "publish";
+  /** Creator-facing label — product language, no build/file jargon (#320). */
+  label: string;
+  status: "done" | "current" | "todo";
+}
+
+const WORKFLOW_ORDER: CartoonWorkflowStep["key"][] = ["plan", "markdown", "images", "publish"];
+
+const WORKFLOW_LABELS: Record<CartoonWorkflowStep["key"], string> = {
+  plan: "Plan cuts",
+  markdown: "Prepare episode for publish",
+  images: "Create & upload final lettered images",
+  publish: "Preview & publish",
+};
+
+// Which milestone is the one to act on, per readiness stage.
+const WORKFLOW_CURRENT: Record<CartoonReadinessStage, CartoonWorkflowStep["key"]> = {
+  planning: "markdown",
+  "awaiting-upload": "images",
+  error: "images",
+  ready: "publish",
+};
+
+/**
+ * Compact, creator-facing checklist for the cartoon plot workspace (#320). Maps
+ * the readiness stage to the production sequence in product language so a
+ * first-time user can see which step is current/next without internal jargon
+ * like "Generate MD". Returns the ordered milestones (done/current/todo) plus a
+ * one-line next-step prompt. No steps when the stage is unknown (non-cartoon or
+ * not yet classified).
+ */
+export function cartoonWorkflowSteps(
+  report: { stage: CartoonReadinessStage | null; awaitingCount: number; totalCuts: number },
+): { steps: CartoonWorkflowStep[]; nextStep: string | null } {
+  const { stage, awaitingCount, totalCuts } = report;
+  if (!stage) return { steps: [], nextStep: null };
+
+  const currentIdx = WORKFLOW_ORDER.indexOf(WORKFLOW_CURRENT[stage]);
+  const steps: CartoonWorkflowStep[] = WORKFLOW_ORDER.map((key, i) => ({
+    key,
+    label: WORKFLOW_LABELS[key],
+    status: i < currentIdx ? "done" : i === currentIdx ? "current" : "todo",
+  }));
+
+  let nextStep: string;
+  switch (stage) {
+    case "planning":
+      nextStep = "Prepare the episode for publish to lay out each cut, then letter and upload images.";
+      break;
+    case "awaiting-upload":
+      nextStep = `Letter and upload final images — ${awaitingCount} of ${totalCuts} cut${totalCuts === 1 ? "" : "s"} still ${awaitingCount === 1 ? "needs" : "need"} an uploaded image.`;
+      break;
+    case "error":
+      nextStep = "Resolve the publish issues listed below, then prepare the episode again.";
+      break;
+    case "ready":
+      nextStep = "Preview the episode, then publish to PlotLink.";
+      break;
+  }
+  return { steps, nextStep };
 }

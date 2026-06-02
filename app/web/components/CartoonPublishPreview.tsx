@@ -15,7 +15,7 @@ const sanitizeSchema = {
 };
 
 const STAGE_LABEL: Record<CartoonReadinessStage, string> = {
-  planning: "Planning — generate MD",
+  planning: "Planning — prepare the episode for publish",
   "awaiting-upload": "Awaiting image uploads",
   error: "Not publishable",
   ready: "Ready to publish",
@@ -64,8 +64,8 @@ export function CartoonPublishPreview({ content, stage }: CartoonPublishPreviewP
             {summary.nonImageProsePreview}{truncated ? "…" : ""}
           </p>
           <p className="mt-1">
-            This text publishes verbatim around the comic images. Remove it (or re-run Generate MD)
-            if it is planning or placeholder prose.
+            This text publishes verbatim around the comic images. Remove it (or re-run
+            Prepare Publish Markdown) if it is planning or placeholder prose.
           </p>
         </div>
       )}
@@ -83,7 +83,7 @@ export function CartoonPublishPreview({ content, stage }: CartoonPublishPreviewP
           </div>
         ) : (
           <p className="text-muted italic text-sm" data-testid="cartoon-publish-empty">
-            No publish markdown yet — generate it from the cut plan (Edit → Upload &amp; Generate).
+            No publish markdown yet — build it from the cut plan (Edit → Upload &amp; Prepare for Publish).
           </p>
         )}
       </div>

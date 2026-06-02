@@ -370,7 +370,7 @@ guessing at unavailable tooling is exactly what stalls a cartoon episode.
 | Generate the cover | You (Codex) | Save \`assets/cover.webp\` (~600x900, WebP, < 1MB). OWS auto-detects it for genesis publish — no manual selection needed. |
 | Discover / record clean images | OWS | Run the "Sync clean images" action (or let OWS auto-detect); OWS records \`cleanImagePath\`. Never hand-write paths or stat files yourself. |
 | Letter & export final images | The writer, in the OWS lettering editor | Speech bubbles, captions, and SFX are placed in the OWS editor and exported to \`assets/plot-NN/cut-XX-final.webp\`. You do NOT composite or letter text — not with magick, not with sharp, not at all. |
-| Upload finals + build markdown | OWS | The writer runs "Upload & Generate"; OWS uploads each final image and emits the publish markdown. You never hand-write \`plot-NN.md\`. |
+| Upload finals + build markdown | OWS | The writer runs "Upload & Prepare for Publish"; OWS uploads each final image and emits the publish markdown. You never hand-write \`plot-NN.md\`. |
 
 **No agent-side image tools are required** — OWS provides image generation (your
 session), clean-image sync, the lettering/export editor, and upload/markdown
@@ -422,8 +422,8 @@ Correct flow:
 
 1. Upload final (lettered) images via OWS — this records the IPFS URL per cut in
    cuts.json (\`uploadedUrl\`).
-2. Use OWS "Generate MD" / "Upload & Generate" to produce plot-NN.md. OWS emits
-   marker-delimited blocks:
+2. Use OWS "Prepare Publish Markdown" / "Upload & Prepare for Publish" to produce
+   plot-NN.md. OWS emits marker-delimited blocks:
    \`\`\`
    <!-- ows:cartoon-cut cut-001 start -->
    ![Cut 1 — Scene description](https://ipfs-gateway/...)

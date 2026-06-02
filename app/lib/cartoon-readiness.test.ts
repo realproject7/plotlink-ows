@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, cartoonWorkflowSteps } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -333,7 +333,11 @@ describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
     const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
-    expect(issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+    const prose = issues.find((i) => i.includes("placeholder/instructional prose"))!;
+    expect(prose).toBeDefined();
+    // Creator-facing action name, not the old "Generate MD" jargon (#320).
+    expect(prose).toContain("re-run Prepare Publish Markdown");
+    expect(prose).not.toMatch(/Generate MD\b/);
   });
 
   it("rejects placeholder prose BETWEEN/AFTER cut blocks", () => {
@@ -399,5 +403,58 @@ describe("font/package size impact", () => {
 
   it("font registry is small (under 10 entries for MVP)", () => {
     expect(FONT_REGISTRY.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("cartoonWorkflowSteps (#320)", () => {
+  const keys = (r: { steps: { key: string }[] }) => r.steps.map((s) => s.key);
+  const statusOf = (r: { steps: { key: string; status: string }[] }, key: string) =>
+    r.steps.find((s) => s.key === key)!.status;
+
+  it("returns no steps and no next step for an unknown stage", () => {
+    const r = cartoonWorkflowSteps({ stage: null, awaitingCount: 0, totalCuts: 0 });
+    expect(r.steps).toEqual([]);
+    expect(r.nextStep).toBeNull();
+  });
+
+  it("always lists the four milestones in production order", () => {
+    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 3 });
+    expect(keys(r)).toEqual(["plan", "markdown", "images", "publish"]);
+  });
+
+  it("uses creator-facing labels, not internal jargon", () => {
+    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 1 });
+    const labels = r.steps.map((s) => s.label).join(" | ");
+    expect(labels).not.toMatch(/generate md|markdown skeleton|cuts\.json/i);
+    expect(r.steps.find((s) => s.key === "markdown")!.label).toBe("Prepare episode for publish");
+  });
+
+  it("planning: prepare-markdown is current, publish is todo", () => {
+    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 2 });
+    expect(statusOf(r, "plan")).toBe("done");
+    expect(statusOf(r, "markdown")).toBe("current");
+    expect(statusOf(r, "images")).toBe("todo");
+    expect(statusOf(r, "publish")).toBe("todo");
+    expect(r.nextStep).toMatch(/prepare the episode for publish/i);
+  });
+
+  it("awaiting-upload: images is current and the next step counts remaining uploads", () => {
+    const r = cartoonWorkflowSteps({ stage: "awaiting-upload", awaitingCount: 2, totalCuts: 5 });
+    expect(statusOf(r, "markdown")).toBe("done");
+    expect(statusOf(r, "images")).toBe("current");
+    expect(statusOf(r, "publish")).toBe("todo");
+    expect(r.nextStep).toMatch(/2 of 5 cuts still need an uploaded image/i);
+  });
+
+  it("ready: publish is the current step", () => {
+    const r = cartoonWorkflowSteps({ stage: "ready", awaitingCount: 0, totalCuts: 4 });
+    expect(statusOf(r, "images")).toBe("done");
+    expect(statusOf(r, "publish")).toBe("current");
+    expect(r.nextStep).toMatch(/preview the episode, then publish/i);
+  });
+
+  it("error: points to the issues to resolve", () => {
+    const r = cartoonWorkflowSteps({ stage: "error", awaitingCount: 0, totalCuts: 3 });
+    expect(r.nextStep).toMatch(/resolve the publish issues/i);
   });
 });

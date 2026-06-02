@@ -84,6 +84,38 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
   });
 
+  it("uses creator-facing copy (no 'Generate MD' jargon) and shows the step guide (#320)", async () => {
+    const { fetch } = makePlanningAuthFetch();
+    render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={fetch} contentType="cartoon" onPublish={vi.fn()} />);
+
+    const btn = await screen.findByTestId("generate-md-preview-btn");
+    expect(btn).toHaveTextContent("Prepare Publish Markdown");
+    expect(btn).not.toHaveTextContent(/generate md/i);
+    // Step checklist is present and points at the prepare-for-publish step.
+    expect(screen.getByTestId("cartoon-step-guide")).toBeInTheDocument();
+    expect(screen.getByTestId("cartoon-step-markdown")).toHaveAttribute("data-status", "current");
+    // Disabled publish button explains the next step instead of bare jargon.
+    expect(screen.getByTestId("publish-disabled-reason")).toHaveTextContent(/prepare the episode for publish/i);
+  });
+
+  it("explains why publish is disabled while awaiting uploads (#320)", async () => {
+    const { fetch } = makePlanningAuthFetch();
+    render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={fetch} contentType="cartoon" onPublish={vi.fn()} />);
+
+    const btn = await screen.findByTestId("generate-md-preview-btn");
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(screen.getByTestId("cartoon-awaiting-upload")).toBeInTheDocument());
+    // Creator-facing copy, not internal "markdown skeleton" jargon (#320, re1).
+    const awaiting = screen.getByTestId("cartoon-awaiting-upload");
+    expect(awaiting).toHaveTextContent(/episode prepared for publish/i);
+    expect(awaiting.textContent).not.toMatch(/markdown skeleton/i);
+    // The disabled-publish reason now names the remaining-upload blocker.
+    expect(screen.getByTestId("publish-disabled-reason")).toHaveTextContent(/still need an uploaded image/i);
+    // The step guide advances to the images step.
+    expect(screen.getByTestId("cartoon-step-images")).toHaveAttribute("data-status", "current");
+  });
+
   it("does not show the planning callout for fiction plots", async () => {
     const fetch = vi.fn().mockImplementation(() =>
       Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ file: "plot-01.md", status: "pending", content: "# Chapter 1\n\nOnce upon a time." }) }),
@@ -93,5 +125,7 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(screen.queryByTestId("cartoon-planning-callout")).not.toBeInTheDocument();
     expect(screen.queryByTestId("generate-md-preview-btn")).not.toBeInTheDocument();
+    // The cartoon step guide must never appear for fiction (#320).
+    expect(screen.queryByTestId("cartoon-step-guide")).not.toBeInTheDocument();
   });
 });
