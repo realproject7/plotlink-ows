@@ -123,4 +123,17 @@ describe("cartoon publish title preview (#358)", () => {
     expect(t).toHaveAttribute("data-blocked", "false");
     expect(screen.queryByTestId("publish-title-episode-required")).not.toBeInTheDocument();
   });
+
+  // Precedence: the plot H1 wins in derivePublishTitle, so a generic H1 must
+  // block even when a real cut-plan title is also set — the generic H1 is what
+  // would actually publish (#368, @re1 finding).
+  it("blocks a generic '# Episode 01' H1 even when the cut-plan title is real (#368)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: "The Couple Coupon", plot: "# Episode 01\n\n" + SKELETON_MD }));
+    const t = await screen.findByTestId("publish-title-preview");
+    // The H1 ("Episode 01") is what derivePublishTitle resolves, so it shows + blocks.
+    expect(t).toHaveTextContent("Episode 01");
+    expect(t).toHaveAttribute("data-blocked", "true");
+    expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
+  });
 });

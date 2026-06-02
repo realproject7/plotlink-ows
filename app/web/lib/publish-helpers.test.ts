@@ -274,6 +274,17 @@ describe("hasExplicitEpisodeTitle (#365)", () => {
     expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "Episode 01 — The Couple Coupon" })).toBe(true);
     expect(hasExplicitEpisodeTitle({ fileContent: "# Episode 01 — The Couple Coupon\n\n" + SKELETON, episodeTitle: null })).toBe(true);
   });
+  // #368 precedence: derivePublishTitle gives the plot H1 priority over the cut
+  // plan title, so a generic H1 must block even when a real cut-plan title exists
+  // (otherwise the gate would pass but the generic H1 would publish).
+  it("is false when a generic H1 is present even if the cut-plan title is real (H1 wins) (#368)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: "# Episode 01\n\n" + SKELETON, episodeTitle: "The Couple Coupon" })).toBe(false);
+    // Sanity: the resolved publish title in this case really is the generic H1.
+    expect(derivePublishTitle({ fileName: "plot-01.md", fileContent: "# Episode 01\n\n" + SKELETON, storySlug: "s", contentType: "cartoon", episodeTitle: "The Couple Coupon" })).toBe("Episode 01");
+  });
+  it("is true when a real H1 is present even if the cut-plan title is generic", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: "# The Couple Coupon\n\n" + SKELETON, episodeTitle: "Episode 01" })).toBe(true);
+  });
 });
 
 describe("isGenericEpisodeTitle (#368)", () => {

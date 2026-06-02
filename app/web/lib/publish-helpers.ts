@@ -183,13 +183,18 @@ export function isGenericEpisodeTitle(title: string): boolean {
  * remaining gap: a real H1 or cut-plan title that is itself only a generic number
  * label still doesn't satisfy publish-quality webtoon metadata, so it is rejected
  * here too. Independent of the #358 raw-filename block, which is kept.
+ *
+ * The check must mirror `derivePublishTitle`'s SOURCE PRECEDENCE so the gate
+ * judges exactly what will publish: for a plot, the H1 wins when present, so a
+ * generic H1 blocks even if the cut-plan title is real (otherwise we'd pass on
+ * the cut title but publish the generic H1). Only when there is no H1 does the
+ * cut-plan title decide.
  */
 export function hasExplicitEpisodeTitle(opts: { fileContent: string; episodeTitle?: string | null }): boolean {
   const h1 = extractH1Title(opts.fileContent);
+  if (h1) return !isGenericEpisodeTitle(h1);
   const cut = opts.episodeTitle?.trim() || null;
-  if (h1 && !isGenericEpisodeTitle(h1)) return true;
-  if (cut && !isGenericEpisodeTitle(cut)) return true;
-  return false;
+  return !!cut && !isGenericEpisodeTitle(cut);
 }
 
 /**
