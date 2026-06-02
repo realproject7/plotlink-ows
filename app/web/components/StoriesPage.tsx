@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { cartoonGenesisReadiness } from "@app-lib/cartoon-readiness";
 
@@ -42,6 +42,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
+  // Durable publish blocker (#375): unlike the transient publishProgress text,
+  // this stays visible until the writer dismisses it or starts a new publish, so
+  // an insufficient-balance preflight block doesn't silently vanish.
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
@@ -267,7 +271,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
+    setPublishError(null); // clear any prior durable block on a fresh attempt (#375)
     let coverAttachFailed = false;
+    // Whether the publish proceeded past every pre-stream gate (title, duplicate,
+    // storyline, preflight) and actually opened the publish stream. Returned to
+    // the caller so PreviewPanel drops the selected genesis cover ONLY once the
+    // publish was really attempted — a blocked publish keeps the cover (#375).
+    let attempted = false;
 
     try {
       // Get file content
@@ -315,7 +325,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             : "Set an episode title in the cut plan before publishing — it would otherwise publish as a raw filename.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // Defense-in-depth (#365, tightened #368): a cartoon plot must have an
@@ -328,7 +338,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           "Set a real episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // Defense-in-depth (#359): a cartoon Genesis is the reader-facing opening,
@@ -340,7 +350,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           "Add a “# Title” heading to genesis.md before publishing — the Story opening needs a real title readers see first.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // For plot files, find the storylineId from the genesis publish status
@@ -371,9 +381,36 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         if (!storylineId) {
           setPublishProgress("Error: Publish genesis first to create the storyline");
           setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 3000);
-          return;
+          return false;
         }
       }
+
+      // #375: gate on wallet balance BEFORE opening the publish stream. The
+      // pilot's publish proceeded into "Broadcasting transaction..." despite
+      // preflight already reporting insufficient ETH, then returned to draft with
+      // no durable error. Run preflight here and, if the OWS wallet can't cover at
+      // least the creation fee (or is otherwise not ready), block with a durable,
+      // obvious inline error instead of calling /api/publish/file. A preflight
+      // network/HTTP error is NOT treated as a block — fall through so a flaky
+      // preflight can't stop an otherwise-fundable publish (the stream surfaces
+      // its own error).
+      setPublishProgress("Checking wallet balance...");
+      try {
+        const preRes = await authFetch("/api/publish/preflight");
+        if (preRes.ok) {
+          const pre = await preRes.json();
+          if (isPreflightBlocked(pre)) {
+            setPublishError(formatPreflightBlock(pre));
+            setPublishingFile(null);
+            setPublishProgress("");
+            return false;
+          }
+        }
+      } catch { /* preflight unreachable — don't hard-block; let the publish stream report */ }
+
+      // Past every pre-stream gate — the publish is now being attempted, so the
+      // caller may drop the selected cover (#375).
+      attempted = true;
 
       // Run publish flow via SSE
       setPublishProgress("Publishing...");
@@ -457,6 +494,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         setPublishProgress("");
       }, 3000);
     }
+    // true once the stream was opened (cover handed off → safe to clear); false
+    // on any pre-stream block so PreviewPanel keeps the writer's cover (#375).
+    return attempted;
   }, [authFetch, storyContentTypes, walletAddress]);
 
   const handleDestroySession = useCallback((name: string) => {
@@ -626,6 +666,26 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
             {publishProgress}
+          </div>
+        )}
+        {/* Durable publish blocker (#375) — stays until dismissed or the next
+            publish attempt, so an insufficient-balance block is obvious and
+            doesn't disappear on a timer. */}
+        {publishError && (
+          <div
+            className="px-3 py-2 bg-error/10 border-t border-error/40 text-xs text-error flex items-start justify-between gap-3"
+            data-testid="publish-block-error"
+            role="alert"
+          >
+            <span>{publishError}</span>
+            <button
+              type="button"
+              onClick={() => setPublishError(null)}
+              className="shrink-0 text-error/70 hover:text-error underline"
+              data-testid="publish-block-error-dismiss"
+            >
+              Dismiss
+            </button>
           </div>
         )}
       </div>

@@ -139,3 +139,39 @@ describe("publish callback boundary (stale closure regression)", () => {
     expect(payload.contentType).toBeUndefined();
   });
 });
+
+// #375: publish must gate on wallet balance BEFORE opening the SSE stream, and
+// surface a durable (non-timed) error when preflight blocks. Source-inspection
+// tests in the same style as the guards above.
+describe("handlePublish preflight balance gate (#375 source guard)", () => {
+  async function readSource(): Promise<string> {
+    const fs = await import("fs");
+    const path = await import("path");
+    return fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+  }
+
+  it("runs preflight and blocks before calling /api/publish/file", async () => {
+    const source = await readSource();
+    expect(source).toContain("/api/publish/preflight");
+    expect(source).toContain("isPreflightBlocked");
+    expect(source).toContain("formatPreflightBlock");
+    // The preflight check and its block must come BEFORE the publish stream POST.
+    const preIdx = source.indexOf("/api/publish/preflight");
+    const fileIdx = source.indexOf('"/api/publish/file"');
+    expect(preIdx).toBeGreaterThan(-1);
+    expect(fileIdx).toBeGreaterThan(preIdx);
+    // The block path sets the durable error and returns before "Publishing...".
+    const blockIdx = source.indexOf("setPublishError(formatPreflightBlock(pre))");
+    const publishingIdx = source.indexOf('setPublishProgress("Publishing...")');
+    expect(blockIdx).toBeGreaterThan(-1);
+    expect(blockIdx).toBeLessThan(publishingIdx);
+  });
+
+  it("renders a durable, dismissible publish-block error (not auto-cleared on a timer)", async () => {
+    const source = await readSource();
+    expect(source).toContain('data-testid="publish-block-error"');
+    // A fresh attempt resets it; nothing schedules setPublishError(null) on a timer.
+    expect(source).toContain("setPublishError(null)");
+    expect(source).not.toMatch(/setTimeout\([^)]*setPublishError/);
+  });
+});
