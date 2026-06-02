@@ -204,6 +204,16 @@ describe("generateStoryInstructions", () => {
     expect(out).not.toContain("prose synopsis hook");
   });
 
+  // #352: cartoon instructions must teach Codex when/how to plan text panels.
+  it("documents text/interstitial panels (kind:text) and when to use them", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toMatch(/Text \/ interstitial panels/i);
+    expect(out).toMatch(/"kind":\s*"text"/);
+    expect(out).toMatch(/between image cuts/i);
+    expect(out).toMatch(/no clean image/i);
+    expect(out).toContain("Add text panel"); // names the OWS affordance
+  });
+
   it("does NOT change fiction genesis guidance (still a synopsis hook)", () => {
     const out = generateStoryInstructions("fiction");
     expect(out).toMatch(/synopsis/i);
