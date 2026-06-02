@@ -98,4 +98,42 @@ describe("cartoon publish title preview (#358)", () => {
     expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
     expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
   });
+
+  it("blocks publish when the cut-plan title is a generic 'Episode 01' label (#368)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: "Episode 01" }));
+    const t = await screen.findByTestId("publish-title-preview");
+    expect(t).toHaveTextContent("Episode 01");
+    expect(t).toHaveAttribute("data-blocked", "true");
+    expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
+  });
+
+  it("blocks publish when the plot H1 is a generic '# Episode 01' label (#368)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: null, plot: "# Episode 01\n\n" + SKELETON_MD }));
+    const t = await screen.findByTestId("publish-title-preview");
+    expect(t).toHaveAttribute("data-blocked", "true");
+    expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
+  });
+
+  it("allows a number paired with real title text — 'Episode 01 — The Couple Coupon' (#368)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: "Episode 01 — The Couple Coupon" }));
+    const t = await screen.findByTestId("publish-title-preview");
+    expect(t).toHaveTextContent("Episode 01 — The Couple Coupon");
+    expect(t).toHaveAttribute("data-blocked", "false");
+    expect(screen.queryByTestId("publish-title-episode-required")).not.toBeInTheDocument();
+  });
+
+  // Precedence: the plot H1 wins in derivePublishTitle, so a generic H1 must
+  // block even when a real cut-plan title is also set — the generic H1 is what
+  // would actually publish (#368, @re1 finding).
+  it("blocks a generic '# Episode 01' H1 even when the cut-plan title is real (#368)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: "The Couple Coupon", plot: "# Episode 01\n\n" + SKELETON_MD }));
+    const t = await screen.findByTestId("publish-title-preview");
+    // The H1 ("Episode 01") is what derivePublishTitle resolves, so it shows + blocks.
+    expect(t).toHaveTextContent("Episode 01");
+    expect(t).toHaveAttribute("data-blocked", "true");
+    expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
+  });
 });

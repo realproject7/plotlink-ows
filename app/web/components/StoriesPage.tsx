@@ -318,13 +318,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         return;
       }
 
-      // Defense-in-depth (#365): a cartoon plot must have an explicit reader-facing
-      // title (cut-plan title or a real H1). The generic "Episode NN" fallback is
-      // diagnostic only and must not be published, so block the action too.
+      // Defense-in-depth (#365, tightened #368): a cartoon plot must have an
+      // explicit reader-facing title (cut-plan title or a real H1) that is NOT a
+      // generic "Episode NN"/"Chapter NN"/"plot-NN" placeholder. Block the action
+      // too, not just the panel.
       if (publishContentType === "cartoon" && fileName.match(/^plot-\d+\.md$/)
         && !hasExplicitEpisodeTitle({ fileContent: fileData.content, episodeTitle })) {
         setPublishProgress(
-          "Set an episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
+          "Set a real episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
         return;

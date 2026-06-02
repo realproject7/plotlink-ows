@@ -150,17 +150,51 @@ export function episodeTitleFromPlotFile(fileName: string): string | null {
 }
 
 /**
- * Whether a cartoon plot has an EXPLICIT reader-facing episode title (#365):
- * a real `# Title` H1 in the plot markdown, or a non-empty cut-plan title.
+ * Whether a cartoon episode title is just a GENERIC number label rather than a
+ * reader-facing title (#368): "Episode 01", "Episode 1", "Ep. 01", "Chapter 01",
+ * "Plot 01", "plot-01", or a bare number. These pass #365's "has a title" check
+ * (they're a real H1 / cut-plan title) but are still placeholders that don't meet
+ * webtoon metadata quality, so they must not publish.
+ *
+ * A title that pairs a number with actual title text — "Episode 01 — The Couple
+ * Coupon" — is NOT generic (the regex anchors `$` right after the number, so any
+ * trailing title text fails the match). Compared trimmed / case-insensitive.
+ */
+export function isGenericEpisodeTitle(title: string): boolean {
+  const t = (title ?? "").trim();
+  if (!t) return true;
+  // A generic label word (episode/ep/chapter/ch/part/pt/plot) + a number, with
+  // nothing meaningful after the number.
+  if (/^(?:episode|ep|chapter|ch|part|pt|plot)\.?\s*[-–—:#]?\s*\d+$/i.test(t)) return true;
+  // A bare number ("01", "1"), or a raw filename-style "plot-01"/"plot_1".
+  if (/^\d+$/.test(t)) return true;
+  if (/^plot[-_\s]?\d+$/i.test(t)) return true;
+  return false;
+}
+
+/**
+ * Whether a cartoon plot has an EXPLICIT reader-facing episode title (#365,
+ * tightened by #368): a real `# Title` H1 in the plot markdown, or a non-empty
+ * cut-plan title — that is NOT a generic "Episode NN"/"Chapter NN"/"plot-NN"
+ * placeholder.
  *
  * #347/#358 stopped raw `plot-NN` titles from publishing by falling back to a
- * friendly "Episode NN", but operator QA requires a real title, not a generic
- * placeholder. So "Episode NN" (from `derivePublishTitle`) is now diagnostic
- * only and may not be published: the publish gate requires this to be true.
- * Independent of the #358 raw-filename block, which is kept.
+ * friendly "Episode NN"; #365 made that fallback diagnostic-only. #368 closes the
+ * remaining gap: a real H1 or cut-plan title that is itself only a generic number
+ * label still doesn't satisfy publish-quality webtoon metadata, so it is rejected
+ * here too. Independent of the #358 raw-filename block, which is kept.
+ *
+ * The check must mirror `derivePublishTitle`'s SOURCE PRECEDENCE so the gate
+ * judges exactly what will publish: for a plot, the H1 wins when present, so a
+ * generic H1 blocks even if the cut-plan title is real (otherwise we'd pass on
+ * the cut title but publish the generic H1). Only when there is no H1 does the
+ * cut-plan title decide.
  */
 export function hasExplicitEpisodeTitle(opts: { fileContent: string; episodeTitle?: string | null }): boolean {
-  return !!extractH1Title(opts.fileContent) || !!opts.episodeTitle?.trim();
+  const h1 = extractH1Title(opts.fileContent);
+  if (h1) return !isGenericEpisodeTitle(h1);
+  const cut = opts.episodeTitle?.trim() || null;
+  return !!cut && !isGenericEpisodeTitle(cut);
 }
 
 /**
