@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
 import { TerminalPanel, isCartoonLaunchBlocked } from "./TerminalPanel";
 import type { AgentReadiness } from "@app-lib/agent-readiness";
 
@@ -52,22 +52,28 @@ beforeAll(() => {
       const db = {
         objectStoreNames: { contains: () => true },
         createObjectStore: () => {},
-        transaction: () => ({
-          objectStore: () => ({
-            put: () => {},
-            get: () => {
-              const r: Record<string, unknown> = {};
-              queueMicrotask(() => {
-                r.result = null;
-                (r.onsuccess as (() => void) | undefined)?.();
-              });
-              return r;
-            },
-            delete: () => {},
-          }),
-          oncomplete: null,
-          onerror: null,
-        }),
+        transaction: () => {
+          const tx: Record<string, unknown> = {
+            objectStore: () => ({
+              put: () => {},
+              get: () => {
+                const r: Record<string, unknown> = {};
+                queueMicrotask(() => {
+                  r.result = null;
+                  (r.onsuccess as (() => void) | undefined)?.();
+                });
+                return r;
+              },
+              delete: () => {},
+            }),
+            oncomplete: null,
+            onerror: null,
+          };
+          // Resolve the transaction so saveScrollback/deleteScrollback (which
+          // await tx.oncomplete) don't hang — needed once rename exercises them.
+          queueMicrotask(() => { (tx.oncomplete as (() => void) | undefined)?.(); });
+          return tx;
+        },
         close: () => {},
       };
       queueMicrotask(() => {
@@ -277,5 +283,53 @@ describe("TerminalPanel legacy cartoon provider repair", () => {
     expect(screen.queryByTestId("legacy-cartoon-provider-repair")).not.toBeInTheDocument();
     // Normal cartoon (codex ready) auto-spawns.
     await waitFor(() => expect(wsConstructed.length).toBeGreaterThan(0));
+  });
+});
+
+// #377: renaming a live story (e.g. _new_* → final, or a partial slug → full
+// title) must move the terminal into the FINAL folder so the agent's trust
+// prompt / cwd reflect it — the live PTY keeps its spawn cwd otherwise. The
+// rename respawns with resume so the conversation is preserved.
+describe("TerminalPanel rename moves the terminal into the final folder (#377)", () => {
+  it("kills the stale-cwd PTY and reconnects the renamed story WITH RESUME", async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const authFetch = vi.fn((url: string, opts?: RequestInit) => {
+      calls.push({ url, method: opts?.method ?? "GET" });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    const renameRef = { current: null } as {
+      current: ((o: string, n: string) => Promise<boolean>) | null;
+    };
+    render(
+      <TerminalPanel
+        token="t"
+        storyName="paper-chair"
+        authFetch={authFetch}
+        renameRef={renameRef}
+        contentType="fiction"
+        readiness={null}
+      />,
+    );
+
+    // Auto-spawn opens the initial WS for the current story (resume=false).
+    await waitFor(() => expect(wsConstructed.some((u) => u.includes("story=paper-chair"))).toBe(true), { timeout: 2000 });
+    const before = wsConstructed.length;
+    expect(renameRef.current).toBeTruthy();
+
+    await act(async () => {
+      await renameRef.current!("paper-chair", "paper-chair-at-dawn");
+    });
+
+    // The stale PTY is killed and a fresh WS is opened for the FINAL folder,
+    // resuming so the brainstorm is preserved.
+    await waitFor(() => {
+      expect(
+        calls.some((c) => c.method === "DELETE" && c.url.includes("/api/terminal/paper-chair-at-dawn")),
+      ).toBe(true);
+      expect(
+        wsConstructed.some((u) => u.includes("story=paper-chair-at-dawn") && u.includes("resume=true")),
+      ).toBe(true);
+    });
+    expect(wsConstructed.length).toBeGreaterThan(before);
   });
 });

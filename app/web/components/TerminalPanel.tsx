@@ -432,6 +432,24 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
       return next;
     });
 
+    // #377: the renamed session's live PTY keeps the cwd it was SPAWNED in, so
+    // after the story folder moves (e.g. _new_* → final, or a partial slug →
+    // full title) the agent's trust prompt / working directory still points at
+    // the old (now-renamed) folder — confusing, and the old folder may no longer
+    // exist. If this session is live, move the terminal into the FINAL folder:
+    // kill the stale-cwd PTY and reconnect WITH RESUME, so the new spawn runs in
+    // stories/<newName> (correct cwd/trust prompt) while the conversation is
+    // preserved (claude --resume / codex resume). The server reads the provider
+    // from the .story.json it just persisted, so the respawn stays provider-aware.
+    // If resume can't recover, the existing code-4000 path reconnects fresh in
+    // the same (correct) folder. A never-connected session needs no respawn — its
+    // first connect already uses the final name.
+    if (session.connected || session.ws) {
+      await authFetchRef.current(`/api/terminal/${encodeURIComponent(newName)}`, { method: "DELETE" }).catch(() => {});
+      if (session.ws) { session.ws.close(); session.ws = null; }
+      connectWsRef.current(newName, session, true);
+    }
+
     return true;
   }, []);
 
