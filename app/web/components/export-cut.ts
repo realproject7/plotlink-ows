@@ -1,4 +1,4 @@
-import { speechTailPoints, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
+import { speechTailPoints, balloonOutline, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
@@ -58,13 +58,12 @@ const SPEECH_FILL = "rgba(255, 255, 255, 0.9)";
 const SPEECH_STROKE = "rgba(0, 0, 0, 0.3)";
 
 // Trace a speech balloon — rounded-rect body plus its pointer tail — as ONE
-// continuous outline (#317). Drawing the tail and body as separate shapes left
-// the body's border stroked straight across the tail's mouth, so the export
-// showed a visible seam where the two shapes met. Here the tail is instead a
-// detour in the body's perimeter on whichever edge it sits, so filling and
-// stroking this single path yields an integrated balloon: one fill, one outline,
-// and no internal body/tail boundary line. `tail` is null for a bubble with no
-// (or an inside-the-bubble) tail, which traces a plain rounded rectangle.
+// continuous outline, from the SHARED balloonOutline geometry (#341, formerly a
+// duplicate of #317's tracer). Because the editor-preview SVG path and this
+// export canvas now build from the identical command list, the tail is always a
+// detour in the body's perimeter (never a separate stroked shape) and the
+// exported balloon matches the preview with no internal body/tail seam. `tail`
+// is null for a bubble with no (or inside-the-bubble) tail → a rounded rect.
 function traceBalloonPath(
   ctx: CanvasRenderingContext2D,
   ox: number,
@@ -73,51 +72,12 @@ function traceBalloonPath(
   oh: number,
   tail: TailPoints | null,
 ) {
-  const r = Math.max(0, Math.min(8, ow / 2, oh / 2));
-  const right = ox + ow;
-  const bottom = oy + oh;
-
-  // speechTailPoints places both base points exactly on one bubble edge, so the
-  // edge each comparison identifies is exact (no float fuzz needed).
-  const onTop = !!tail && tail.base1.y === oy && tail.base2.y === oy;
-  const onRight = !!tail && tail.base1.x === right && tail.base2.x === right;
-  const onBottom = !!tail && tail.base1.y === bottom && tail.base2.y === bottom;
-  const onLeft = !!tail && tail.base1.x === ox && tail.base2.x === ox;
-
   ctx.beginPath();
-  ctx.moveTo(ox + r, oy);
-  // Top edge, traced left→right (base1.x < base2.x).
-  if (onTop && tail) {
-    ctx.lineTo(tail.base1.x, oy);
-    ctx.lineTo(tail.tip.x, tail.tip.y);
-    ctx.lineTo(tail.base2.x, oy);
+  for (const c of balloonOutline(ox, oy, ow, oh, tail)) {
+    if (c.k === "M") ctx.moveTo(c.x, c.y);
+    else if (c.k === "L") ctx.lineTo(c.x, c.y);
+    else ctx.arcTo(c.cornerX, c.cornerY, c.x, c.y, c.r);
   }
-  ctx.lineTo(right - r, oy);
-  ctx.arcTo(right, oy, right, oy + r, r);
-  // Right edge, traced top→bottom (base1.y < base2.y).
-  if (onRight && tail) {
-    ctx.lineTo(right, tail.base1.y);
-    ctx.lineTo(tail.tip.x, tail.tip.y);
-    ctx.lineTo(right, tail.base2.y);
-  }
-  ctx.lineTo(right, bottom - r);
-  ctx.arcTo(right, bottom, right - r, bottom, r);
-  // Bottom edge, traced right→left (so base2.x first, then base1.x).
-  if (onBottom && tail) {
-    ctx.lineTo(tail.base2.x, bottom);
-    ctx.lineTo(tail.tip.x, tail.tip.y);
-    ctx.lineTo(tail.base1.x, bottom);
-  }
-  ctx.lineTo(ox + r, bottom);
-  ctx.arcTo(ox, bottom, ox, bottom - r, r);
-  // Left edge, traced bottom→top (so base2.y first, then base1.y).
-  if (onLeft && tail) {
-    ctx.lineTo(ox, tail.base2.y);
-    ctx.lineTo(tail.tip.x, tail.tip.y);
-    ctx.lineTo(ox, tail.base1.y);
-  }
-  ctx.lineTo(ox, oy + r);
-  ctx.arcTo(ox, oy, ox + r, oy, r);
   ctx.closePath();
 }
 

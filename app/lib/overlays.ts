@@ -88,18 +88,77 @@ export function speechTailPoints(
 }
 
 /**
- * SVG path `d` for a speech balloon — the rounded-rect body plus its pointer
- * tail traced as ONE continuous outline (#327). This mirrors the canvas
- * `traceBalloonPath` used by the export (#317): the tail is a detour in the
- * body's perimeter on whichever edge it sits, so filling and stroking this
- * single path yields an integrated balloon with no internal body/tail seam.
- * Drawing the editor preview from one path (one fill, one stroke) removes the
- * seam the old separate-stroked-polygon-under-a-stroked-box rendering left.
+ * One drawing command in a balloon outline. `M`/`L` are move/line to (x,y); `A`
+ * is a rounded corner — round the corner whose vertex is (cornerX,cornerY),
+ * ending at (x,y), with radius r. The command set maps 1:1 onto both a canvas
+ * path (`moveTo`/`lineTo`/`arcTo`) and an SVG path (`M`/`L`/`A`), so the editor
+ * preview and the export trace the EXACT same outline (#341).
+ */
+export type BalloonCommand =
+  | { k: "M"; x: number; y: number }
+  | { k: "L"; x: number; y: number }
+  | { k: "A"; cornerX: number; cornerY: number; x: number; y: number; r: number };
+
+/**
+ * The single source of truth for a speech balloon's outline (#341): the
+ * rounded-rect body plus its pointer tail as ONE continuous perimeter, with the
+ * tail folded into whichever edge it sits on (a detour out to the tip and back),
+ * never a separate shape. Both the editor-preview SVG path (balloonPathD) and
+ * the export canvas (traceBalloonPath in export-cut) are built from this list,
+ * so they cannot diverge and there is no internal body/tail seam in either.
  *
  * `tail` is null for a tailless bubble (no tailAnchor, or a tip inside the
- * bubble), which traces a plain rounded rectangle. Coordinates are in the same
- * pixel space as the bubble rect, so the caller chooses the scale (export uses
- * natural-image px; the preview uses display px).
+ * bubble) → a plain rounded rectangle. Coordinates are in the caller's pixel
+ * space (export uses natural-image px; the preview uses display px).
+ */
+export function balloonOutline(
+  ox: number,
+  oy: number,
+  ow: number,
+  oh: number,
+  tail: TailPoints | null,
+  radius?: number,
+): BalloonCommand[] {
+  const r = radius ?? Math.max(0, Math.min(8, ow / 2, oh / 2));
+  const right = ox + ow;
+  const bottom = oy + oh;
+
+  // speechTailPoints anchors both base points exactly on one bubble edge, so the
+  // edge each comparison identifies is exact (no float fuzz needed).
+  const onTop = !!tail && tail.base1.y === oy && tail.base2.y === oy;
+  const onRight = !!tail && tail.base1.x === right && tail.base2.x === right;
+  const onBottom = !!tail && tail.base1.y === bottom && tail.base2.y === bottom;
+  const onLeft = !!tail && tail.base1.x === ox && tail.base2.x === ox;
+
+  const cmds: BalloonCommand[] = [{ k: "M", x: ox + r, y: oy }];
+  // Top edge, traced left→right (base1.x < base2.x).
+  if (onTop && tail) {
+    cmds.push({ k: "L", x: tail.base1.x, y: oy }, { k: "L", x: tail.tip.x, y: tail.tip.y }, { k: "L", x: tail.base2.x, y: oy });
+  }
+  cmds.push({ k: "L", x: right - r, y: oy }, { k: "A", cornerX: right, cornerY: oy, x: right, y: oy + r, r });
+  // Right edge, traced top→bottom (base1.y < base2.y).
+  if (onRight && tail) {
+    cmds.push({ k: "L", x: right, y: tail.base1.y }, { k: "L", x: tail.tip.x, y: tail.tip.y }, { k: "L", x: right, y: tail.base2.y });
+  }
+  cmds.push({ k: "L", x: right, y: bottom - r }, { k: "A", cornerX: right, cornerY: bottom, x: right - r, y: bottom, r });
+  // Bottom edge, traced right→left (so base2.x first, then base1.x).
+  if (onBottom && tail) {
+    cmds.push({ k: "L", x: tail.base2.x, y: bottom }, { k: "L", x: tail.tip.x, y: tail.tip.y }, { k: "L", x: tail.base1.x, y: bottom });
+  }
+  cmds.push({ k: "L", x: ox + r, y: bottom }, { k: "A", cornerX: ox, cornerY: bottom, x: ox, y: bottom - r, r });
+  // Left edge, traced bottom→top (so base2.y first, then base1.y).
+  if (onLeft && tail) {
+    cmds.push({ k: "L", x: ox, y: tail.base2.y }, { k: "L", x: tail.tip.x, y: tail.tip.y }, { k: "L", x: ox, y: tail.base1.y });
+  }
+  cmds.push({ k: "L", x: ox, y: oy + r }, { k: "A", cornerX: ox, cornerY: oy, x: ox + r, y: oy, r });
+  return cmds;
+}
+
+/**
+ * SVG path `d` for a speech balloon, built from the shared {@link balloonOutline}
+ * (#327, #341). Filling and stroking this single path yields an integrated
+ * balloon with no internal body/tail seam; it traces the identical outline the
+ * export canvas does.
  */
 export function balloonPathD(
   ox: number,
@@ -109,40 +168,11 @@ export function balloonPathD(
   tail: TailPoints | null,
   radius?: number,
 ): string {
-  const r = radius ?? Math.max(0, Math.min(8, ow / 2, oh / 2));
-  const right = ox + ow;
-  const bottom = oy + oh;
-
-  // speechTailPoints anchors both base points exactly on one bubble edge, so the
-  // edge each comparison identifies is exact (no float fuzz needed) — same test
-  // as traceBalloonPath so preview and export agree on which edge the tail joins.
-  const onTop = !!tail && tail.base1.y === oy && tail.base2.y === oy;
-  const onRight = !!tail && tail.base1.x === right && tail.base2.x === right;
-  const onBottom = !!tail && tail.base1.y === bottom && tail.base2.y === bottom;
-  const onLeft = !!tail && tail.base1.x === ox && tail.base2.x === ox;
-
-  const cmds: string[] = [`M ${ox + r} ${oy}`];
-  // Top edge, traced left→right (base1.x < base2.x).
-  if (onTop && tail) {
-    cmds.push(`L ${tail.base1.x} ${oy}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${tail.base2.x} ${oy}`);
-  }
-  cmds.push(`L ${right - r} ${oy}`, `A ${r} ${r} 0 0 1 ${right} ${oy + r}`);
-  // Right edge, traced top→bottom (base1.y < base2.y).
-  if (onRight && tail) {
-    cmds.push(`L ${right} ${tail.base1.y}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${right} ${tail.base2.y}`);
-  }
-  cmds.push(`L ${right} ${bottom - r}`, `A ${r} ${r} 0 0 1 ${right - r} ${bottom}`);
-  // Bottom edge, traced right→left (so base2.x first, then base1.x).
-  if (onBottom && tail) {
-    cmds.push(`L ${tail.base2.x} ${bottom}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${tail.base1.x} ${bottom}`);
-  }
-  cmds.push(`L ${ox + r} ${bottom}`, `A ${r} ${r} 0 0 1 ${ox} ${bottom - r}`);
-  // Left edge, traced bottom→top (so base2.y first, then base1.y).
-  if (onLeft && tail) {
-    cmds.push(`L ${ox} ${tail.base2.y}`, `L ${tail.tip.x} ${tail.tip.y}`, `L ${ox} ${tail.base1.y}`);
-  }
-  cmds.push(`L ${ox} ${oy + r}`, `A ${r} ${r} 0 0 1 ${ox + r} ${oy}`, "Z");
-  return cmds.join(" ");
+  const parts = balloonOutline(ox, oy, ow, oh, tail, radius).map((c) =>
+    c.k === "A" ? `A ${c.r} ${c.r} 0 0 1 ${c.x} ${c.y}` : `${c.k} ${c.x} ${c.y}`,
+  );
+  parts.push("Z");
+  return parts.join(" ");
 }
 
 /**
