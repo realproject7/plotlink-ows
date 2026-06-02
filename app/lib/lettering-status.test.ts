@@ -104,14 +104,22 @@ describe("overlaysSignature (#336)", () => {
 });
 
 describe("isExportStale (#336, re1)", () => {
+  const sig = (overlays: Overlay[]) => overlaysSignature(overlays);
   it("is false when the cut was never exported/uploaded", () => {
-    expect(isExportStale({ exported: false, uploaded: false, baseline: [ov()], current: [ov({ x: 0.9 })] })).toBe(false);
+    expect(isExportStale({ exported: false, uploaded: false, baselineSig: sig([ov()]), current: [ov({ x: 0.9 })] })).toBe(false);
   });
   it("is false when overlays are unchanged since export", () => {
-    expect(isExportStale({ exported: true, uploaded: true, baseline: [ov()], current: [ov()] })).toBe(false);
+    expect(isExportStale({ exported: true, uploaded: true, baselineSig: sig([ov()]), current: [ov()] })).toBe(false);
   });
   it("is true when overlays changed after export/upload", () => {
-    expect(isExportStale({ exported: true, uploaded: false, baseline: [ov()], current: [ov({ text: "edited" })] })).toBe(true);
-    expect(isExportStale({ exported: false, uploaded: true, baseline: [ov()], current: [ov({ x: 0.4 })] })).toBe(true);
+    expect(isExportStale({ exported: true, uploaded: false, baselineSig: sig([ov()]), current: [ov({ text: "edited" })] })).toBe(true);
+    expect(isExportStale({ exported: false, uploaded: true, baselineSig: sig([ov()]), current: [ov({ x: 0.4 })] })).toBe(true);
+  });
+  it("clears once the baseline is advanced to the current overlays (re-export)", () => {
+    const edited = [ov({ text: "edited" })];
+    // Stale against the old baseline...
+    expect(isExportStale({ exported: true, uploaded: true, baselineSig: sig([ov()]), current: edited })).toBe(true);
+    // ...not stale once the baseline matches what was re-exported.
+    expect(isExportStale({ exported: true, uploaded: true, baselineSig: sig(edited), current: edited })).toBe(false);
   });
 });

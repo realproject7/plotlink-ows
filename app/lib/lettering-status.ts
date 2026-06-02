@@ -79,11 +79,12 @@ export function overlaysSignature(overlays: Overlay[] | undefined): string {
 export function isExportStale(opts: {
   exported: boolean;
   uploaded: boolean;
-  baseline: Overlay[] | undefined;
+  /** Signature of the overlays that match the recorded export (see overlaysSignature). */
+  baselineSig: string;
   current: Overlay[] | undefined;
 }): boolean {
   if (!opts.exported && !opts.uploaded) return false;
-  return overlaysSignature(opts.baseline) !== overlaysSignature(opts.current);
+  return opts.baselineSig !== overlaysSignature(opts.current);
 }
 
 export type ScriptLineType = "speech" | "narration" | "sfx";

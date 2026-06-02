@@ -8,7 +8,7 @@ import {
 } from "@app-lib/fonts";
 import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
-import { cutLetteringChecklist, cutScriptLines, isExportStale, type ScriptLine } from "@app-lib/lettering-status";
+import { cutLetteringChecklist, cutScriptLines, isExportStale, overlaysSignature, type ScriptLine } from "@app-lib/lettering-status";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -152,6 +152,14 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   const autoPlacedOverlays =
     invalidOverlayCount === 0 && overlayNormalization.changed && overlayNormalization.overlays.length > 0;
   const [overlays, setOverlays] = useState<Overlay[]>(() => overlayNormalization.overlays as Overlay[]);
+  // Signature of the overlays that match the current export/upload (#336, re1).
+  // Captured (already normalized like the live `overlays`) when the cut opens so
+  // a load-time normalization isn't mistaken for a user edit, and advanced to the
+  // live overlays after a successful re-export so the stale flag clears without
+  // closing the editor. As state, so updating it recomputes staleExport.
+  const [exportBaselineSig, setExportBaselineSig] = useState(() =>
+    overlaysSignature(overlayNormalization.overlays as Overlay[]),
+  );
   // Offscreen canvas to measure text exactly like the export canvas, so the
   // preview wraps/sizes bubble text identically to the final image (#310).
   const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -347,6 +355,9 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         const data = await res.json();
         setExportError(data.error || "Export failed");
       } else {
+        // The just-exported overlays are now the export baseline, so the stale
+        // warning/checklist clear immediately without closing the editor (re1).
+        setExportBaselineSig(overlaysSignature(overlays));
         onExported?.();
       }
     } catch (err) {
@@ -364,31 +375,25 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // apart. Non-blocking: overlap can be intentional, so it never blocks export.
   const overlapPairs = useMemo(() => detectOverlappingOverlays(overlays), [overlays]);
 
-  // Baseline overlays captured when this cut opened (already normalized the same
-  // way as the live `overlays` state), so we can tell a real user edit from a
-  // load-time normalization (#336, re1). Re-baselines when a different cut opens
-  // without a remount.
-  const baselineRef = useRef<{ id: number; overlays: Overlay[] }>({
-    id: cut.id,
-    overlays: overlayNormalization.overlays as Overlay[],
-  });
-  if (baselineRef.current.id !== cut.id) {
-    baselineRef.current = { id: cut.id, overlays: overlayNormalization.overlays as Overlay[] };
-  }
+  // Re-baseline when a different cut opens without a remount (rare — the parent
+  // normally unmounts the editor between cuts).
+  const baselineCutIdRef = useRef(cut.id);
+  useEffect(() => {
+    if (baselineCutIdRef.current !== cut.id) {
+      baselineCutIdRef.current = cut.id;
+      setExportBaselineSig(overlaysSignature(overlayNormalization.overlays as Overlay[]));
+    }
+  }, [cut.id, overlayNormalization.overlays]);
 
   // The recorded export/upload is stale once the writer edits bubbles since it
   // was produced — the final image/uploaded URL no longer match the screen, so
   // export & upload must be redone before they count again (#336, re1).
-  const staleExport = useMemo(
-    () =>
-      isExportStale({
-        exported: !!cut.finalImagePath || !!cut.exportedAt,
-        uploaded: !!cut.uploadedUrl || !!cut.uploadedCid,
-        baseline: baselineRef.current.overlays,
-        current: overlays,
-      }),
-    [cut.finalImagePath, cut.exportedAt, cut.uploadedUrl, cut.uploadedCid, overlays],
-  );
+  const staleExport = isExportStale({
+    exported: !!cut.finalImagePath || !!cut.exportedAt,
+    uploaded: !!cut.uploadedUrl || !!cut.uploadedCid,
+    baselineSig: exportBaselineSig,
+    current: overlays,
+  });
 
   // Per-cut lettering checklist + insertable script lines (#336). The checklist
   // shows progress (clean image → script text → bubbles placed → exported →
