@@ -458,6 +458,28 @@ describe("LetteringEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // #310: the editor preview must wrap bubble dialogue into multiple lines
+  // (shared layout with the export), not a single truncated label.
+  it("renders wrapped multi-line bubble text in the preview (WYSIWYG)", async () => {
+    const authFetch = makeAssetAuthFetch();
+    const longText = "the quick brown fox jumps over the lazy dog and keeps on running through";
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ id: "ov1", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.35, text: longText, tailAnchor: { x: 0.5, y: 1.2 } }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    const textBox = await screen.findByTestId("overlay-text-ov1");
+    const lines = Array.from(textBox.querySelectorAll("span.block")).map((s) => s.textContent);
+    expect(lines.length).toBeGreaterThan(1); // wrapped, not one line
+    expect(lines.join(" ")).toBe(longText); // no words lost across the wrapped lines
+  });
+
   // #309: a cut authored with a semantic `position` overlay (no numeric geometry)
   // must be repaired on load so it renders and exports, with a visible note.
   it("normalizes a semantic-position overlay on load and surfaces a repair note", async () => {

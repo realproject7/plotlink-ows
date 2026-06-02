@@ -1,4 +1,5 @@
 import { speechTailPoints, validateOverlaysForExport } from "@app-lib/overlays";
+import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
 interface Overlay {
@@ -108,28 +109,50 @@ export function renderOverlays(
     }
 
     const font = overlay.type === "sfx" ? displayFont : bodyFont;
-    const fontSize = Math.max(10, Math.min(oh * 0.4, 24));
-    ctx.font = `${fontSize}px ${font}`;
+    const hasSpeaker = overlay.type !== "sfx" && !!overlay.speaker;
+    // Measure with the actual draw font so wrapping matches what is rendered.
+    const measure = (text: string, fontSize: number): number => {
+      ctx.font = `${fontSize}px ${font}`;
+      return ctx.measureText(text).width;
+    };
+    const { minFontSize, maxFontSize } = defaultBubbleFontRange(height);
+    const layout = layoutBubbleText(measure, overlay.text, ow, oh, {
+      minFontSize,
+      maxFontSize,
+      hasSpeaker,
+    });
+
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    const cx = ox + ow / 2;
+    const speakerStrip = hasSpeaker ? layout.speakerFontSize * 1.2 : 0;
 
-    if (overlay.type === "sfx") {
-      ctx.fillStyle = "#000";
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 3;
-      ctx.strokeText(overlay.text, ox + ow / 2, oy + oh / 2, ow - 8);
-      ctx.fillText(overlay.text, ox + ow / 2, oy + oh / 2, ow - 8);
-    } else {
-      ctx.fillStyle = "#1a1a1a";
-      if (overlay.speaker) {
-        const speakerSize = fontSize * 0.7;
-        ctx.font = `bold ${speakerSize}px ${font}`;
-        ctx.fillText(overlay.speaker, ox + ow / 2, oy + oh * 0.3, ow - 8);
-        ctx.font = `${fontSize}px ${font}`;
-        ctx.fillText(overlay.text, ox + ow / 2, oy + oh * 0.65, ow - 8);
+    // Draw the speaker label on its own strip at the top of the bubble.
+    if (hasSpeaker) {
+      ctx.fillStyle = "#3a3a3a";
+      ctx.font = `bold ${layout.speakerFontSize}px ${font}`;
+      ctx.fillText(overlay.speaker as string, cx, oy + speakerStrip / 2 + oh * 0.04, ow - 6);
+    }
+
+    // Lay out the wrapped body lines, vertically centered in the remaining box.
+    const bodyTop = oy + speakerStrip;
+    const bodyH = oh - speakerStrip;
+    const totalTextH = layout.lines.length * layout.lineHeight;
+    let lineY = bodyTop + bodyH / 2 - totalTextH / 2 + layout.lineHeight / 2;
+
+    ctx.font = `${layout.fontSize}px ${font}`;
+    for (const line of layout.lines) {
+      if (overlay.type === "sfx") {
+        ctx.fillStyle = "#000";
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 3;
+        ctx.strokeText(line, cx, lineY);
+        ctx.fillText(line, cx, lineY);
       } else {
-        ctx.fillText(overlay.text, ox + ow / 2, oy + oh / 2, ow - 8);
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillText(line, cx, lineY);
       }
+      lineY += layout.lineHeight;
     }
   }
 }

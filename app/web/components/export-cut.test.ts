@@ -29,6 +29,10 @@ function recordingCtx() {
     closePath() {},
     moveTo(x: number, y: number) { moveTos.push({ x, y }); },
     lineTo(x: number, y: number) { lineTos.push({ x, y }); },
+    measureText(this: { font: string }, text: string) {
+      const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
+      return { width: text.length * fs * 0.5 } as TextMetrics;
+    },
     roundRect() {},
     rect() {},
     fill() {},
@@ -134,6 +138,61 @@ describe("WebP fallback detection", () => {
   it("JPEG blob type is valid for fallback", () => {
     const jpegBlob = new Blob([new Uint8Array(100)], { type: "image/jpeg" });
     expect(jpegBlob.type).toBe("image/jpeg");
+  });
+});
+
+// Captures fillText(text, x, y) so we can assert wrapped, multi-line body text.
+function textRecordingCtx() {
+  const fillTexts: Array<{ text: string; x: number; y: number }> = [];
+  const ctx = {
+    fillStyle: "", strokeStyle: "", lineWidth: 0, font: "", textAlign: "", textBaseline: "",
+    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, roundRect() {}, rect() {},
+    fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
+    measureText(this: { font: string }, text: string) {
+      const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
+      return { width: text.length * fs * 0.5 } as TextMetrics;
+    },
+    fillText(text: string, x: number, y: number) { fillTexts.push({ text, x, y }); },
+    strokeText() {},
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillTexts };
+}
+
+describe("renderOverlays text wrapping (#310)", () => {
+  const longLine = "the quick brown fox jumps over the lazy dog and then keeps running";
+
+  it("wraps long speech dialogue across multiple lines instead of one compressed line", () => {
+    const { ctx, fillTexts } = textRecordingCtx();
+    renderOverlays(ctx, [{ id: "s", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.25, text: longLine }], 800, 600, "Body", "Display");
+    // More than one body line drawn, each at a distinct vertical position.
+    expect(fillTexts.length).toBeGreaterThan(1);
+    const ys = new Set(fillTexts.map((f) => Math.round(f.y)));
+    expect(ys.size).toBeGreaterThan(1);
+    // The original text was split (no single fillText carries the whole line).
+    expect(fillTexts.some((f) => f.text === longLine)).toBe(false);
+    // All words preserved across the drawn lines.
+    expect(fillTexts.map((f) => f.text).join(" ")).toBe(longLine);
+  });
+
+  it("draws the speaker label plus wrapped body for a speech overlay with a speaker", () => {
+    const { ctx, fillTexts } = textRecordingCtx();
+    renderOverlays(ctx, [{ id: "s", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.25, text: longLine, speaker: "Hana" }], 800, 600, "Body", "Display");
+    expect(fillTexts.some((f) => f.text === "Hana")).toBe(true);
+    // Body still wrapped beneath the speaker.
+    expect(fillTexts.filter((f) => f.text !== "Hana").length).toBeGreaterThan(1);
+  });
+
+  it("wraps narration text across multiple lines", () => {
+    const n = textRecordingCtx();
+    renderOverlays(n.ctx, [{ id: "n", type: "narration", x: 0.05, y: 0.05, width: 0.4, height: 0.25, text: longLine }], 800, 600, "Body", "Display");
+    expect(n.fillTexts.length).toBeGreaterThan(1);
+  });
+
+  it("wraps SFX text too (not forced onto one compressed line)", () => {
+    const s = textRecordingCtx();
+    renderOverlays(s.ctx, [{ id: "f", type: "sfx", x: 0.05, y: 0.05, width: 0.5, height: 0.2, text: "crash bang boom wallop smash" }], 800, 600, "Body", "Display");
+    // SFX uses stroke+fill per line; assert multiple distinct fill lines drawn.
+    expect(s.fillTexts.length).toBeGreaterThan(1);
   });
 });
 

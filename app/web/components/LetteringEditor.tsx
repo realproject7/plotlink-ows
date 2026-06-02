@@ -7,6 +7,7 @@ import {
   type FontEntry,
 } from "@app-lib/fonts";
 import { speechTailPoints, normalizeOverlays } from "@app-lib/overlays";
+import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -120,6 +121,18 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   const autoPlacedOverlays =
     invalidOverlayCount === 0 && overlayNormalization.changed && overlayNormalization.overlays.length > 0;
   const [overlays, setOverlays] = useState<Overlay[]>(() => overlayNormalization.overlays as Overlay[]);
+  // Offscreen canvas to measure text exactly like the export canvas, so the
+  // preview wraps/sizes bubble text identically to the final image (#310).
+  const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const measureWidth = useCallback((fontFamily: string) => (text: string, fontSize: number): number => {
+    if (!measureCanvasRef.current && typeof document !== "undefined") {
+      measureCanvasRef.current = document.createElement("canvas");
+    }
+    const mctx = measureCanvasRef.current?.getContext("2d");
+    if (!mctx) return text.length * fontSize * 0.5; // jsdom fallback
+    mctx.font = `${fontSize}px ${fontFamily}`;
+    return mctx.measureText(text).width;
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -437,12 +450,41 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 }`}
                 style={{ left, top, width, height }}
               >
-                <span
-                  className="text-[9px] px-1 text-muted truncate block pointer-events-none"
-                  style={{ fontFamily: overlay.type === "sfx" ? displayFontFamily : bodyFontFamily }}
-                >
-                  {overlay.text || TYPE_LABEL[overlay.type]}
-                </span>
+                {(() => {
+                  const fontFamily = overlay.type === "sfx" ? displayFontFamily : bodyFontFamily;
+                  if (!overlay.text) {
+                    return (
+                      <span className="text-[9px] px-1 text-muted truncate block pointer-events-none" style={{ fontFamily }}>
+                        {TYPE_LABEL[overlay.type]}
+                      </span>
+                    );
+                  }
+                  const hasSpeaker = overlay.type !== "sfx" && !!overlay.speaker;
+                  const { minFontSize, maxFontSize } = defaultBubbleFontRange(imageBounds.height);
+                  const layout = layoutBubbleText(measureWidth(fontFamily), overlay.text, width, height, {
+                    minFontSize,
+                    maxFontSize,
+                    hasSpeaker,
+                  });
+                  return (
+                    <div
+                      className="absolute inset-0 flex flex-col items-center justify-center px-1 overflow-hidden pointer-events-none text-center"
+                      style={{ fontFamily }}
+                      data-testid={`overlay-text-${overlay.id}`}
+                    >
+                      {hasSpeaker && (
+                        <span className="font-bold text-[#3a3a3a] block" style={{ fontSize: layout.speakerFontSize, lineHeight: 1.2 }}>
+                          {overlay.speaker}
+                        </span>
+                      )}
+                      <span className="text-[#1a1a1a]" style={{ fontSize: layout.fontSize, lineHeight: `${layout.lineHeight}px` }}>
+                        {layout.lines.map((line, i) => (
+                          <span key={i} className="block">{line}</span>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {isSelected && (
                   <div
                     onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, overlay.id, "resize"); }}
