@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
 import { LetteringEditor } from "./LetteringEditor";
 import { installObjectUrlStub, makeAssetAuthFetch, MOCK_BLOB_URL } from "./asset-test-utils";
 
@@ -456,5 +456,85 @@ describe("LetteringEditor", () => {
 
     fireEvent.click(screen.getByText("Close"));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // #309: a cut authored with a semantic `position` overlay (no numeric geometry)
+  // must be repaired on load so it renders and exports, with a visible note.
+  it("normalizes a semantic-position overlay on load and surfaces a repair note", async () => {
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", speaker: "Hana", text: "Hi", position: "upper-left" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(await screen.findByTestId("overlay-repair-note")).toBeInTheDocument();
+    // Repaired (not dropped) → still counted as one overlay.
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+  });
+
+  it("surfaces a blocking note (not a silent drop) for an un-placeable overlay", async () => {
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const note = await screen.findByTestId("overlay-repair-note");
+    expect(note).toHaveTextContent(/cannot be exported/);
+    expect(screen.getByTestId("discard-invalid-overlays")).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+  });
+
+  // #309 (re1): clicking Export on a cut with an un-placeable overlay must NOT
+  // save/export the silently-reduced set — it must show a clear error.
+  it("blocks export (no save) for an un-placeable overlay and shows a clear error", async () => {
+    const onSave = vi.fn();
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByTestId("overlay-repair-note");
+    fireEvent.click(screen.getByTestId("export-btn"));
+    // Clear, blocking error; the reduced overlay set is neither saved nor exported.
+    await screen.findByText(/cannot be exported — re-place it or discard it first/);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("after discarding unplaceable overlays, export is no longer blocked (proceeds to save)", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByTestId("discard-invalid-overlays");
+    fireEvent.click(screen.getByTestId("discard-invalid-overlays"));
+    // Note flips to the discarded state; the export guard no longer blocks.
+    await waitFor(() => expect(screen.getByTestId("overlay-repair-note")).toHaveTextContent(/Discarded/));
+    fireEvent.click(screen.getByTestId("export-btn"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
   });
 });

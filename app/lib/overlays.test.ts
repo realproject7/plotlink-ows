@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { toPixel, toNorm, createOverlay, speechTailPoints } from "./overlays";
+import {
+  toPixel,
+  toNorm,
+  createOverlay,
+  speechTailPoints,
+  normalizeOverlay,
+  normalizeOverlays,
+  anchorFromPosition,
+  validateOverlaysForExport,
+} from "./overlays";
 
 describe("toPixel", () => {
   it("converts 0.5 to half of container", () => {
@@ -112,5 +121,112 @@ describe("speechTailPoints", () => {
   it("returns null when the tip falls inside the bubble (no visible tail)", () => {
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.5, y: 0.5 })).toBeNull();
     expect(speechTailPoints(ox, oy, ow, oh, { x: 0.9, y: 0.9 })).toBeNull();
+  });
+});
+
+describe("anchorFromPosition (#309)", () => {
+  it("maps corner/edge keywords to a top-left anchor for the box", () => {
+    const w = 0.4, h = 0.16;
+    expect(anchorFromPosition("upper-left", w, h)).toEqual({ x: 0.05, y: 0.05 });
+    expect(anchorFromPosition("top left", w, h)).toEqual({ x: 0.05, y: 0.05 });
+    const ur = anchorFromPosition("upper-right", w, h)!;
+    expect(ur.x).toBeCloseTo(1 - w - 0.05);
+    expect(ur.y).toBe(0.05);
+    const bc = anchorFromPosition("bottom-center", w, h)!;
+    expect(bc.x).toBeCloseTo((1 - w) / 2);
+    expect(bc.y).toBeCloseTo(1 - h - 0.05);
+    expect(anchorFromPosition("center", w, h)!.y).toBeCloseTo((1 - h) / 2);
+  });
+
+  it("returns null for an unrecognized position", () => {
+    expect(anchorFromPosition("somewhere", 0.4, 0.16)).toBeNull();
+    expect(anchorFromPosition("", 0.4, 0.16)).toBeNull();
+  });
+});
+
+describe("normalizeOverlay (#309)", () => {
+  it("repairs a semantic-position overlay into valid numeric geometry", () => {
+    const o = normalizeOverlay({ type: "speech", speaker: "Hana", text: "Hi", position: "upper-left" });
+    expect(o).not.toBeNull();
+    expect(o!.type).toBe("speech");
+    expect(typeof o!.id).toBe("string");
+    expect(Number.isFinite(o!.x)).toBe(true);
+    expect(Number.isFinite(o!.y)).toBe(true);
+    expect(o!.width).toBeGreaterThan(0);
+    expect(o!.height).toBeGreaterThan(0);
+    expect(o!.speaker).toBe("Hana");
+    expect(o!.tailAnchor).toEqual({ x: 0.5, y: 1.2 }); // default tail filled
+  });
+
+  it("preserves an already-valid overlay (incl. id and tailAnchor)", () => {
+    const valid = { id: "ov-1", type: "speech", x: 0.1, y: 0.2, width: 0.3, height: 0.15, text: "Yo", speaker: "Min", tailAnchor: { x: 0.4, y: 1.1 } };
+    const o = normalizeOverlay(valid);
+    expect(o).toEqual(valid);
+  });
+
+  it("returns null when there is no numeric geometry and no recognizable position", () => {
+    expect(normalizeOverlay({ type: "speech", text: "orphan" })).toBeNull();
+    expect(normalizeOverlay({ type: "speech", text: "orphan", position: "nowhere" })).toBeNull();
+    expect(normalizeOverlay(null)).toBeNull();
+    expect(normalizeOverlay("nope")).toBeNull();
+  });
+
+  it("clamps numeric geometry into range and defaults an unknown type to speech", () => {
+    const o = normalizeOverlay({ type: "weird", x: 2, y: -1, width: 5, height: 0.1, text: "" })!;
+    expect(o.type).toBe("speech");
+    expect(o.x).toBe(1);
+    expect(o.y).toBe(0);
+    expect(o.width).toBe(1);
+  });
+});
+
+describe("normalizeOverlays (#309)", () => {
+  it("keeps placeable overlays, drops un-placeable ones, and flags changed", () => {
+    const res = normalizeOverlays([
+      { id: "a", type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "ok" }, // canonical
+      { type: "narration", text: "caption", position: "bottom" },                       // repairable
+      { type: "speech", text: "orphan" },                                               // invalid
+    ]);
+    expect(res.overlays).toHaveLength(2);
+    expect(res.invalid).toHaveLength(1);
+    expect(res.invalid[0].index).toBe(2);
+    expect(res.changed).toBe(true);
+  });
+
+  it("reports no change for an all-canonical array", () => {
+    const res = normalizeOverlays([
+      { id: "a", type: "narration", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "ok" },
+    ]);
+    expect(res.changed).toBe(false);
+    expect(res.invalid).toEqual([]);
+  });
+
+  it("treats a non-array as empty + changed", () => {
+    expect(normalizeOverlays(undefined)).toEqual({ overlays: [], changed: true, invalid: [] });
+  });
+});
+
+describe("validateOverlaysForExport (#309)", () => {
+  it("passes when every overlay has finite positive geometry", () => {
+    const ok = validateOverlaysForExport([
+      { id: "a", type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "" },
+    ]);
+    expect(ok.valid).toBe(true);
+  });
+
+  it("blocks an overlay with missing/NaN geometry, naming it", () => {
+    const bad = validateOverlaysForExport([
+      // semantic-position overlay that escaped normalization → NaN geometry
+      { id: "a", type: "speech", text: "", x: NaN, y: 0.1, width: 0.2, height: 0.1 } as unknown as Parameters<typeof validateOverlaysForExport>[0][number],
+    ]);
+    expect(bad.valid).toBe(false);
+    expect(bad.error).toMatch(/invalid geometry/);
+  });
+
+  it("blocks zero/negative width", () => {
+    const bad = validateOverlaysForExport([
+      { id: "a", type: "sfx", x: 0.1, y: 0.1, width: 0, height: 0.1, text: "" },
+    ]);
+    expect(bad.valid).toBe(false);
   });
 });

@@ -194,6 +194,28 @@ describe("generateStoryInstructions", () => {
     expect(out).not.toContain("Sync clean images");
   });
 
+  // #309: overlays must use the real OWS schema (numeric geometry), never a
+  // semantic `position` string that renders nothing and exports unlettered.
+  it("cartoon output documents the real overlay schema and forbids semantic positions", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("Overlay schema");
+    // Required numeric geometry fields named.
+    for (const f of ["`id`", "`type`", "`x`", "`y`", "`width`", "`height`", "`text`", "`tailAnchor`"]) {
+      expect(out).toContain(f);
+    }
+    // Leave-empty guidance + explicit ban on the `position` string form.
+    expect(out).toContain("Leave `overlays` empty");
+    expect(out).toContain('semantic `position` string');
+    expect(out).toContain("There is NO `position` field");
+  });
+
+  it("the overlay schema guidance is present for both Codex and Claude cartoon (provider-neutral)", () => {
+    expect(generateStoryInstructions("cartoon", "codex")).toContain("Overlay schema");
+    expect(generateStoryInstructions("cartoon", "claude")).toContain("Overlay schema");
+    // ...but not in fiction.
+    expect(generateStoryInstructions("fiction")).not.toContain("Overlay schema");
+  });
+
   // #307: Codex cartoon image generation must not silently hang — confirm
   // capability, checkpoint, and fail visibly instead of an indefinite Working
   // state. Match against a whitespace-normalized copy so line-wrapping of the
