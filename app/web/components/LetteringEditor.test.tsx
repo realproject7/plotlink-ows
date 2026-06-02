@@ -474,10 +474,59 @@ describe("LetteringEditor", () => {
       />,
     );
     await simulateImageLoad();
-    const textBox = await screen.findByTestId("overlay-text-ov1");
+    // The exact (canvas-measured) layout only renders once fonts are ready.
+    await waitFor(() =>
+      expect(screen.getByTestId("overlay-text-ov1")).toHaveAttribute("data-fonts-ready", "true"),
+    );
+    const textBox = screen.getByTestId("overlay-text-ov1");
     const lines = Array.from(textBox.querySelectorAll("span.block")).map((s) => s.textContent);
     expect(lines.length).toBeGreaterThan(1); // wrapped, not one line
     expect(lines.join(" ")).toBe(longText); // no words lost across the wrapped lines
+  });
+
+  // #310 (re1): the preview must not freeze fallback-font line breaks — the exact
+  // canvas-measured layout is gated on the same font-readiness signal as export,
+  // and recomputes once fonts load.
+  it("defers the exact preview layout until fonts are ready, then recomputes", async () => {
+    // Control font readiness: ensureFontsReady awaits document.fonts.load.
+    let resolveLoad: (v: unknown) => void = () => {};
+    const loadPromise = new Promise((r) => { resolveLoad = r; });
+    const fontsStub = {
+      load: vi.fn(() => loadPromise),
+      check: vi.fn(() => false),
+      ready: Promise.resolve(),
+    };
+    const original = Object.getOwnPropertyDescriptor(document, "fonts");
+    Object.defineProperty(document, "fonts", { value: fontsStub, configurable: true });
+    try {
+      const authFetch = makeAssetAuthFetch();
+      render(
+        <LetteringEditor
+          storyName="story"
+          cut={makeCut({ overlays: [{ id: "ovf", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.35, text: "wrap me across multiple lines please now" }] as unknown as Overlay[] })}
+          plotFile="plot-01"
+          authFetch={authFetch}
+          onSave={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      await simulateImageLoad();
+      // Before fonts load: transient render, NOT the canvas-measured line spans.
+      const before = await screen.findByTestId("overlay-text-ovf");
+      expect(before).toHaveAttribute("data-fonts-ready", "false");
+      expect(before.querySelectorAll("span.block").length).toBe(0);
+      expect(fontsStub.load).toHaveBeenCalled(); // export's readiness signal used
+
+      // Fonts become ready → preview recomputes the exact layout.
+      await act(async () => { resolveLoad([{}]); await Promise.resolve(); });
+      await waitFor(() =>
+        expect(screen.getByTestId("overlay-text-ovf")).toHaveAttribute("data-fonts-ready", "true"),
+      );
+      expect(screen.getByTestId("overlay-text-ovf").querySelectorAll("span.block").length).toBeGreaterThan(1);
+    } finally {
+      if (original) Object.defineProperty(document, "fonts", original);
+      else Reflect.deleteProperty(document, "fonts");
+    }
   });
 
   // #309: a cut authored with a semantic `position` overlay (no numeric geometry)

@@ -106,6 +106,21 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     loadFont(displayFont);
   }, [bodyFont, displayFont]);
 
+  // Wait for the same fonts export waits on, then allow the exact preview layout
+  // to compute/recompute with the loaded font metrics (#310, re1).
+  useEffect(() => {
+    let cancelled = false;
+    setFontsReady(false);
+    (async () => {
+      try {
+        const { ensureFontsReady } = await import("./export-cut");
+        await ensureFontsReady([bodyFont.family, displayFont.family]);
+      } catch { /* best effort — still render the preview */ }
+      if (!cancelled) setFontsReady(true);
+    })();
+    return () => { cancelled = true; };
+  }, [bodyFont.family, displayFont.family]);
+
   // Clean image lives behind requireAuth, so a raw <img src> would 401. Load it
   // via authFetch into a blob object URL and reuse that same URL for export.
   const cleanAsset = useAuthedAsset(storyName, cut.cleanImagePath, authFetch);
@@ -133,6 +148,11 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     mctx.font = `${fontSize}px ${fontFamily}`;
     return mctx.measureText(text).width;
   }, []);
+  // Gate the exact (canvas-measured) preview layout on the SAME font-readiness
+  // signal export uses (ensureFontsReady), so the preview does not freeze line
+  // breaks computed from fallback-font metrics that would diverge from the
+  // exported image (#310, re1). Recomputes once the web fonts are loaded.
+  const [fontsReady, setFontsReady] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -460,6 +480,22 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                     );
                   }
                   const hasSpeaker = overlay.type !== "sfx" && !!overlay.speaker;
+                  if (!fontsReady) {
+                    // Until the web font's metrics are available, don't freeze
+                    // canvas-measured line breaks from fallback metrics (they
+                    // would diverge from export). Show a CSS-wrapped transient;
+                    // the exact layout computes once fonts are ready (#310, re1).
+                    return (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center px-1 overflow-hidden pointer-events-none text-center break-words"
+                        style={{ fontFamily, fontSize: Math.max(9, Math.min(height * 0.05, 16)) }}
+                        data-testid={`overlay-text-${overlay.id}`}
+                        data-fonts-ready="false"
+                      >
+                        {hasSpeaker ? `${overlay.speaker}: ${overlay.text}` : overlay.text}
+                      </div>
+                    );
+                  }
                   const { minFontSize, maxFontSize } = defaultBubbleFontRange(imageBounds.height);
                   const layout = layoutBubbleText(measureWidth(fontFamily), overlay.text, width, height, {
                     minFontSize,
@@ -471,6 +507,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                       className="absolute inset-0 flex flex-col items-center justify-center px-1 overflow-hidden pointer-events-none text-center"
                       style={{ fontFamily }}
                       data-testid={`overlay-text-${overlay.id}`}
+                      data-fonts-ready="true"
                     >
                       {hasSpeaker && (
                         <span className="font-bold text-[#3a3a3a] block" style={{ fontSize: layout.speakerFontSize, lineHeight: 1.2 }}>
