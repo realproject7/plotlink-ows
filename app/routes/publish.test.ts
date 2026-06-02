@@ -126,6 +126,37 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(data.issues.some((i: string) => i.includes("Cut 2"))).toBe(true);
   });
 
+  it("blocks cartoon plot with a precise reason when a recorded cleanImagePath file is missing (#302)", async () => {
+    const storyDir = setupCartoonStory();
+    const cutsFile = createCutsFile("plot-01", 1);
+    cutsFile.cuts[0].cleanImagePath = "assets/plot-01/cut-01-clean.webp"; // recorded, but no file on disk
+    writeCutsFile(storyDir, "plot-01", cutsFile);
+
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](https://ipfs/x)\n<!-- ows:cartoon-cut cut-001 end -->";
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Cut 1 clean image path is recorded but the file is missing");
+    expect(data.issues).toContain("Cut 1 clean image path is recorded but the file is missing");
+  });
+
+  it("does not block an already-uploaded cut for a missing local asset (#302 preserves uploaded)", async () => {
+    const storyDir = setupCartoonStory();
+    const cutsFile = createCutsFile("plot-01", 1);
+    // Uploaded cut: content is on IPFS. A missing LOCAL clean image must not block re-publish.
+    cutsFile.cuts[0].cleanImagePath = "assets/plot-01/cut-01-clean.webp"; // file absent
+    cutsFile.cuts[0].uploadedUrl = "https://ipfs/x";
+    cutsFile.cuts[0].uploadedCid = "cid";
+    writeCutsFile(storyDir, "plot-01", cutsFile);
+
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![C](https://ipfs/x)\n<!-- ows:cartoon-cut cut-001 end -->";
+    const res = await post(publishBody({ content: md }));
+    // Passes the cartoon readiness gate (reaches wallet handling), i.e. it is NOT
+    // rejected with the stale-path reason.
+    const data = await res.json();
+    expect(data.error || "").not.toContain("clean image path is recorded but the file is missing");
+  });
+
   it("blocks cartoon plot when cuts.json is invalid", async () => {
     const storyDir = setupCartoonStory();
     fs.writeFileSync(path.join(storyDir, "plot-01.cuts.json"), "{ not json");

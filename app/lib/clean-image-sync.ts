@@ -4,6 +4,18 @@ export interface CleanImageSyncResult {
   cuts: Cut[];
   changed: boolean;
   synced: number[];
+  /** Cut ids whose stale recorded `cleanImagePath` was cleared back to null
+   *  because the referenced file no longer exists and no valid candidate was
+   *  found (#302). */
+  cleared: number[];
+}
+
+/** A recorded cut asset path that no longer points to a valid local image. */
+export interface StaleAssetIssue {
+  cutId: number;
+  field: "cleanImagePath" | "finalImagePath";
+  path: string;
+  message: string;
 }
 
 /** Preference order for clean-image extensions when several files exist. */
@@ -91,8 +103,10 @@ export function cleanImageCandidates(plotFile: string, cutId: number): string[] 
  *          broken) AND a different existing file is found.
  *  - A cut whose current `cleanImagePath` still exists on disk is preserved
  *    (manual uploads are never clobbered).
- *  - A path is never cleared just because no file was found — this is
- *    detection/import only.
+ *  - A recorded `cleanImagePath` whose file no longer exists/validates is
+ *    cleared back to null when no valid candidate is found, so the cut plan
+ *    stops claiming a clean image that isn't there (#302). A cut already null
+ *    stays null.
  *
  * Returns a new array; the input is not mutated.
  */
@@ -102,6 +116,7 @@ export function syncCleanImages(
   fileExists: (relPath: string) => boolean,
 ): CleanImageSyncResult {
   const synced: number[] = [];
+  const cleared: number[] = [];
   let changed = false;
 
   const next = cuts.map((cut) => {
@@ -113,7 +128,17 @@ export function syncCleanImages(
 
     const candidates = cleanImageCandidates(plotFile, cut.id);
     const found = candidates.find((rel) => fileExists(rel)) ?? null;
-    if (!found) return cut;
+    if (!found) {
+      // No valid file for this cut. If a path was recorded but the file is
+      // gone/invalid (stale), clear it back to null rather than preserving a
+      // reference to a missing asset. Already-null cuts are untouched.
+      if (current !== null) {
+        changed = true;
+        cleared.push(cut.id);
+        return { ...cut, cleanImagePath: null };
+      }
+      return cut;
+    }
 
     // (a) null → found, or (b) stale/broken path replaced by a different file.
     if (current === null || current !== found) {
@@ -125,5 +150,42 @@ export function syncCleanImages(
     return cut;
   });
 
-  return { cuts: next, changed, synced };
+  return { cuts: next, changed, synced, cleared };
+}
+
+/**
+ * Pure detector for cut asset paths recorded in cuts.json that no longer point
+ * to a valid local image (#302). The caller injects `assetExists(relPath)`,
+ * which must return true only when the file exists AND validates (exists, image
+ * bytes, size). Reports both `cleanImagePath` and `finalImagePath`; the cut
+ * label uses 1-based position to match the readiness messaging ("Cut N ...").
+ *
+ * Pure: no filesystem access, no mutation. Cuts with null paths produce no
+ * issue (an absent path is a normal not-yet-generated state, not staleness).
+ */
+export function findStaleAssetPaths(
+  cuts: Cut[],
+  assetExists: (relPath: string) => boolean,
+): StaleAssetIssue[] {
+  const issues: StaleAssetIssue[] = [];
+  cuts.forEach((cut, i) => {
+    const label = `Cut ${i + 1}`;
+    if (cut.cleanImagePath && !assetExists(cut.cleanImagePath)) {
+      issues.push({
+        cutId: cut.id,
+        field: "cleanImagePath",
+        path: cut.cleanImagePath,
+        message: `${label} clean image path is recorded but the file is missing`,
+      });
+    }
+    if (cut.finalImagePath && !assetExists(cut.finalImagePath)) {
+      issues.push({
+        cutId: cut.id,
+        field: "finalImagePath",
+        path: cut.finalImagePath,
+        message: `${label} final image path is recorded but the file is missing`,
+      });
+    }
+  });
+  return issues;
 }

@@ -5,7 +5,8 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, type SniffedType } from "../lib/clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
+import { imageAssetIssue, isValidImageAsset, CLEAN_IMAGE_VALID_EXT } from "../lib/image-asset-validate";
 
 const stories = new Hono();
 
@@ -525,16 +526,6 @@ stories.post("/:name/cuts/:plotFile/generate-markdown", async (c) => {
   return c.json({ ok: true, warnings });
 });
 
-const CLEAN_IMAGE_MAX_BYTES = 1024 * 1024;
-const CLEAN_IMAGE_VALID_EXT = new Set(["webp", "jpg", "jpeg"]);
-
-/** Map an allowed file extension to the image type its content must match. */
-const CLEAN_IMAGE_EXT_TO_TYPE: Record<string, Exclude<SniffedType, "unknown">> = {
-  webp: "webp",
-  jpg: "jpeg",
-  jpeg: "jpeg",
-};
-
 /**
  * POST /api/stories/:name/cuts/:plotFile/sync-clean-images — detect clean image
  * files that exist on disk and record their path on the matching cut. Only
@@ -561,62 +552,19 @@ stories.post("/:name/cuts/:plotFile/sync-clean-images", (c) => {
 
   const rejectedMap = new Map<string, { cutId: number; reason: string }>();
 
-  // Validate a candidate relative path against the real filesystem. Returns true
-  // ONLY when the file exists, has an allowed extension, and is ≤ 1MB. Oversized
-  // or wrong-extension files are recorded in `rejected` (deduped by path) and
-  // treated as missing so they are never written to cuts.json.
+  // Validate a candidate relative path against the real filesystem (shared
+  // validator). Returns true ONLY when the file exists and is a valid WebP/JPEG
+  // ≤ 1MB. A present-but-invalid file (wrong extension, oversized, content
+  // mismatch) is recorded in `rejected` (deduped by path) so the writer learns
+  // why it was not recorded; a merely-absent file is silently "not found".
   const fileExists = (relPath: string): boolean => {
-    const abs = path.join(storyDir, relPath);
-    if (!fs.existsSync(abs)) return false;
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(abs);
-    } catch {
-      return false;
-    }
-    if (!stat.isFile()) return false;
-
+    const issue = imageAssetIssue(storyDir, relPath);
+    if (issue === null) return true;
+    if (issue === "missing") return false; // absent / non-file → not a rejection
     const cutMatch = relPath.match(/cut-(\d+)-clean\./);
     const cutId = cutMatch ? parseInt(cutMatch[1], 10) : 0;
-    const ext = path.extname(relPath).slice(1).toLowerCase();
-
-    if (!CLEAN_IMAGE_VALID_EXT.has(ext)) {
-      rejectedMap.set(relPath, { cutId, reason: `Unsupported extension .${ext}` });
-      return false;
-    }
-    if (stat.size > CLEAN_IMAGE_MAX_BYTES) {
-      rejectedMap.set(relPath, { cutId, reason: "File must be under 1MB" });
-      return false;
-    }
-
-    // Sniff the real content so a text file (or a renamed/mismatched image)
-    // named `.webp`/`.jpg` cannot pass on extension alone.
-    let sniffed: SniffedType;
-    try {
-      const fd = fs.openSync(abs, "r");
-      try {
-        const head = Buffer.alloc(16);
-        const read = fs.readSync(fd, head, 0, 16, 0);
-        sniffed = sniffImageType(head.subarray(0, read));
-      } finally {
-        fs.closeSync(fd);
-      }
-    } catch {
-      return false;
-    }
-
-    if (sniffed === "unknown") {
-      rejectedMap.set(relPath, {
-        cutId,
-        reason: "not a valid image (content does not match WebP/JPEG/PNG)",
-      });
-      return false;
-    }
-    if (sniffed !== CLEAN_IMAGE_EXT_TO_TYPE[ext]) {
-      rejectedMap.set(relPath, { cutId, reason: `content does not match .${ext} extension` });
-      return false;
-    }
-    return true;
+    rejectedMap.set(relPath, { cutId, reason: issue });
+    return false;
   };
 
   // Touch every canonical candidate so oversized/invalid files surface as
@@ -651,7 +599,7 @@ stories.post("/:name/cuts/:plotFile/sync-clean-images", (c) => {
     writeCutsFile(storyDir, plotFile, { ...cutsFile, cuts: result.cuts });
   }
 
-  return c.json({ ok: true, changed: result.changed, synced: result.synced, rejected });
+  return c.json({ ok: true, changed: result.changed, synced: result.synced, cleared: result.cleared, rejected });
 });
 
 /**
@@ -679,51 +627,23 @@ stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
   }
   if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
 
-  // Validate a candidate relative path exactly like the sync route's `fileExists`
-  // (exists + allowed extension + ≤ 1MB + magic-byte content match). Read-only:
-  // never records rejections, never mutates cuts.json.
-  const isValidCleanImage = (relPath: string): boolean => {
-    const abs = path.join(storyDir, relPath);
-    if (!fs.existsSync(abs)) return false;
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(abs);
-    } catch {
-      return false;
-    }
-    if (!stat.isFile()) return false;
-
-    const ext = path.extname(relPath).slice(1).toLowerCase();
-    if (!CLEAN_IMAGE_VALID_EXT.has(ext)) return false;
-    if (stat.size > CLEAN_IMAGE_MAX_BYTES) return false;
-
-    let sniffed: SniffedType;
-    try {
-      const fd = fs.openSync(abs, "r");
-      try {
-        const head = Buffer.alloc(16);
-        const read = fs.readSync(fd, head, 0, 16, 0);
-        sniffed = sniffImageType(head.subarray(0, read));
-      } finally {
-        fs.closeSync(fd);
-      }
-    } catch {
-      return false;
-    }
-
-    if (sniffed === "unknown") return false;
-    if (sniffed !== CLEAN_IMAGE_EXT_TO_TYPE[ext]) return false;
-    return true;
-  };
-
+  // Read-only validation via the shared validator (exists + allowed extension +
+  // ≤ 1MB + magic-byte content match). Never records rejections or mutates cuts.
   const detected: number[] = [];
   for (const cut of cutsFile.cuts) {
     if (cut.cleanImagePath !== null) continue;
-    const hasValid = cleanImageCandidates(plotFile, cut.id).some((rel) => isValidCleanImage(rel));
+    const hasValid = cleanImageCandidates(plotFile, cut.id).some((rel) =>
+      isValidImageAsset(storyDir, rel),
+    );
     if (hasValid) detected.push(cut.id);
   }
 
-  return c.json({ detected });
+  // Also report recorded clean/final paths that no longer point to a valid local
+  // image (#302) so the client can show a precise per-cut error and offer the
+  // repair/sync action instead of silently treating the cut as image-ready.
+  const stale = findStaleAssetPaths(cutsFile.cuts, (rel) => isValidImageAsset(storyDir, rel));
+
+  return c.json({ detected, stale });
 });
 
 

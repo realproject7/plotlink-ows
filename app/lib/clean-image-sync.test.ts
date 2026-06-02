@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
 import { createDefaultCut } from "./cuts";
 
 function cut(id: number, overrides: Partial<ReturnType<typeof createDefaultCut>> = {}) {
@@ -133,16 +133,25 @@ describe("syncCleanImages", () => {
     expect(res.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
   });
 
-  it("leaves cut unchanged and does not clear when no file is found", () => {
+  it("clears a stale recorded path when no file or candidate exists, leaves null cuts null (#302)", () => {
     const cuts = [cut(1), cut(2, { cleanImagePath: "assets/plot-01/cut-02-clean.webp" })];
-    // cut 1 has nothing; cut 2's path does not exist on disk and no candidate exists
+    // cut 1 has nothing (stays null); cut 2's recorded path does not exist on
+    // disk and no candidate exists → the stale path is cleared back to null.
     const exists = () => false;
     const res = syncCleanImages(cuts, "plot-01", exists);
+    expect(res.changed).toBe(true);
+    expect(res.synced).toEqual([]);
+    expect(res.cleared).toEqual([2]);
+    expect(res.cuts[0].cleanImagePath).toBeNull(); // already null, not "cleared"
+    expect(res.cuts[1].cleanImagePath).toBeNull(); // stale path cleared
+  });
+
+  it("does not clear or change anything when all cuts are already null", () => {
+    const cuts = [cut(1), cut(2)];
+    const res = syncCleanImages(cuts, "plot-01", () => false);
     expect(res.changed).toBe(false);
     expect(res.synced).toEqual([]);
-    expect(res.cuts[0].cleanImagePath).toBeNull();
-    // not cleared
-    expect(res.cuts[1].cleanImagePath).toBe("assets/plot-01/cut-02-clean.webp");
+    expect(res.cleared).toEqual([]);
   });
 
   it("is idempotent: a second run with the same disk reports no change", () => {
@@ -154,5 +163,48 @@ describe("syncCleanImages", () => {
     expect(second.changed).toBe(false);
     expect(second.synced).toEqual([]);
     expect(second.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+  });
+});
+
+describe("findStaleAssetPaths (#302)", () => {
+  it("flags a recorded cleanImagePath whose file is missing, with a precise message", () => {
+    const cuts = [cut(1, { cleanImagePath: "assets/plot-01/cut-01-clean.webp" })];
+    const issues = findStaleAssetPaths(cuts, () => false);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ cutId: 1, field: "cleanImagePath", path: "assets/plot-01/cut-01-clean.webp" });
+    expect(issues[0].message).toBe("Cut 1 clean image path is recorded but the file is missing");
+  });
+
+  it("flags a recorded finalImagePath whose file is missing", () => {
+    const cuts = [cut(1, { finalImagePath: "assets/plot-01/cut-01-final.webp" })];
+    const issues = findStaleAssetPaths(cuts, () => false);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ cutId: 1, field: "finalImagePath" });
+    expect(issues[0].message).toBe("Cut 1 final image path is recorded but the file is missing");
+  });
+
+  it("reports both fields and uses 1-based labels matching cut position", () => {
+    const cuts = [
+      cut(1),
+      cut(7, { cleanImagePath: "assets/plot-01/cut-07-clean.webp", finalImagePath: "assets/plot-01/cut-07-final.webp" }),
+    ];
+    const issues = findStaleAssetPaths(cuts, () => false);
+    expect(issues.map((i) => i.message)).toEqual([
+      "Cut 2 clean image path is recorded but the file is missing",
+      "Cut 2 final image path is recorded but the file is missing",
+    ]);
+  });
+
+  it("does not flag valid existing paths or null paths", () => {
+    const cuts = [
+      cut(1), // both null
+      cut(2, { cleanImagePath: "assets/plot-01/cut-02-clean.webp", finalImagePath: "assets/plot-01/cut-02-final.webp" }),
+    ];
+    const existing = new Set([
+      "assets/plot-01/cut-02-clean.webp",
+      "assets/plot-01/cut-02-final.webp",
+    ]);
+    const issues = findStaleAssetPaths(cuts, (p) => existing.has(p));
+    expect(issues).toEqual([]);
   });
 });
