@@ -361,3 +361,31 @@ describe("exportCut overlay-geometry guard (#309)", () => {
     await expect(exportCut(null, bad, "sans", "sans")).rejects.toThrow(/invalid geometry/);
   });
 });
+
+describe("export draws a tailed speech bubble as ONE shape (#381)", () => {
+  // Acceptance #1: the export must FAIL if body and tail are rendered as
+  // separate stroked shapes. A single tailed speech bubble draws exactly one
+  // fill + one stroke, from one begin/close sub-path, with the tail tip folded
+  // into that single outline — never a second triangle/polygon.
+  it("a tailed speech bubble exports as exactly one fill + one stroke, tip in the single path", () => {
+    const { ctx, counts, path } = recordingCtx();
+    renderOverlays(ctx, [speechOverlay({ tailAnchor: { x: 0.5, y: 1.2 } })], 800, 600, "Body", "Display");
+    // ox=0,oy=0,ow=200,oh=72 → tip = (100, 86.4), below the bubble bottom.
+    expect(counts.fill).toBe(1);
+    expect(counts.stroke).toBe(1);
+    const tip = path.find((p) => Math.abs(p.x - 100) < 1e-6 && Math.abs(p.y - 86.4) < 1e-6);
+    expect(tip).toBeTruthy(); // the tail tip is a vertex of the single body outline
+  });
+
+  it("exports the SAME single fill+stroke whether or not the bubble has a tail (no extra tail shape)", () => {
+    const withTail = recordingCtx();
+    renderOverlays(withTail.ctx, [speechOverlay({ tailAnchor: { x: 0.5, y: 1.2 } })], 800, 600, "Body", "Display");
+    const noTail = recordingCtx();
+    renderOverlays(noTail.ctx, [speechOverlay({ tailAnchor: undefined })], 800, 600, "Body", "Display");
+    // A tail must NOT add a second fill/stroke — it's a detour in the one path.
+    expect(withTail.counts.fill).toBe(noTail.counts.fill);
+    expect(withTail.counts.stroke).toBe(noTail.counts.stroke);
+    expect(withTail.counts.fill).toBe(1);
+    expect(withTail.counts.stroke).toBe(1);
+  });
+});

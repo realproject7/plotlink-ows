@@ -9,8 +9,11 @@ import {
   writeCutsFile,
   validateCutsFile,
   isTextPanel,
+  isStaleTailedExport,
+  staleTailedCutIds,
   SHOT_TYPES,
 } from "./cuts";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "./overlays";
 
 describe("createDefaultCut", () => {
   it("returns correct defaults", () => {
@@ -312,5 +315,51 @@ describe("isTextPanel (#350)", () => {
 
   it("exports SHOT_TYPES constant", () => {
     expect(SHOT_TYPES).toEqual(["wide", "medium", "close-up", "extreme-close-up"]);
+  });
+});
+
+describe("isStaleTailedExport / staleTailedCutIds (#381)", () => {
+  const CUR = CARTOON_BUBBLE_RENDERER_VERSION;
+  const tailed = { type: "speech", tailAnchor: { x: 0.5, y: 1.2 } } as never; // tip below → visible tail
+  const tailInside = { type: "speech", tailAnchor: { x: 0.5, y: 0.5 } } as never; // tip inside → no tail
+  const narration = { type: "narration" } as never;
+
+  function cut(over: Record<string, unknown>) {
+    return { finalImagePath: null, overlays: [], ...over } as never;
+  }
+
+  it("flags a tailed-bubble final image exported by an OLDER renderer", () => {
+    expect(isStaleTailedExport(cut({ finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [tailed], finalRendererVersion: CUR - 1 }), CUR)).toBe(true);
+  });
+
+  it("flags a tailed-bubble final image with NO version stamp (pre-versioning)", () => {
+    expect(isStaleTailedExport(cut({ finalImagePath: "x.webp", overlays: [tailed] }), CUR)).toBe(true);
+  });
+
+  it("does NOT flag a current-renderer export", () => {
+    expect(isStaleTailedExport(cut({ finalImagePath: "x.webp", overlays: [tailed], finalRendererVersion: CUR }), CUR)).toBe(false);
+  });
+
+  it("does NOT flag a cut with no visible tail (tailless or tip inside the bubble)", () => {
+    expect(isStaleTailedExport(cut({ finalImagePath: "x.webp", overlays: [tailInside] }), CUR)).toBe(false);
+    expect(isStaleTailedExport(cut({ finalImagePath: "x.webp", overlays: [narration] }), CUR)).toBe(false);
+    expect(isStaleTailedExport(cut({ finalImagePath: "x.webp", overlays: [] }), CUR)).toBe(false);
+  });
+
+  it("does NOT flag a cut with no final image (nothing exported yet)", () => {
+    expect(isStaleTailedExport(cut({ finalImagePath: null, overlays: [tailed] }), CUR)).toBe(false);
+  });
+
+  it("staleTailedCutIds lists only the stale tailed cuts, in order", () => {
+    const cutsFile = {
+      cuts: [
+        { id: 1, finalImagePath: "a.webp", overlays: [tailed], finalRendererVersion: CUR }, // current → ok
+        { id: 2, finalImagePath: "b.webp", overlays: [tailed] }, // unstamped → stale
+        { id: 3, finalImagePath: "c.webp", overlays: [tailInside] }, // no visible tail → ok
+        { id: 4, finalImagePath: "d.webp", overlays: [tailed], finalRendererVersion: CUR - 1 }, // old → stale
+        { id: 5, finalImagePath: null, overlays: [tailed] }, // not exported → ok
+      ],
+    } as never;
+    expect(staleTailedCutIds(cutsFile, CUR)).toEqual([2, 4]);
   });
 });

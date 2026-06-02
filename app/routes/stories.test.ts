@@ -24,6 +24,7 @@ vi.mock("../lib/generate-story-instructions", () => ({
 
 import { readStoryMeta, writeStoryMeta, storiesRoutes, saveExportedCut } from "./stories";
 import { createCutsFile, writeCutsFile, readCutsFile } from "../lib/cuts";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { Hono } from "hono";
 
 describe("story metadata (.story.json)", () => {
@@ -560,6 +561,9 @@ describe("POST /upload-clean/:cutId route", () => {
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.jpg");
     expect(reloaded.cuts[0].exportedAt).toBeTruthy();
+    // #381: the export stamps the current bubble-renderer version so a later
+    // upgrade can flag this final image as stale (needing re-export).
+    expect(reloaded.cuts[0].finalRendererVersion).toBe(CARTOON_BUBBLE_RENDERER_VERSION);
 
     const assetFile = path.join(storyDir, "assets", "plot-01", "cut-01-final.jpg");
     expect(fs.existsSync(assetFile)).toBe(true);

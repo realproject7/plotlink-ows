@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { Overlay } from "./overlays";
+import { hasVisibleSpeechTail, CARTOON_BUBBLE_RENDERER_VERSION, type Overlay } from "./overlays";
 
 export const SHOT_TYPES = ["wide", "medium", "close-up", "extreme-close-up"] as const;
 export type ShotType = (typeof SHOT_TYPES)[number];
@@ -33,6 +33,12 @@ export interface Cut {
   uploadedCid: string | null;
   uploadedUrl: string | null;
   overlays: Overlay[];
+  /**
+   * Bubble-renderer revision the final image was exported with (#381). Absent on
+   * cuts exported before versioning (treated as stale for tailed bubbles). Stamped
+   * by the export-final endpoint with CARTOON_BUBBLE_RENDERER_VERSION.
+   */
+  finalRendererVersion?: number;
   /** Panel kind (#350). Absent ⇒ "image" (backward-compatible). */
   kind?: CutKind;
   /** Text-panel background color (CSS color), e.g. "#101820". Optional (#350). */
@@ -44,6 +50,32 @@ export interface Cut {
 /** Whether a cut is a text/interstitial panel (#350); missing kind ⇒ image. */
 export function isTextPanel(cut: Pick<Cut, "kind">): boolean {
   return cut.kind === "text";
+}
+
+/**
+ * Whether a cut's exported final image is STALE for #381: it has a final image
+ * AND renders at least one visible speech-bubble tail AND was exported by an
+ * older bubble renderer (its `finalRendererVersion` is absent — pre-versioning —
+ * or below `currentVersion`). Such an image may show the old separate-tail seam
+ * and must be re-exported before publish. Tailless cuts are never stale (the
+ * seam fixes only affect tailed bubbles), so existing exports aren't churned.
+ */
+export function isStaleTailedExport(
+  cut: Pick<Cut, "finalImagePath" | "finalRendererVersion" | "overlays">,
+  currentVersion: number = CARTOON_BUBBLE_RENDERER_VERSION,
+): boolean {
+  if (!cut.finalImagePath) return false;
+  const tailed = (cut.overlays ?? []).some(hasVisibleSpeechTail);
+  if (!tailed) return false;
+  return (cut.finalRendererVersion ?? 0) < currentVersion;
+}
+
+/** Ids of cuts whose final image is a stale tailed export (#381), in order. */
+export function staleTailedCutIds(
+  cutsFile: Pick<CutsFile, "cuts">,
+  currentVersion: number = CARTOON_BUBBLE_RENDERER_VERSION,
+): number[] {
+  return cutsFile.cuts.filter((c) => isStaleTailedExport(c, currentVersion)).map((c) => c.id);
 }
 
 /** Base canvas width for a text panel sized from its aspect ratio (#351). */
@@ -218,6 +250,11 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     if (cut.aspectRatio !== undefined && typeof cut.aspectRatio !== "string") {
       return { valid: false, error: `Cut ${i} aspectRatio must be a string` };
+    }
+    // Bubble-renderer version stamp (#381) — optional, backward-compatible
+    // (absent ⇒ pre-versioning final image).
+    if (cut.finalRendererVersion !== undefined && typeof cut.finalRendererVersion !== "number") {
+      return { valid: false, error: `Cut ${i} finalRendererVersion must be a number` };
     }
   }
 

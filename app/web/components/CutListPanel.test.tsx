@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vite
 import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
 import { installObjectUrlStub, MOCK_BLOB_URL } from "./asset-test-utils";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "@app-lib/overlays";
 
 beforeAll(() => {
   installObjectUrlStub();
@@ -733,5 +734,41 @@ describe("CutListPanel", () => {
       await waitFor(() => expect(screen.getByText("Image missing")).toBeInTheDocument());
       expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("CutListPanel stale bubble-renderer warning (#381)", () => {
+  const tailedSpeech = { id: "ov1", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.15, text: "Hi", tailAnchor: { x: 0.5, y: 1.2 } };
+
+  it("warns to re-export a tailed-bubble final image lettered by an older renderer", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [tailedSpeech] })], // no version stamp → stale
+    };
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={mockAuthFetch({ ok: true, data: cutsData })} />);
+    const warn = await screen.findByTestId("stale-bubble-export-warning");
+    expect(warn).toHaveTextContent(/Cut 1/);
+    expect(warn).toHaveTextContent(/re-export/i);
+  });
+
+  it("does NOT warn when the final image was exported by the current renderer", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "x.webp", overlays: [tailedSpeech], finalRendererVersion: CARTOON_BUBBLE_RENDERER_VERSION })],
+    };
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={mockAuthFetch({ ok: true, data: cutsData })} />);
+    await screen.findByTestId("cartoon-workflow-help");
+    expect(screen.queryByTestId("stale-bubble-export-warning")).not.toBeInTheDocument();
+  });
+
+  it("does NOT warn for a tailless bubble even if unstamped", async () => {
+    const noTail = { ...tailedSpeech, tailAnchor: { x: 0.5, y: 0.5 } }; // tip inside → no visible tail
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "x.webp", overlays: [noTail] })],
+    };
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={mockAuthFetch({ ok: true, data: cutsData })} />);
+    await screen.findByTestId("cartoon-workflow-help");
+    expect(screen.queryByTestId("stale-bubble-export-warning")).not.toBeInTheDocument();
   });
 });

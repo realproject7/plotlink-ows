@@ -1,6 +1,18 @@
 export const OVERLAY_TYPES = ["speech", "narration", "sfx"] as const;
 export type OverlayType = (typeof OVERLAY_TYPES)[number];
 
+/**
+ * Revision of the cartoon speech-bubble RENDERER (#381). Bumped whenever the
+ * exported balloon shape changes in a way that makes older final images stale —
+ * notably the seam fixes that made the body+tail a single unified outline
+ * (#317/#341), kept the tail mouth off the corners (#361), and rounded the body
+ * proportionally (#363). A final image stamped below this version (or unstamped,
+ * i.e. pre-versioning) may show the old separate-tail seam and should be
+ * re-exported before publish. Bump this when balloonOutline / defaultBalloonRadius
+ * / the export bubble draw changes the rendered shape.
+ */
+export const CARTOON_BUBBLE_RENDERER_VERSION = 2;
+
 export interface Overlay {
   id: string;
   type: OverlayType;
@@ -126,6 +138,17 @@ export function speechTailPoints(
     base1: { x: edgeX, y: center - half },
     base2: { x: edgeX, y: center + half },
   };
+}
+
+/**
+ * Whether an overlay renders a VISIBLE speech-bubble tail (#381): a speech
+ * overlay with a tailAnchor whose tip falls outside the bubble (so a tail is
+ * actually drawn — the case the body/tail seam fixes affect). Evaluated in a
+ * unit box since tailAnchor is normalized; a tip inside the bubble draws no tail.
+ */
+export function hasVisibleSpeechTail(overlay: Pick<Overlay, "type" | "tailAnchor">): boolean {
+  if (overlay.type !== "speech" || !overlay.tailAnchor) return false;
+  return speechTailPoints(0, 0, 1, 1, overlay.tailAnchor) !== null;
 }
 
 /**

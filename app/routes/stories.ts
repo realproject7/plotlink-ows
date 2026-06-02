@@ -4,6 +4,7 @@ import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
 import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
 import { imageAssetIssue, isValidImageAsset, CLEAN_IMAGE_VALID_EXT } from "../lib/image-asset-validate";
@@ -420,6 +421,9 @@ function saveExportedCut(
   const cut = cutsFile.cuts.find((c) => c.id === cutId)!;
   cut.finalImagePath = finalImagePath;
   cut.exportedAt = new Date().toISOString();
+  // Stamp the bubble-renderer revision so a later renderer upgrade can flag this
+  // final image as stale (needing re-export) before publish (#381).
+  cut.finalRendererVersion = CARTOON_BUBBLE_RENDERER_VERSION;
   writeCutsFile(storyDir, plotFile, cutsFile);
 
   return { finalImagePath };

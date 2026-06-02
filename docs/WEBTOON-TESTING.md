@@ -102,6 +102,12 @@ Manual narrative check before approving a real cartoon pilot publish:
   `genesis` and Episode 01 is NOT `plot-01` / a generic `Episode NN` — confirm on
   the published PlotLink page (the post-index public-title verification, #379,
   surfaces a durable warning if PlotLink indexed a raw title).
+- **Seamless speech-bubble tail (#381):** verify at least one panel that has a
+  tailed speech bubble, **after upload on PlotLink** — the tail must be one
+  integrated shape with the body, with no visible internal seam/border between
+  the bubble and its pointer. If the cut list shows a "lettered with an older
+  speech-bubble style" warning, re-export (open lettering → Export) and re-upload
+  that cut before publishing.
 
 ## Lettering Fonts (Design Note)
 
