@@ -86,6 +86,23 @@ plotlink-ows
 - Preview shows vertical cut sequence
 - Publish cartoon genesis with contentType: "cartoon"
 
+### Pilot quality gate — Genesis → Episode 01 (#211 / #380)
+
+Manual narrative check before approving a real cartoon pilot publish:
+
+- **Does Genesis build into Episode 01 as a webtoon opening?** Genesis should
+  read as a prologue with real buildup (premise → what the lead wants + stakes →
+  comedic/romantic hook → a clean bridge into Episode 01) across a few short
+  paragraphs — not a one-line premise, a synopsis dump, or a cold scene. The
+  pre-publish "Story opening (Prologue)" panel surfaces a buildup warning when
+  it's a single dense block.
+- **Does Episode 01 open on a titled beat that continues from Genesis** (not a
+  cold jump or a restart)?
+- **Do both have reader-facing public titles?** The storyline title is NOT
+  `genesis` and Episode 01 is NOT `plot-01` / a generic `Episode NN` — confirm on
+  the published PlotLink page (the post-index public-title verification, #379,
+  surfaces a durable warning if PlotLink indexed a raw title).
+
 ## Lettering Fonts (Design Note)
 
 Lettering fonts are loaded from Google Fonts CDN at runtime (no vendored font
