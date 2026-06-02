@@ -407,11 +407,16 @@ Valid \`plot-01.cuts.json\`:
 }
 \`\`\`
 
-**Always set a top-level \`title\`** — a real, human-readable episode title (e.g.
-"Episode 1 — First Rain"). The published cartoon markdown is image-only with no
-heading, so OWS uses this \`title\` as the public chapter title; without it the
-episode would fall back to a generic "Episode NN" rather than the raw filename
-(\`plot-01\`), but a real title reads far better (#347).
+**Always set a top-level \`title\`** — a real, **reader-facing, specific** episode
+title (e.g. "Episode 1 — First Rain", or just "First Rain"). The published
+cartoon markdown is image-only with no heading, so this \`title\` becomes the
+**public chapter title readers see on PlotLink**. It must NOT be a default or
+placeholder label: never the raw filename \`plot-01\`, and never a bare generic
+"Episode NN"/"Chapter NN". OWS **blocks** publish on those (#347/#358/#365/#368)
+and, after publish, **verifies the indexed public title** is reader-facing
+(#379). The same rule applies to the story itself — **Genesis must carry a real
+\`# Title\`, never the default \`Genesis\` label**. EVERY episode needs a public
+title specific to what happens in it, not a numbered placeholder.
 
 ### Text / interstitial panels (#352)
 
