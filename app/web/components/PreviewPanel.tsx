@@ -459,6 +459,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
       setEditSuccess(true);
       setCoverFile(null);
+      // A cover was just attached — reflect it in the cartoon cover status badge
+      // immediately, without closing/reopening Edit Story (#337, re1). Drop the
+      // local preview so the status reads "attached", not "selected".
+      if (coverCid !== undefined) {
+        setEditHasCover(true);
+        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+        setCoverStatus("unknown");
+        if (coverInputRef.current) coverInputRef.current.value = "";
+      }
       setTimeout(() => setEditSuccess(false), 3000);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Update failed");
