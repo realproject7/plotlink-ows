@@ -195,6 +195,18 @@ describe("validateCutsFile", () => {
     });
   });
 
+  // #347: optional top-level episode title.
+  it("accepts an optional string title", () => {
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", title: "First Rain", cuts: [] })).toEqual({ valid: true });
+  });
+
+  it("rejects a non-string title", () => {
+    expect(validateCutsFile({ version: 1, plotFile: "plot-01", title: 5, cuts: [] })).toEqual({
+      valid: false,
+      error: "title must be a string",
+    });
+  });
+
   it("rejects cut without numeric id", () => {
     expect(validateCutsFile({ version: 1, plotFile: "plot-01", cuts: [{ id: "bad" }] })).toEqual({
       valid: false,

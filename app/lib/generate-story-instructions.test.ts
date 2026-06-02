@@ -183,6 +183,9 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("cut-XX-final.webp");
     // No agent-side image tools are required.
     expect(out).toContain("No agent-side image tools are required");
+    // #347: the cut plan must carry a real episode title for the public chapter.
+    expect(out).toMatch(/top-level `title`/);
+    expect(out).toContain('"title": "Episode 1 — First Rain"');
   });
 
   it("cartoon (claude/default) output also carries the no-shell-tools handoff", () => {

@@ -29,6 +29,14 @@ export interface Cut {
 export interface CutsFile {
   version: 1;
   plotFile: string;
+  /**
+   * Optional human-readable episode title (#347). When present it becomes the
+   * published chapter title for a cartoon episode whose plot-NN.md has no H1
+   * (cartoon publish markdown is image-only by design), so the episode never
+   * publishes as the raw "plot-NN" filename. Absent in v1 cut plans — callers
+   * fall back to a friendly "Episode NN".
+   */
+  title?: string;
   cuts: Cut[];
 }
 
@@ -107,6 +115,11 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
 
   if (!Array.isArray(obj.cuts)) {
     return { valid: false, error: "cuts must be an array" };
+  }
+
+  // Optional episode title (#347) — string when present.
+  if (obj.title !== undefined && typeof obj.title !== "string") {
+    return { valid: false, error: "title must be a string" };
   }
 
   const validShots = new Set<string>(SHOT_TYPES);

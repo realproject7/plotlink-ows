@@ -65,6 +65,20 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
     expect(source).not.toContain('fileName.replace(".md", "")');
   });
 
+  // #347: cartoon plot publishes must resolve a real episode title — handlePublish
+  // reads the cut plan's title and passes contentType + episodeTitle to
+  // derivePublishTitle so a headingless cartoon plot never publishes as "plot-NN".
+  it("reads the cut-plan episode title for a cartoon plot publish", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    // Fetches cuts.json for a cartoon plot to read its title.
+    expect(source).toMatch(/cartoon[\s\S]*?\/cuts\//);
+    expect(source).toContain("episodeTitle");
+    // Passes contentType + episodeTitle into the title derivation.
+    expect(source).toMatch(/derivePublishTitle\(\{[\s\S]*?contentType[\s\S]*?episodeTitle[\s\S]*?\}\)/);
+  });
+
   // #332: handlePublish must guard against minting a duplicate chainPlot for a
   // plot that already has an on-chain chapter (incl. the edit-then-republish
   // path where status was reset to pending but txHash/plotIndex were retained).

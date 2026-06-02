@@ -121,35 +121,63 @@ export function prettifyStorySlug(slug: string): string {
 }
 
 /**
- * Resolve the title used when publishing a story file to PlotLink (#331).
+ * Friendly episode title from a plot filename (#347): "plot-01.md" → "Episode
+ * 01" (numbering preserved, padded to ≥2 digits). Returns null for a non-plot
+ * filename. Used as the last-resort cartoon episode title so an episode never
+ * publishes as the raw "plot-NN" filename.
+ */
+export function episodeTitleFromPlotFile(fileName: string): string | null {
+  const m = fileName.match(/^plot-(\d+)\.md$/);
+  if (!m) return null;
+  const n = m[1];
+  return `Episode ${n.length < 2 ? n.padStart(2, "0") : n}`;
+}
+
+/**
+ * Resolve the title used when publishing a story file to PlotLink (#331, #347).
  *
  * The storyline title is set once, at genesis publish, and is immutable
  * on-chain — so a headingless `genesis.md` must NOT fall back to the bare
- * "genesis" filename (pilot QA published storyline #59 titled "genesis").
- * For `genesis.md` the title resolves in order:
+ * "genesis" filename. For `genesis.md` the title resolves:
  *   1. an explicit `# Title` H1 inside genesis.md, then
  *   2. the `# Title` H1 from the story's structure.md, then
  *   3. a prettified story folder slug — never raw "genesis".
  *
- * Non-genesis files (plot-*.md, etc.) keep the prior H1-or-filename behavior:
- * the title passed for a plot does not change the storyline title on-chain
- * (createStoryline already set the title; chainPlot uses it for the chapter),
- * so fiction publish behavior is unchanged. Result is capped at 60 chars.
+ * For a plot file:
+ *   1. an explicit `# Title` H1 in plot-NN.md, then
+ *   2. for CARTOON content (its publish markdown is image-only by design, so it
+ *      usually has no H1): the cut plan's episode title, else a friendly
+ *      "Episode NN" — NEVER the raw "plot-NN" filename (#347).
+ *   3. for fiction: the prior H1-or-filename behavior, unchanged.
+ *
+ * A plot's title does not change the storyline title on-chain (createStoryline
+ * set it; chainPlot uses this for the chapter). Result is capped at 60 chars.
  */
 export function derivePublishTitle(opts: {
   fileName: string;
   fileContent: string;
   storySlug: string;
   structureContent?: string | null;
+  contentType?: string;
+  /** Episode title from plot-NN.cuts.json, if any (cartoon). */
+  episodeTitle?: string | null;
 }): string {
-  const { fileName, fileContent, storySlug, structureContent } = opts;
+  const { fileName, fileContent, storySlug, structureContent, contentType, episodeTitle } = opts;
   const ownH1 = extractH1Title(fileContent);
-  if (fileName !== "genesis.md") {
-    return (ownH1 ?? fileName.replace(/\.md$/, "")).slice(0, 60);
+
+  if (fileName === "genesis.md") {
+    const structureH1 = structureContent ? extractH1Title(structureContent) : null;
+    return (ownH1 ?? structureH1 ?? prettifyStorySlug(storySlug)).slice(0, 60);
   }
-  const structureH1 = structureContent ? extractH1Title(structureContent) : null;
-  const resolved = ownH1 ?? structureH1 ?? prettifyStorySlug(storySlug);
-  return resolved.slice(0, 60);
+
+  // Plot file.
+  if (ownH1) return ownH1.slice(0, 60);
+  if (contentType === "cartoon") {
+    const fromCuts = episodeTitle?.trim();
+    const friendly = episodeTitleFromPlotFile(fileName);
+    return ((fromCuts || friendly) ?? fileName.replace(/\.md$/, "")).slice(0, 60);
+  }
+  return fileName.replace(/\.md$/, "").slice(0, 60);
 }
 
 /** Minimal publish-status record shape needed to reason about plot duplicates. */

@@ -297,6 +297,7 @@ Valid \`plot-01.cuts.json\`:
 {
   "version": 1,
   "plotFile": "plot-01",
+  "title": "Episode 1 — First Rain",
   "cuts": [
     {
       "id": 1,
@@ -318,6 +319,12 @@ Valid \`plot-01.cuts.json\`:
   ]
 }
 \`\`\`
+
+**Always set a top-level \`title\`** — a real, human-readable episode title (e.g.
+"Episode 1 — First Rain"). The published cartoon markdown is image-only with no
+heading, so OWS uses this \`title\` as the public chapter title; without it the
+episode would fall back to a generic "Episode NN" rather than the raw filename
+(\`plot-01\`), but a real title reads far better (#347).
 
 ### Required field naming (do NOT use the wrong forms)
 
