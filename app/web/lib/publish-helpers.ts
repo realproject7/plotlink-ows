@@ -3,6 +3,51 @@ export const COVER_MAX_BYTES = 1024 * 1024;
 export const COVER_ALLOWED_TYPES = ["image/webp", "image/jpeg"] as const;
 
 /**
+ * Writer-facing cover requirements, surfaced in the cartoon cover step (#337):
+ * the enforced format/size plus the recommended portrait shape and a reminder to
+ * use clean cover art (AI-generated lettering often renders as unreadable text).
+ */
+export const COVER_GUIDANCE =
+  "Cover: WebP or JPEG, max 1MB, 600×900 portrait recommended. Use clean cover art — avoid unreadable AI text or broken lettering.";
+
+export type CoverReadinessState = "none" | "selected" | "invalid" | "attached";
+
+export interface CoverReadiness {
+  state: CoverReadinessState;
+  /** Short writer-facing status line. */
+  label: string;
+  /** Visual tone hint for the badge. */
+  tone: "muted" | "accent" | "error" | "success";
+}
+
+/**
+ * Resolve the cartoon cover readiness shown next to publish (#337) so a writer
+ * always sees whether a cover is missing, queued, invalid, or attached before
+ * the story goes out. Precedence: an already-attached storyline cover wins;
+ * then an invalid selection (so the error is never hidden by a stale pick);
+ * then a valid local cover queued for upload; otherwise none yet.
+ */
+export function cartoonCoverReadiness(input: {
+  /** A valid local cover file is queued (will upload at publish). */
+  hasSelectedCover: boolean;
+  /** The latest selection/detection was rejected (wrong type / too large). */
+  invalid: boolean;
+  /** A cover is already attached on the published storyline. */
+  attached: boolean;
+}): CoverReadiness {
+  if (input.attached) {
+    return { state: "attached", label: "Cover attached to your story.", tone: "success" };
+  }
+  if (input.invalid) {
+    return { state: "invalid", label: "Cover file can't be used — must be WebP or JPEG, max 1MB.", tone: "error" };
+  }
+  if (input.hasSelectedCover) {
+    return { state: "selected", label: "Cover selected — it will be uploaded when you publish.", tone: "accent" };
+  }
+  return { state: "none", label: "No cover yet — add one before publishing (recommended).", tone: "muted" };
+}
+
+/**
  * Validate a chosen story cover against the constraints the plotlink backend
  * enforces (WebP/JPEG, ≤1MB) so the writer gets immediate feedback at selection
  * rather than a late error at save. Pure — takes only size/type — and shared by

@@ -9,7 +9,7 @@ import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, cartoonChecklist, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
-import { validateCoverImage } from "../lib/publish-helpers";
+import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
@@ -113,6 +113,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editMetaLoaded, setEditMetaLoaded] = useState(false);
+  // Whether the published storyline already has a cover attached (#337), read
+  // from its metadata so the cover step can show an "attached" status.
+  const [editHasCover, setEditHasCover] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -310,7 +313,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       if (coverInputRef.current) coverInputRef.current.value = "";
       setEditError(error);
-      setCoverStatus("unknown");
+      // Surface the rejected pick in the cartoon cover-status badge (#337), not
+      // just the inline error, so the cover step clearly reads "can't be used".
+      setCoverStatus("invalid");
       return;
     }
     setCoverFile(file);
@@ -544,6 +549,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           if (found) setEditLanguage(found);
         }
         if (data.isNsfw !== undefined) setEditNsfw(!!data.isNsfw);
+        // Track whether a cover is already attached so the cover step can show
+        // an "attached" status for a published cartoon story (#337).
+        setEditHasCover(!!(data.coverCid || data.coverUrl || data.cover));
         setEditMetaLoaded(true);
       })
       .catch(() => {
@@ -610,7 +618,32 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const isGenesis = fileName === "genesis.md";
   const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
   const isCartoonPlot = contentType === "cartoon" && isPlot;
+  const isCartoonGenesis = contentType === "cartoon" && isGenesis;
   const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
+
+  // Cartoon cover readiness badge + requirements (#337). Shown wherever a
+  // cartoon writer manages the cover (pre-publish picker and the published Edit
+  // Story panel) so the cover step is never silently skipped before publish.
+  const COVER_TONE: Record<"muted" | "accent" | "error" | "success", string> = {
+    muted: "text-muted",
+    accent: "text-accent",
+    error: "text-error",
+    success: "text-green-700",
+  };
+  const renderCoverStatus = (attached: boolean) => {
+    if (!isCartoonGenesis) return null;
+    const r = cartoonCoverReadiness({
+      hasSelectedCover: !!coverFile,
+      invalid: coverStatus === "invalid",
+      attached,
+    });
+    return (
+      <div className="flex flex-col gap-0.5" data-testid="cartoon-cover-status" data-state={r.state}>
+        <span className={`text-[11px] font-medium ${COVER_TONE[r.tone]}`}>{r.label}</span>
+        <span className="text-[10px] text-muted" data-testid="cartoon-cover-guidance">{COVER_GUIDANCE}</span>
+      </div>
+    );
+  };
   const charLimit = (isGenesis || isPlot) ? 10000 : null;
   // Don't show over-limit warning for already-published files
   const overLimit = !isPublished && charLimit !== null && charCount > charLimit;
@@ -894,6 +927,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 {/* Cover image upload */}
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-foreground">Cover Image</span>
+                  {/* Attached/selected/invalid cover status for the published
+                      cartoon story (#337). */}
+                  {renderCoverStatus(editHasCover)}
                   <div className="flex items-start gap-3">
                     {coverPreview && (
                       <div className="relative">
@@ -1093,6 +1129,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             {isGenesis && (
               <div className="flex flex-col gap-1.5" data-testid="prepublish-cover">
                 <span className="text-xs font-medium text-foreground">Cover Image <span className="text-muted font-normal">(optional)</span></span>
+                {/* Cartoon cover readiness + requirements (#337): keep the cover
+                    step visible before genesis publish so a pilot story isn't
+                    published coverless by accident. */}
+                {renderCoverStatus(false)}
                 <div className="flex items-start gap-3">
                   {coverPreview && (
                     <div className="relative">
