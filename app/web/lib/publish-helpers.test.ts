@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -136,6 +136,83 @@ describe("validateCoverImage", () => {
 
   it("checks size before type (oversized takes priority)", () => {
     expect(validateCoverImage({ size: COVER_MAX_BYTES + 1, type: "image/png" })).toBe("Image exceeds 1MB limit");
+  });
+});
+
+describe("extractH1Title", () => {
+  it("returns the first H1, trimmed", () => {
+    expect(extractH1Title("# Swipe Right, Refund Later\n\nprose...")).toBe("Swipe Right, Refund Later");
+    expect(extractH1Title("intro\n\n#   Spaced Title  \nmore")).toBe("Spaced Title");
+  });
+  it("returns null when there is no H1 (or only an empty heading)", () => {
+    expect(extractH1Title("just prose, no heading")).toBeNull();
+    expect(extractH1Title("## Subheading only")).toBeNull();
+    expect(extractH1Title("#\n")).toBeNull();
+  });
+});
+
+describe("prettifyStorySlug", () => {
+  it("title-cases a hyphen/underscore slug", () => {
+    expect(prettifyStorySlug("swipe-right-refund-later")).toBe("Swipe Right Refund Later");
+    expect(prettifyStorySlug("my_first_story")).toBe("My First Story");
+  });
+});
+
+describe("derivePublishTitle (#331)", () => {
+  it("uses a headingless cartoon genesis's structure.md title, not 'genesis'", () => {
+    const title = derivePublishTitle({
+      fileName: "genesis.md",
+      fileContent: "She swiped right on disaster, then asked for a refund.\n",
+      storySlug: "swipe-right-refund-later",
+      structureContent: "# Swipe Right, Refund Later\n\n## Visual Style Guide\n...",
+    });
+    expect(title).toBe("Swipe Right, Refund Later");
+  });
+
+  it("prefers genesis.md's own H1 over structure.md", () => {
+    const title = derivePublishTitle({
+      fileName: "genesis.md",
+      fileContent: "# Genesis Own Title\n\nhook",
+      storySlug: "swipe-right-refund-later",
+      structureContent: "# Structure Title",
+    });
+    expect(title).toBe("Genesis Own Title");
+  });
+
+  it("falls back to the prettified slug, never raw 'genesis', when no H1 anywhere", () => {
+    const title = derivePublishTitle({
+      fileName: "genesis.md",
+      fileContent: "headingless prose hook",
+      storySlug: "swipe-right-refund-later",
+      structureContent: "## no h1 here\nonly prose",
+    });
+    expect(title).toBe("Swipe Right Refund Later");
+    expect(title).not.toBe("genesis");
+  });
+
+  it("falls back to the prettified slug when structure.md is missing", () => {
+    const title = derivePublishTitle({
+      fileName: "genesis.md",
+      fileContent: "headingless prose hook",
+      storySlug: "swipe-right-refund-later",
+      structureContent: null,
+    });
+    expect(title).toBe("Swipe Right Refund Later");
+  });
+
+  it("keeps plot files on H1-or-filename (storyline title unaffected, fiction-compatible)", () => {
+    expect(
+      derivePublishTitle({ fileName: "plot-01.md", fileContent: "# Chapter One\nbody", storySlug: "s", structureContent: "# Story" }),
+    ).toBe("Chapter One");
+    expect(
+      derivePublishTitle({ fileName: "plot-02.md", fileContent: "no heading", storySlug: "s", structureContent: "# Story" }),
+    ).toBe("plot-02");
+  });
+
+  it("caps the resolved title at 60 chars", () => {
+    const long = "#" + " A".repeat(80);
+    const title = derivePublishTitle({ fileName: "genesis.md", fileContent: long, storySlug: "s" });
+    expect(title.length).toBe(60);
   });
 });
 
