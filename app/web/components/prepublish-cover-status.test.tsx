@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { PreviewPanel } from "./PreviewPanel";
 import { installObjectUrlStub } from "./asset-test-utils";
 
@@ -62,6 +62,22 @@ describe("PreviewPanel cartoon cover status (#312)", () => {
     expect(warn).toHaveTextContent("Import generated image");
     // Invalid cover is not silently used.
     expect(screen.queryByTestId("prepublish-cover-will-upload")).not.toBeInTheDocument();
+  });
+
+  it("clears an invalid generated-cover warning after a valid manual pick", async () => {
+    const authFetch = makeAuthFetch({ found: true, valid: false, path: "assets/cover.webp", type: "image/webp", error: "assets/cover.webp is 1200KB, exceeds the 1MB cover limit" });
+    await renderGenesis(authFetch);
+    expect(await screen.findByTestId("prepublish-cover-detected-warning")).toHaveTextContent("exceeds the 1MB");
+
+    const input = screen.getByTestId("prepublish-cover-input") as HTMLInputElement;
+    const cover = new File([WEBP], "manual-cover.webp", { type: "image/webp" });
+    fireEvent.change(input, { target: { files: [cover] } });
+
+    await waitFor(() => expect(screen.queryByTestId("prepublish-cover-detected-warning")).not.toBeInTheDocument());
+    expect(await screen.findByTestId("prepublish-cover-will-upload")).toHaveTextContent(
+      "uploaded as the PlotLink storyline cover",
+    );
+    expect(screen.queryByTestId("prepublish-cover-detected")).not.toBeInTheDocument();
   });
 
   it("shows a clear no-cover action for a cartoon genesis with no generated cover", async () => {

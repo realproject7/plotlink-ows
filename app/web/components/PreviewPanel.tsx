@@ -122,7 +122,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Outcome of the generated-cover detection for an unpublished genesis (#312),
   // so the publish flow can state explicitly whether a generated assets/cover.webp
   // will be uploaded as the PlotLink cover, is invalid, or is missing.
-  const [coverStatus, setCoverStatus] = useState<"unknown" | "detected" | "invalid" | "none">("unknown");
+  const [coverStatus, setCoverStatus] = useState<"unknown" | "detected" | "selected" | "invalid" | "none">("unknown");
   // Once the writer manually picks or removes a cover, stop auto-applying the
   // detected one (so removal/override sticks and detection doesn't loop).
   const coverUserTouchedRef = useRef(false);
@@ -288,6 +288,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     // A manual pick overrides any auto-detected cover and stops re-detection.
     coverUserTouchedRef.current = true;
     setDetectedCover(null);
+    setDetectedCoverWarning(null);
     // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
     // immediate feedback instead of a late error at save (the server enforces
     // the same WebP/JPEG ≤1MB constraint).
@@ -300,11 +301,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       if (coverInputRef.current) coverInputRef.current.value = "";
       setEditError(error);
+      setCoverStatus("unknown");
       return;
     }
     setCoverFile(file);
     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setEditError(null);
+    setCoverStatus("selected");
   }, []);
 
   // Import a Codex-generated image (e.g. a large PNG) as the cover (#301). The
@@ -347,6 +350,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       }
       setCoverFile(imported);
       setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(imported); });
+      setDetectedCoverWarning(null);
+      setCoverStatus("selected");
       setEditError(null);
     } catch {
       setEditError("Cover import failed");
@@ -874,7 +879,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                           className="w-16 h-24 object-cover rounded border border-border"
                         />
                         <button
-                          onClick={() => { setCoverFile(null); setCoverPreview(null); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                          onClick={() => { setCoverFile(null); setCoverPreview(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); if (coverInputRef.current) coverInputRef.current.value = ""; }}
                           className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
                         >
                           x
@@ -1068,7 +1073,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                         className="w-16 h-24 object-cover rounded border border-border"
                       />
                       <button
-                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
+                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
                       >
                         x
@@ -1181,6 +1186,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     // re-applied by cover auto-detection.
                     coverUserTouchedRef.current = true;
                     setDetectedCover(null);
+                    setDetectedCoverWarning(null);
+                    setCoverStatus("unknown");
                     setCoverFile(null);
                     setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
                     if (coverInputRef.current) coverInputRef.current.value = "";
