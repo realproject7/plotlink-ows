@@ -261,6 +261,85 @@ export function classifyCartoonReadiness(
   };
 }
 
+/**
+ * Cartoon Genesis is the reader-facing opening/prologue: on PlotLink, readers
+ * encounter `genesis.md` before plot-01, so it must establish the premise and
+ * emotional/comic setup, not read like a metadata synopsis (#359, follows
+ * #348's instruction-side change). This lightweight readiness check runs before
+ * publish.
+ *
+ * - blockers: hard problems that disable publish. A missing real `# Title`
+ *   heading is a blocker — the opening needs a title readers see first (and the
+ *   on-chain title would otherwise fall back to a non-reader-facing label).
+ * - warnings: soft nudges shown but not blocking — a too-short opening, or one
+ *   shaped like a synopsis/outline (metadata labels / mostly bullets, no prose)
+ *   instead of an opening scene that sets up the first beat and stakes.
+ *
+ * Fiction genesis does not use this — it is gated by `isCartoonGenesis` in the UI.
+ */
+export interface CartoonGenesisReadiness {
+  /** Whether `genesis.md` has a real (non-empty) `# Title` H1 heading. */
+  hasTitle: boolean;
+  /** Hard problems — publish is disabled while any exist. */
+  blockers: string[];
+  /** Soft nudges shown before publish but not blocking. */
+  warnings: string[];
+}
+
+/** Below this many prose chars (H1 stripped), a cartoon Genesis is too thin to onboard a reader. */
+export const GENESIS_MIN_BODY_CHARS = 220;
+
+/** Metadata-label line shapes a synopsis/outline leaves behind ("Logline:", "Characters -", …). */
+const GENESIS_METADATA_LABEL =
+  /^(genre|logline|synopsis|premise|setting|tone|theme|themes|summary|hook|characters?|cast|arc|status|word\s*count|length|title)\b\s*[:\-–]/i;
+
+export function cartoonGenesisReadiness(content: string): CartoonGenesisReadiness {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+  const text = content ?? "";
+
+  // 1. Real H1 title (hard block). Horizontal whitespace only after `#` so a
+  // blank "# " line doesn't absorb the next paragraph as a fake title.
+  const h1 = text.match(/^#[ \t]+(.+)$/m);
+  const hasTitle = !!(h1 && h1[1].trim());
+  if (!hasTitle) {
+    blockers.push(
+      'Add a “# Title” heading — the Story opening needs a real title readers see first.',
+    );
+  }
+
+  // Body = everything but the H1 line, used for the length / shape heuristics.
+  const body = text.replace(/^#\s+.+$/m, "").trim();
+
+  // 2. Too short for reader onboarding (warn).
+  if (body.length < GENESIS_MIN_BODY_CHARS) {
+    warnings.push(
+      "This opening looks short — give readers enough of the premise and setup to pull them into Episode 01.",
+    );
+  } else {
+    // 3. Synopsis/outline shape rather than a reader-facing opening scene (warn).
+    // Skipped when already warned for length so a tiny stub raises one nudge.
+    const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+    const listish = lines.filter(
+      (l) => /^([-*+]|\d+[.)])\s/.test(l) || GENESIS_METADATA_LABEL.test(l),
+    ).length;
+    const paragraphs = body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    const hasProseParagraph = paragraphs.some(
+      (p) =>
+        p.length >= 120 &&
+        !/^([-*+]|\d+[.)])\s/.test(p) &&
+        !GENESIS_METADATA_LABEL.test(p),
+    );
+    if ((lines.length > 0 && listish / lines.length >= 0.5) || !hasProseParagraph) {
+      warnings.push(
+        "This reads like a synopsis or outline. Write the Genesis as a reader-facing opening scene that sets up the first beat and stakes, then bridges into Episode 01.",
+      );
+    }
+  }
+
+  return { hasTitle, blockers, warnings };
+}
+
 // Short, writer-facing reminder that clean images are art only. Shown in the
 // workflow guide so a first-time creator doesn't bake dialogue/SFX into the
 // generated art (the lettering step adds those) (#335).

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -559,5 +559,70 @@ describe("text panels (#350)", () => {
     const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
     expect(statusOf("clean")).toBe("current");
     expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 1 cut");
+  });
+});
+
+describe("cartoonGenesisReadiness (#359)", () => {
+  // A reader-facing prologue: a real title + a couple of prose paragraphs of setup.
+  const goodOpening = [
+    "# Coupon Crush at Closing Time",
+    "",
+    "The mall's last fluorescent light buzzes overhead as Mina slaps her final clearance sticker on a rack of forgotten umbrellas. She has nine minutes to hit her quota or lose the bonus that covers rent — and the only customer left is the smug rival cashier from the kiosk across the hall.",
+    "",
+    "He grins, holding up a coupon she's never seen before. Game on.",
+  ].join("\n");
+
+  it("passes a real reader-facing opening (title + prose, no blockers/warnings)", () => {
+    const r = cartoonGenesisReadiness(goodOpening);
+    expect(r.hasTitle).toBe(true);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it("blocks a Genesis with no H1 title", () => {
+    const r = cartoonGenesisReadiness("Mina races the clock to hit her quota before the mall closes for good, and the only person left is her smug rival. " + "x".repeat(150));
+    expect(r.hasTitle).toBe(false);
+    expect(r.blockers).toHaveLength(1);
+    expect(r.blockers[0]).toMatch(/# Title/);
+  });
+
+  it("treats an H1 with only whitespace as no title", () => {
+    expect(cartoonGenesisReadiness("#   \n\nbody").hasTitle).toBe(false);
+  });
+
+  it("warns (does not block) when the opening is too short", () => {
+    const r = cartoonGenesisReadiness("# Coupon Crush\n\nMina has nine minutes.");
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings.some((w) => /short/i.test(w))).toBe(true);
+  });
+
+  it("warns when the Genesis reads like a metadata synopsis/outline, not prose", () => {
+    const synopsis = [
+      "# Coupon Crush",
+      "",
+      "Genre: Romantic comedy",
+      "Logline: Two rival cashiers fall for each other during a closing-time coupon war.",
+      "Setting: A dying suburban mall, present day, over one frantic evening shift.",
+      "Characters: Mina (driven, broke), Theo (smug rival), the Manager (counting down).",
+      "Tone: Warm, fast, a little chaotic — cute webtoon energy throughout the run.",
+    ].join("\n");
+    const r = cartoonGenesisReadiness(synopsis);
+    expect(r.hasTitle).toBe(true);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
+  });
+
+  it("warns when a long body is only bullet points (no opening scene)", () => {
+    const bullets = [
+      "# Coupon Crush",
+      "",
+      "- Mina needs the bonus to make rent this month or she is out on the street",
+      "- Theo is the smug rival cashier from the kiosk across the hall, always winning",
+      "- The mall closes for good tonight and the manager is counting down the minutes",
+      "- A mysterious coupon could decide the whole closing-time standoff between them",
+    ].join("\n");
+    const r = cartoonGenesisReadiness(bullets);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
   });
 });
