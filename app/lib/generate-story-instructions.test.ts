@@ -174,7 +174,7 @@ describe("generateStoryInstructions", () => {
     // Creator-facing action names, not the old "Generate MD" / "Upload & Generate"
     // jargon (#320).
     expect(out).toContain("Upload & Prepare for Publish");
-    expect(out).toContain("Prepare Publish Markdown");
+    expect(out).toContain("Prepare episode for publish");
     expect(out).not.toMatch(/Generate MD\b/);
     expect(out).not.toMatch(/Upload & Generate\b/);
     // The deterministic asset targets the agent vs. OWS/editor own.

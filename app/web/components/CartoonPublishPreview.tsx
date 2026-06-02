@@ -65,7 +65,7 @@ export function CartoonPublishPreview({ content, stage }: CartoonPublishPreviewP
           </p>
           <p className="mt-1">
             This text publishes verbatim around the comic images. Remove it (or re-run
-            Prepare Publish Markdown) if it is planning or placeholder prose.
+            “Prepare episode for publish”) if it is planning or placeholder prose.
           </p>
         </div>
       )}

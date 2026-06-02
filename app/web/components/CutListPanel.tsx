@@ -544,9 +544,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={generating}
           className="ml-auto px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="generate-markdown-btn"
-          title="Build the publish-ready episode markdown from the uploaded cut images"
+          title="Build the publish-ready episode from the uploaded cut images"
         >
-          {generating ? "Preparing…" : "Prepare Publish Markdown"}
+          {generating ? "Preparing…" : "Prepare episode for publish"}
         </button>
         <button
           onClick={syncCleanImages}

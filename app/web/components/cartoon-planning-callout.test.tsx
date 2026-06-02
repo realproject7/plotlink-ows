@@ -12,9 +12,11 @@ beforeAll(() => {
 
 afterEach(cleanup);
 
+// An image cut that has been planned but has no clean image yet, so the
+// asset-driven step guide (#335) points at "Create clean images".
 const plannedCut = {
   id: 1, shotType: "wide", description: "Opening shot", characters: [],
-  dialogue: [{ speaker: "Mira", text: "We're here." }], narration: "Dawn.", sfx: "",
+  dialogue: [], narration: "", sfx: "",
   cleanImagePath: null, finalImagePath: null,
   exportedAt: null, uploadedCid: null, uploadedUrl: null,
   overlays: [],
@@ -89,11 +91,13 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={fetch} contentType="cartoon" onPublish={vi.fn()} />);
 
     const btn = await screen.findByTestId("generate-md-preview-btn");
-    expect(btn).toHaveTextContent("Prepare Publish Markdown");
+    expect(btn).toHaveTextContent("Prepare episode for publish");
     expect(btn).not.toHaveTextContent(/generate md/i);
-    // Step checklist is present and points at the prepare-for-publish step.
+    expect(btn).not.toHaveTextContent(/markdown/i);
+    // Step checklist is present; with a planned cut and no clean image yet, the
+    // asset-driven guide (#335) points at "Create clean images".
     expect(screen.getByTestId("cartoon-step-guide")).toBeInTheDocument();
-    expect(screen.getByTestId("cartoon-step-markdown")).toHaveAttribute("data-status", "current");
+    expect(screen.getByTestId("cartoon-step-clean")).toHaveAttribute("data-status", "current");
     // Disabled publish button explains the next step instead of bare jargon.
     expect(screen.getByTestId("publish-disabled-reason")).toHaveTextContent(/prepare the episode for publish/i);
   });
@@ -112,8 +116,10 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     expect(awaiting.textContent).not.toMatch(/markdown skeleton/i);
     // The disabled-publish reason now names the remaining-upload blocker.
     expect(screen.getByTestId("publish-disabled-reason")).toHaveTextContent(/still need an uploaded image/i);
-    // The step guide advances to the images step.
-    expect(screen.getByTestId("cartoon-step-images")).toHaveAttribute("data-status", "current");
+    // The asset-driven step guide (#335) still points at "Create clean images":
+    // preparing the publish draft lays down markdown but adds no images, so the
+    // production checklist tracks the unchanged per-cut asset progress.
+    expect(screen.getByTestId("cartoon-step-clean")).toHaveAttribute("data-status", "current");
   });
 
   it("does not show the planning callout for fiction plots", async () => {

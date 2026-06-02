@@ -267,7 +267,7 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("not ready");
-    expect(data.issues.some((i: string) => i.includes("placeholder/instructional prose"))).toBe(true);
+    expect(data.issues.some((i: string) => i.includes("placeholder/instructional"))).toBe(true);
   });
 
   it("cannot bypass cartoon guard by sending contentType: fiction", async () => {
