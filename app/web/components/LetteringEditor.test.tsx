@@ -151,6 +151,13 @@ describe("LetteringEditor", () => {
 
     const el = screen.getByTestId("overlay-test-overlay-1");
     expect(el).toBeInTheDocument();
+    // Bubble text is gated on font readiness (#310): until fonts resolve, the
+    // speaker-prefixed transient renders "Mira: Hello!" as a single node; once
+    // ready, the body wraps into its own line span. Wait for that re-render so
+    // the body-text assertion is deterministic (was a flaky getByText race).
+    await waitFor(() =>
+      expect(screen.getByTestId("overlay-text-test-overlay-1")).toHaveAttribute("data-fonts-ready", "true"),
+    );
     expect(screen.getByText("Hello!")).toBeInTheDocument();
   });
 
