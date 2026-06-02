@@ -751,4 +751,86 @@ describe("LetteringEditor", () => {
     fireEvent.click(del); // confirms delete
     await waitFor(() => expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument());
   });
+
+  // #336: insert dialogue/narration/SFX from cuts.json straight into a prefilled
+  // overlay, so the writer never copies text out of the JSON by hand.
+  it("inserts a script line from cuts.json as a prefilled overlay", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [], dialogue: [{ speaker: "Mira", text: "We're here at last." }], narration: "Dawn broke." })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    // The script panel lists the cut's dialogue + narration.
+    expect(screen.getByTestId("script-insert-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+
+    // Clicking a dialogue line adds a speech overlay carrying that text/speaker.
+    fireEvent.click(screen.getByTestId("script-insert-speech-0"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+    const speakerInput = screen.getByTestId("inspector-speaker") as HTMLInputElement;
+    expect(speakerInput.value).toBe("Mira");
+    expect((screen.getByTestId("inspector-text") as HTMLTextAreaElement).value).toBe("We're here at last.");
+
+    // Narration is insertable too.
+    fireEvent.click(screen.getByTestId("script-insert-narration"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("2 overlays");
+  });
+
+  // #336: warn about likely export problems — here a bubble whose body extends
+  // past the image bounds (would be clipped at export).
+  it("warns when a bubble is positioned outside the image bounds", async () => {
+    const overlay: Overlay = {
+      id: "oob",
+      type: "speech",
+      x: 0.9, y: 0.2, width: 0.25, height: 0.12, // x + width = 1.15 > 1 → clipped
+      text: "Edge", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 1.2 },
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    const warning = screen.getByTestId("lettering-export-warning");
+    expect(warning).toHaveTextContent(/outside image/i);
+    expect(screen.getByTestId("overlay-oob")).toHaveAttribute("data-warning", "true");
+  });
+
+  it("shows the per-cut lettering checklist reflecting cut progress", async () => {
+    const overlay: Overlay = {
+      id: "ck", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay], dialogue: [{ speaker: "Mira", text: "Hi" }] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    // makeCut sets a cleanImagePath; dialogue + a placed overlay are present, but
+    // nothing is exported/uploaded yet.
+    expect(screen.getByTestId("lettering-check-clean-image")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-script-text")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-bubbles")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+  });
 });

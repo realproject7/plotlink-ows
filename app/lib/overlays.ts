@@ -145,6 +145,23 @@ export function balloonPathD(
   return cmds.join(" ");
 }
 
+/**
+ * Whether an overlay's BODY rect extends outside the image (#336). Coordinates
+ * are normalized 0–1, so anything below 0 or past 1 on either axis is clipped at
+ * export. Only the body box is checked — a speech tail intentionally points
+ * beyond the bubble edge (its tip is allowed outside). A tiny epsilon avoids
+ * flagging boxes that sit exactly on an edge.
+ */
+export function isOverlayOutOfBounds(o: Pick<Overlay, "x" | "y" | "width" | "height">): boolean {
+  const eps = 1e-6;
+  return (
+    o.x < -eps ||
+    o.y < -eps ||
+    o.x + o.width > 1 + eps ||
+    o.y + o.height > 1 + eps
+  );
+}
+
 let counter = 0;
 
 export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {

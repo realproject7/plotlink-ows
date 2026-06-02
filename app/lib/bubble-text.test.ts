@@ -50,6 +50,14 @@ describe("layoutBubbleText (#310)", () => {
     expect(layout.lines.length).toBeGreaterThanOrEqual(1); // best-effort, not crash
   });
 
+  // #336: the overflow flag drives the editor's text-overflow warning.
+  it("flags overflow when text cannot fit even at the min font, false when it fits", () => {
+    const overflowed = layoutBubbleText(measure, "x".repeat(80), 40, 18, { minFontSize: 11, maxFontSize: 30 });
+    expect(overflowed.overflow).toBe(true);
+    const fits = layoutBubbleText(measure, "Hi", 200, 90, { minFontSize: 10, maxFontSize: 28 });
+    expect(fits.overflow).toBe(false);
+  });
+
   it("reserves a speaker strip and sizes the label relative to the body", () => {
     const withSpeaker = layoutBubbleText(measure, "Hello there friend", 200, 90, {
       minFontSize: 10,

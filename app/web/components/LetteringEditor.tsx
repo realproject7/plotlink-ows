@@ -6,8 +6,9 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
-import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays } from "@app-lib/overlays";
+import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
+import { cutLetteringChecklist, cutScriptLines, type ScriptLine } from "@app-lib/lettering-status";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -63,7 +64,14 @@ interface Cut {
   cleanImagePath: string | null;
   overlays: Overlay[];
   narration?: string;
+  sfx?: string;
   dialogue?: { speaker: string; text: string }[];
+  // Export/upload status (#336) — used by the per-cut lettering checklist so the
+  // writer can see how far the cut has progressed without leaving the editor.
+  finalImagePath?: string | null;
+  exportedAt?: string | null;
+  uploadedUrl?: string | null;
+  uploadedCid?: string | null;
 }
 
 interface LetteringEditorProps {
@@ -196,6 +204,19 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     const o = createOverlay(type, 0.1 + Math.random() * 0.3, 0.1 + Math.random() * 0.3);
     setOverlays((prev) => [...prev, o]);
     setSelectedId(o.id);
+  }, []);
+
+  // Insert a line from the cut's cuts.json script (#336) as a prefilled overlay,
+  // so the writer never has to hand-copy dialogue/narration/SFX out of the JSON.
+  const addScriptLine = useCallback((line: ScriptLine) => {
+    const o = createOverlay(line.type, 0.1 + Math.random() * 0.3, 0.1 + Math.random() * 0.3);
+    const filled: Overlay = {
+      ...o,
+      text: line.text,
+      ...(line.type === "speech" && line.speaker ? { speaker: line.speaker } : {}),
+    };
+    setOverlays((prev) => [...prev, filled]);
+    setSelectedId(filled.id);
   }, []);
 
   const updateOverlay = useCallback((id: string, changes: Partial<Overlay>) => {
@@ -343,6 +364,39 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // apart. Non-blocking: overlap can be intentional, so it never blocks export.
   const overlapPairs = useMemo(() => detectOverlappingOverlays(overlays), [overlays]);
 
+  // Per-cut lettering checklist + insertable script lines (#336). The checklist
+  // shows progress (clean image → script text → bubbles placed → exported →
+  // uploaded) right in the editor; the script lines power one-click insertion.
+  const checklist = useMemo(() => cutLetteringChecklist({ ...cut, overlays }), [cut, overlays]);
+  const scriptLines = useMemo(() => cutScriptLines(cut), [cut]);
+
+  // Likely export problems per overlay (#336): the body rect clipped by the
+  // image bounds, or text that overflows even at the smallest font. Out-of-bounds
+  // is pure geometry; overflow needs the loaded-font metrics, so it only computes
+  // once fonts are ready (same gate as the exact preview layout).
+  const overlayWarnings = useMemo(() => {
+    const out: Record<string, { outOfBounds: boolean; overflow: boolean }> = {};
+    const { minFontSize, maxFontSize } = defaultBubbleFontRange(imageBounds.height || 300);
+    for (const o of overlays) {
+      const outOfBounds = isOverlayOutOfBounds(o);
+      let overflow = false;
+      if (fontsReady && imageBounds.width > 0 && o.text) {
+        const fontFamily = o.type === "sfx" ? displayFontFamily : bodyFontFamily;
+        const w = toPixel(o.width, imageBounds.width);
+        const h = toPixel(o.height, imageBounds.height);
+        const layout = layoutBubbleText(measureWidth(fontFamily), o.text, w, h, {
+          minFontSize,
+          maxFontSize,
+          hasSpeaker: o.type !== "sfx" && !!o.speaker,
+        });
+        overflow = layout.overflow;
+      }
+      if (outOfBounds || overflow) out[o.id] = { outOfBounds, overflow };
+    }
+    return out;
+  }, [overlays, fontsReady, imageBounds, measureWidth, bodyFontFamily, displayFontFamily]);
+  const warningCount = Object.keys(overlayWarnings).length;
+
   const isNarrationCut = !cut.cleanImagePath;
 
   if (isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
@@ -409,6 +463,52 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             .map((p) => `#${p.indexA + 1} ${overlapLabel(overlays[p.indexA])} ↔ #${p.indexB + 1} ${overlapLabel(overlays[p.indexB])}`)
             .join("; ")}
           . Move them apart, or export as-is if the overlap is intended.
+        </div>
+      )}
+
+      {/* Per-cut lettering checklist (#336): shows how far this cut has come so
+          the writer can finish it from the editor without inspecting cuts.json. */}
+      <div
+        className="px-3 py-1 border-b border-border flex items-center gap-3 flex-wrap text-[10px] text-muted"
+        data-testid="lettering-checklist"
+      >
+        {([
+          ["clean-image", "Clean image", checklist.hasCleanImage],
+          ["script-text", "Script text", checklist.hasScriptText],
+          ["bubbles", `Bubbles placed${checklist.bubblesPlaced ? ` (${checklist.bubblesPlaced})` : ""}`, checklist.bubblesPlaced > 0],
+          ["exported", "Final exported", checklist.exported],
+          ["uploaded", "Uploaded", checklist.uploaded],
+        ] as [string, string, boolean][]).map(([key, label, done]) => (
+          <span
+            key={key}
+            data-testid={`lettering-check-${key}`}
+            data-done={done ? "true" : "false"}
+            className={`flex items-center gap-1 ${done ? "text-green-700" : "text-muted/70"}`}
+          >
+            <span aria-hidden>{done ? "✓" : "○"}</span>
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {/* Likely export problems (#336): clipped/out-of-bounds bubbles or text that
+          overflows even at the smallest font. Non-blocking guidance. */}
+      {warningCount > 0 && (
+        <div
+          className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700"
+          data-testid="lettering-export-warning"
+        >
+          {warningCount} bubble{warningCount === 1 ? "" : "s"} may not export cleanly:{" "}
+          {Object.entries(overlayWarnings)
+            .map(([id, w]) => {
+              const idx = overlays.findIndex((o) => o.id === id);
+              const problems = [w.outOfBounds ? "outside image" : null, w.overflow ? "text overflow" : null]
+                .filter(Boolean)
+                .join(", ");
+              return `#${idx + 1} ${overlapLabel(overlays[idx])} (${problems})`;
+            })
+            .join("; ")}
+          . Resize or reposition before exporting.
         </div>
       )}
 
@@ -494,16 +594,20 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             // path's accent stroke (plus the resize handle). Narration/SFX keep
             // their bordered box + selection ring as before.
             const isSpeech = overlay.type === "speech";
+            const warned = !!overlayWarnings[overlay.id];
 
             return (
               <div
                 key={overlay.id}
                 data-testid={`overlay-${overlay.id}`}
+                data-warning={warned ? "true" : "false"}
                 onClick={(e) => handleOverlayClick(e, overlay.id)}
                 onMouseDown={(e) => handleMouseDown(e, overlay.id, "move")}
                 className={`absolute rounded cursor-move select-none ${
                   isSpeech ? "" : `border-2 ${TYPE_BORDER[overlay.type]}`
-                } ${isSelected && !isSpeech ? "ring-2 ring-accent" : ""}`}
+                } ${isSelected && !isSpeech ? "ring-2 ring-accent" : ""} ${
+                  warned ? "ring-2 ring-amber-500" : ""
+                }`}
                 style={{ left, top, width, height }}
               >
                 {(() => {
@@ -572,6 +676,30 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
 
         {/* Inspector panel */}
         <div className="w-52 border-l border-border p-3 overflow-y-auto flex-shrink-0">
+          {/* Insert-from-script (#336): drop the cut's planned dialogue/narration/
+              SFX straight into a prefilled overlay — no copy/paste out of JSON. */}
+          {scriptLines.length > 0 && (
+            <div className="mb-3 space-y-1.5" data-testid="script-insert-panel">
+              <span className="text-[10px] font-medium text-muted">From script</span>
+              <div className="flex flex-col gap-1">
+                {scriptLines.map((line) => (
+                  <button
+                    key={line.key}
+                    onClick={() => addScriptLine(line)}
+                    data-testid={`script-insert-${line.key}`}
+                    title={`Add ${line.type} overlay with this text`}
+                    className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                  >
+                    <span className="font-medium text-accent">+ {TYPE_LABEL[line.type]}</span>{" "}
+                    <span className="text-muted">
+                      {line.speaker ? `${line.speaker}: ` : ""}
+                      {line.text.length > 32 ? `${line.text.slice(0, 32)}…` : line.text}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {selectedOverlay ? (
             <div className="space-y-3">
               <p className="text-xs font-medium text-foreground">{TYPE_LABEL[selectedOverlay.type]}</p>
