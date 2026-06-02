@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateExportSize, MAX_SIZE, renderOverlays, exportCut } from "./export-cut";
+import { validateExportSize, MAX_SIZE, renderOverlays, exportCut, textPanelDimensions } from "./export-cut";
 
 interface Overlay {
   id: string;
@@ -201,6 +201,20 @@ describe("renderOverlays speech-bubble tail", () => {
       "Display",
     );
     expect(lineTos).toHaveLength(0);
+  });
+});
+
+describe("textPanelDimensions (#351)", () => {
+  it("sizes a text panel canvas from a W:H aspect ratio (base width 800)", () => {
+    expect(textPanelDimensions("4:5")).toEqual({ width: 800, height: 1000 });
+    expect(textPanelDimensions("16:9")).toEqual({ width: 800, height: 450 });
+    expect(textPanelDimensions("1:1")).toEqual({ width: 800, height: 800 });
+  });
+  it("returns null for missing or malformed ratios (caller falls back to 800x600)", () => {
+    expect(textPanelDimensions(undefined)).toBeNull();
+    expect(textPanelDimensions("portrait")).toBeNull();
+    expect(textPanelDimensions("4:0")).toBeNull();
+    expect(textPanelDimensions("0:5")).toBeNull();
   });
 });
 

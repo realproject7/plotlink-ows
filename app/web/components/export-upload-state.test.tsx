@@ -31,6 +31,56 @@ function makeCut(overrides: Record<string, unknown> = {}) {
   };
 }
 
+describe("text panel export (#351)", () => {
+  it("exports a text panel with no clean image, passing its background + aspect ratio", async () => {
+    const exportCut = vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" }));
+    vi.doMock("./export-cut", () => ({
+      exportCut,
+      ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
+    }));
+    const { LetteringEditor } = await import("./LetteringEditor");
+
+    const onExported = vi.fn();
+    const authFetch = vi.fn(() =>
+      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, finalImagePath: "x.webp" }) }),
+    );
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({
+          id: 1,
+          kind: "text",
+          background: "#101820",
+          aspectRatio: "4:5",
+          cleanImagePath: null,
+          overlays: [{ id: "t1", type: "narration", x: 0.1, y: 0.1, width: 0.8, height: 0.3, text: "Three weeks later" }],
+        })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+        onExported={onExported}
+      />,
+    );
+
+    // The text-panel canvas (background) is shown — not the "no clean image" guard.
+    expect(await screen.findByTestId("text-panel-canvas")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("export-btn"));
+    await waitFor(() => expect(onExported).toHaveBeenCalled());
+
+    // exportCut was called with no clean image URL and the text-panel style.
+    const call = exportCut.mock.calls[0];
+    expect(call[0]).toBeNull(); // cleanImageUrl
+    expect(call[5]).toEqual({ background: "#101820", aspectRatio: "4:5" }); // textPanel
+    // Final image was uploaded through the normal export-final endpoint.
+    expect(authFetch.mock.calls.some((c) => String(c[0]).includes("/export-final/"))).toBe(true);
+
+    vi.doUnmock("./export-cut");
+  });
+});
+
 describe("export state refresh and save-before-export", () => {
   it("export calls onSave then export then onExported in order", async () => {
     vi.doMock("./export-cut", () => ({

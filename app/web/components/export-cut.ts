@@ -199,12 +199,34 @@ function renderCutText(
   }
 }
 
+/** Style for a text/interstitial panel exported without a clean image (#351). */
+export interface TextPanelStyle {
+  /** CSS background color for the panel canvas. Defaults to white. */
+  background?: string;
+  /** Aspect ratio "W:H" (e.g. "4:5") sizing the canvas. Defaults to 800×600. */
+  aspectRatio?: string;
+}
+
+const TEXT_PANEL_BASE_WIDTH = 800;
+
+/** Parse an "W:H" aspect ratio into canvas dimensions; null if malformed. */
+export function textPanelDimensions(aspectRatio: string | undefined): { width: number; height: number } | null {
+  if (!aspectRatio) return null;
+  const m = aspectRatio.match(/^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  if (!(w > 0) || !(h > 0)) return null;
+  return { width: TEXT_PANEL_BASE_WIDTH, height: Math.round((TEXT_PANEL_BASE_WIDTH * h) / w) };
+}
+
 export async function exportCut(
   cleanImageUrl: string | null,
   overlays: Overlay[],
   bodyFontFamily: string,
   displayFontFamily: string,
   cutText?: CutTextContent,
+  textPanel?: TextPanelStyle,
 ): Promise<Blob> {
   // Refuse to export an image whose overlays have invalid geometry — otherwise
   // malformed (e.g. semantic-position) overlays render nothing and we silently
@@ -222,6 +244,14 @@ export async function exportCut(
     img = await loadImage(cleanImageUrl);
     width = img.naturalWidth;
     height = img.naturalHeight;
+  } else if (textPanel) {
+    // Text/interstitial panel: no clean image — render text on a styled canvas
+    // sized by the panel's aspect ratio (#351).
+    const dims = textPanelDimensions(textPanel.aspectRatio);
+    if (dims) {
+      width = dims.width;
+      height = dims.height;
+    }
   }
 
   const canvas = document.createElement("canvas");
@@ -232,7 +262,7 @@ export async function exportCut(
   if (img) {
     ctx.drawImage(img, 0, 0, width, height);
   } else {
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = textPanel?.background || "#ffffff";
     ctx.fillRect(0, 0, width, height);
   }
 

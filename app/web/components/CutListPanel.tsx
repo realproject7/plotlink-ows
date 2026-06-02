@@ -3,6 +3,7 @@ import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
+import { isTextPanel } from "@app-lib/cuts";
 import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 
@@ -36,6 +37,9 @@ interface Cut {
   uploadedCid: string | null;
   uploadedUrl: string | null;
   overlays: Overlay[];
+  kind?: "image" | "text";
+  background?: string;
+  aspectRatio?: string;
 }
 
 interface CutsFile {
@@ -58,12 +62,15 @@ interface CutListPanelProps {
   onCutsChanged?: () => void;
 }
 
-type CutStatus = "missing" | "clean" | "lettered" | "uploaded";
+type CutStatus = "missing" | "clean" | "lettered" | "uploaded" | "text";
 
 function getCutStatus(cut: Cut): CutStatus {
   if (cut.uploadedCid) return "uploaded";
   if (cut.finalImagePath || cut.exportedAt) return "lettered";
   if (cut.cleanImagePath) return "clean";
+  // A text/interstitial panel needs no clean image, so it's never "missing"
+  // (#351) — it's ready to letter on its background.
+  if (isTextPanel(cut)) return "text";
   return "missing";
 }
 
@@ -72,6 +79,7 @@ const STATUS_LABEL: Record<CutStatus, string> = {
   clean: "Clean ready",
   lettered: "Lettered",
   uploaded: "Uploaded",
+  text: "Text panel",
 };
 
 const STATUS_COLOR: Record<CutStatus, string> = {
@@ -79,6 +87,7 @@ const STATUS_COLOR: Record<CutStatus, string> = {
   clean: "text-green-700",
   lettered: "text-amber-700",
   uploaded: "text-green-700",
+  text: "text-accent",
 };
 
 const STATUS_DOT: Record<CutStatus, string> = {
@@ -86,6 +95,7 @@ const STATUS_DOT: Record<CutStatus, string> = {
   clean: "bg-green-600",
   lettered: "bg-amber-500",
   uploaded: "bg-green-600",
+  text: "bg-accent",
 };
 
 function CutRow({
@@ -300,8 +310,8 @@ function CutRow({
             )}
           </div>
 
-          {/* Open editor button — available for image cuts and narration cuts */}
-          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0) && (
+          {/* Open editor — image cuts, narration cuts, and text panels (#351) */}
+          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0 || isTextPanel(cut)) && (
             <button
               onClick={onOpenEditor}
               className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"
