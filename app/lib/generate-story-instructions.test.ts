@@ -154,6 +154,45 @@ describe("generateStoryInstructions", () => {
     // And the document must NOT present them as the schema to use
     expect(out).toContain("Do NOT invent alternate");
   });
+
+  // #297: deterministic asset handoff — Codex must use OWS flows, never assume
+  // local image tooling (the pilot stalled trying magick/identify/sharp/Playwright).
+  it("cartoon (codex) output forbids ad-hoc local image tools and names them", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("Asset Tooling");
+    expect(out).toContain("magick");
+    expect(out).toContain("identify");
+    expect(out).toContain("sharp");
+    expect(out).toContain("Playwright");
+    expect(out).toContain("do NOT post-process");
+  });
+
+  it("cartoon output routes export/lettering/upload through supported OWS flows", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("Sync clean images");
+    expect(out).toContain("OWS lettering editor");
+    expect(out).toContain("Upload & Generate");
+    // The deterministic asset targets the agent vs. OWS/editor own.
+    expect(out).toContain("assets/cover.webp");
+    expect(out).toContain("cut-XX-clean.webp");
+    expect(out).toContain("cut-XX-final.webp");
+    // No agent-side image tools are required.
+    expect(out).toContain("No agent-side image tools are required");
+  });
+
+  it("cartoon (claude/default) output also carries the no-shell-tools handoff", () => {
+    const out = generateStoryInstructions("cartoon");
+    expect(out).toContain("Asset Tooling");
+    expect(out).toContain("magick");
+    expect(out).toContain("OWS lettering editor");
+  });
+
+  it("fiction output is unaffected by the deterministic asset-tooling guidance", () => {
+    const out = generateStoryInstructions("fiction");
+    expect(out).not.toContain("Asset Tooling");
+    expect(out).not.toContain("magick");
+    expect(out).not.toContain("Sync clean images");
+  });
 });
 
 describe("writeStoryInstructions", () => {
