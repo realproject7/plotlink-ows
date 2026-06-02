@@ -148,7 +148,32 @@ The cover follows the same guardrail. If you cannot generate \`assets/cover.webp
 in this session, do NOT hang on the cover: say so in one line and tell the writer
 to import a cover via the OWS "Import generated image" control on the genesis
 publish panel (it accepts a PNG and converts it). The same one-attempt-then-report
-rule applies to a cover-only request.`;
+rule applies to a cover-only request.
+
+### Finishing the task: post a completion line and STOP (#311)
+
+You are DONE once every requested cut has been handled — each one either has its
+verified clean-image file saved, OR a clear blocker reported and the
+prompt-and-import fallback handed off — and the cover is saved or its fallback
+reported. Verifying that each file exists at the right path, format, and size is
+ALL the checking required.
+
+Do NOT start an open-ended "let me visually re-inspect the images" loop: you
+cannot meaningfully re-judge generated art from a terminal, and looping there is
+exactly what leaves the OWS session stuck in a long-running \`Working\` state after
+the files already exist.
+
+Post ONE final completion line, then STOP (return to the idle prompt — do not keep
+working or wait for more input):
+
+  CARTOON ASSETS COMPLETE — N/N clean cut images saved, cover <saved|skipped>. Ready for lettering in OWS.
+
+If some assets are blocked, use instead:
+
+  CARTOON ASSETS PARTIAL — X/N clean cut images saved, Y blocked: <reasons>. Ready for lettering on the saved cuts in OWS.
+
+After that line, the lettering/export/publish steps are the writer's job in OWS —
+hand off and stop.`;
   }
 
   return `### You cannot create image files yourself — hand the prompt to the writer

@@ -342,6 +342,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   const [detected, setDetected] = useState<Set<number>>(new Set());
   // cutId → precise stale-path messages (#302), from detect-clean-images.
   const [staleByCut, setStaleByCut] = useState<Map<number, string[]>>(new Map());
+  // True only after /detect-clean-images has SUCCESSFULLY verified the recorded
+  // paths against disk (#311). Gates the "clean-assets-ready" banner so it never
+  // claims completion from unverified cut-plan fields while detection is pending
+  // or after it failed.
+  const [detectConfirmed, setDetectConfirmed] = useState(false);
 
   const plotFile = fileName.replace(/\.md$/, "");
 
@@ -369,6 +374,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // Server-confirmed detection of local clean files for cuts whose cleanImagePath
   // is still null. Best-effort: failures leave the detected set unchanged.
   const loadDetect = useCallback(async () => {
+    // Until this detection resolves successfully, the recorded clean paths are
+    // unverified — don't let the done banner claim completion (#311).
+    setDetectConfirmed(false);
     try {
       const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/detect-clean-images`);
       if (!res.ok) return;
@@ -385,6 +393,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         }
       }
       setStaleByCut(staleMap);
+      setDetectConfirmed(true);
     } catch {
       /* ignore — affordance simply will not show */
     }
@@ -622,6 +631,18 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {uploadProgress || "Upload & Generate"}
         </button>
       </div>
+      {/* Clean-asset generation done-state (#311): when every cut has a present,
+          valid clean image, surface a clear "done" signal so the operator knows
+          Codex generation is complete even if the terminal session is still
+          connected — no more guessing whether it is still Working. */}
+      {detectConfirmed && cutsFile.cuts.length > 0 && stats.missing === 0 && staleByCut.size === 0 && (
+        <div className="px-3 py-1 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1" data-testid="clean-assets-ready">
+          <span aria-hidden>✓</span>
+          <span>
+            All {cutsFile.cuts.length} clean image{cutsFile.cuts.length === 1 ? "" : "s"} present — clean-asset generation is complete. Ready for lettering in OWS.
+          </span>
+        </div>
+      )}
       {syncResult && (
         <div className="px-3 py-1 border-b border-border text-[10px] text-muted" data-testid="sync-result">
           {syncResult}

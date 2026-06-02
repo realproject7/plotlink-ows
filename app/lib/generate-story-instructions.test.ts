@@ -209,6 +209,28 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("There is NO `position` field");
   });
 
+  // #311: Codex must post an explicit completion line and stop, with no
+  // open-ended visual-inspection loop that leaves the session stuck Working.
+  it("cartoon (codex) output requires an explicit completion line and forbids an open-ended inspection loop", () => {
+    const flat = generateStoryInstructions("cartoon", "codex").replace(/\s+/g, " ");
+    expect(flat).toContain("Finishing the task: post a completion line and STOP");
+    expect(flat).toContain("CARTOON ASSETS COMPLETE");
+    expect(flat).toContain("CARTOON ASSETS PARTIAL");
+    // No open-ended re-inspection; stop after the line.
+    expect(flat).toContain('Do NOT start an open-ended "let me visually re-inspect the images" loop');
+    expect(flat).toContain("stuck in a long-running `Working` state");
+    expect(flat).toContain("return to the idle prompt");
+  });
+
+  it("the #311 completion-line guidance is Codex-only (absent from claude/fiction)", () => {
+    const claude = generateStoryInstructions("cartoon", "claude");
+    const fiction = generateStoryInstructions("fiction");
+    for (const phrase of ["CARTOON ASSETS COMPLETE", "Finishing the task: post a completion line and STOP"]) {
+      expect(claude).not.toContain(phrase);
+      expect(fiction).not.toContain(phrase);
+    }
+  });
+
   it("the overlay schema guidance is present for both Codex and Claude cartoon (provider-neutral)", () => {
     expect(generateStoryInstructions("cartoon", "codex")).toContain("Overlay schema");
     expect(generateStoryInstructions("cartoon", "claude")).toContain("Overlay schema");
