@@ -333,7 +333,11 @@ describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
     const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
-    expect(issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+    const prose = issues.find((i) => i.includes("placeholder/instructional prose"))!;
+    expect(prose).toBeDefined();
+    // Creator-facing action name, not the old "Generate MD" jargon (#320).
+    expect(prose).toContain("re-run Prepare Publish Markdown");
+    expect(prose).not.toMatch(/Generate MD\b/);
   });
 
   it("rejects placeholder prose BETWEEN/AFTER cut blocks", () => {

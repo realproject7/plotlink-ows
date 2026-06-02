@@ -171,7 +171,12 @@ describe("generateStoryInstructions", () => {
     const out = generateStoryInstructions("cartoon", "codex");
     expect(out).toContain("Sync clean images");
     expect(out).toContain("OWS lettering editor");
-    expect(out).toContain("Upload & Generate");
+    // Creator-facing action names, not the old "Generate MD" / "Upload & Generate"
+    // jargon (#320).
+    expect(out).toContain("Upload & Prepare for Publish");
+    expect(out).toContain("Prepare Publish Markdown");
+    expect(out).not.toMatch(/Generate MD\b/);
+    expect(out).not.toMatch(/Upload & Generate\b/);
     // The deterministic asset targets the agent vs. OWS/editor own.
     expect(out).toContain("assets/cover.webp");
     expect(out).toContain("cut-XX-clean.webp");

@@ -141,7 +141,7 @@ export function checkMarkdownReadiness(
   const placeholderProse = findPlaceholderProse(markdown);
   if (placeholderProse) {
     issues.push(
-      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Generate MD so the published markdown is image-only`,
+      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Prepare Publish Markdown so the published markdown is image-only`,
     );
   }
 
