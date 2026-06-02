@@ -873,4 +873,52 @@ describe("LetteringEditor", () => {
     expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
     expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
   });
+
+  // #336 (re1): the lifecycle that regressed lives in handleExport/React state —
+  // exercise the full edit → stale → successful Export → clear sequence in the
+  // SAME open editor, with export-cut mocked so the export succeeds in jsdom.
+  it("clears the stale-export warning after a successful re-export in the same editor session", async () => {
+    vi.doMock("./export-cut", () => ({
+      exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
+      ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
+    }));
+    try {
+      const overlay: Overlay = {
+        id: "re", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+        tailAnchor: { x: 0.5, y: 1.2 },
+      };
+      render(
+        <LetteringEditor
+          storyName="story"
+          cut={makeCut({
+            overlays: [overlay],
+            finalImagePath: "assets/plot-01/cut-01-final.webp",
+            exportedAt: "2026-01-01T00:00:00Z",
+            uploadedUrl: "https://ipfs/QmExported",
+          })}
+          plotFile="plot-01"
+          authFetch={makeAssetAuthFetch({ ok: true })}
+          onSave={vi.fn().mockResolvedValue(undefined)}
+          onClose={vi.fn()}
+          onExported={vi.fn()}
+        />,
+      );
+      await simulateImageLoad();
+
+      // Edit a bubble → export goes stale.
+      fireEvent.click(screen.getByTestId("overlay-re"));
+      fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
+      await waitFor(() => expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument());
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+
+      // Re-export in the same session → handleExport advances the baseline, so
+      // the warning clears and the checklist steps return to done.
+      await act(async () => { fireEvent.click(screen.getByTestId("export-btn")); });
+      await waitFor(() => expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument());
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
+      expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
+    } finally {
+      vi.doUnmock("./export-cut");
+    }
+  });
 });

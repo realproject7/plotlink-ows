@@ -77,63 +77,6 @@ describe("export state refresh and save-before-export", () => {
     vi.doUnmock("./export-cut");
   });
 
-  // #336 (re1): after editing an exported/uploaded cut the stale warning shows;
-  // re-exporting (without closing the editor) must clear it and restore the
-  // exported/uploaded checklist steps.
-  it("re-export clears the stale-export warning without closing the editor", async () => {
-    vi.doMock("./export-cut", () => ({
-      exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
-      ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
-    }));
-    const { LetteringEditor } = await import("./LetteringEditor");
-
-    const authFetch = vi.fn((url: string) =>
-      Promise.resolve(
-        url.includes("/asset/")
-          ? { ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) }
-          : { ok: true, status: 200, json: () => Promise.resolve({ ok: true, finalImagePath: "x.webp" }) },
-      ),
-    );
-
-    render(
-      <LetteringEditor
-        storyName="story"
-        cut={makeCut({
-          id: 1,
-          cleanImagePath: "assets/plot-01/cut-01-clean.webp",
-          finalImagePath: "assets/plot-01/cut-01-final.webp",
-          exportedAt: "2026-01-01T00:00:00Z",
-          uploadedUrl: "https://ipfs/QmExported",
-          overlays: [{ id: "e1", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira", tailAnchor: { x: 0.5, y: 1.2 } }],
-        })}
-        plotFile="plot-01"
-        authFetch={authFetch}
-        onSave={vi.fn().mockResolvedValue(undefined)}
-        onClose={vi.fn()}
-        onExported={vi.fn()}
-      />,
-    );
-
-    const img = await screen.findByRole("img");
-    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
-    Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
-    fireEvent.load(img);
-
-    // Edit the bubble → export goes stale.
-    fireEvent.click(screen.getByTestId("overlay-e1"));
-    fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed" } });
-    await waitFor(() => expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument());
-    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
-
-    // Re-export → baseline advances to the edited overlays, warning clears.
-    fireEvent.click(screen.getByTestId("export-btn"));
-    await waitFor(() => expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument());
-    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
-    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
-
-    vi.doUnmock("./export-cut");
-  });
-
   it("export blocks if save rejects", async () => {
     const { LetteringEditor } = await import("./LetteringEditor");
     const onSave = vi.fn().mockRejectedValue(new Error("Save failed"));
