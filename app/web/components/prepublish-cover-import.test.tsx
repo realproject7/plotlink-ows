@@ -24,7 +24,7 @@ afterEach(() => {
   mockConvert.mockReset();
 });
 
-const WALLET = "0x1111111111111111111111111111111111111111";
+const WALLET = "test-wallet-address";
 const DRAFT_GENESIS = { file: "genesis.md", status: "draft", content: "# A story\n\nHook." };
 
 /** authFetch double: genesis content + no auto-detected cover + import-cover OK. */
