@@ -10,6 +10,15 @@ export interface CutDialogue {
   text: string;
 }
 
+/**
+ * Panel kind (#350). An "image" cut is the normal art panel (needs a clean
+ * image → lettering → export → upload). A "text" panel is a text/interstitial
+ * card (no clean image; text on a styled background, still exported + uploaded
+ * as a final image for MVP). The field is OPTIONAL and backward-compatible:
+ * a missing `kind` means "image".
+ */
+export type CutKind = "image" | "text";
+
 export interface Cut {
   id: number;
   shotType: ShotType;
@@ -24,6 +33,17 @@ export interface Cut {
   uploadedCid: string | null;
   uploadedUrl: string | null;
   overlays: Overlay[];
+  /** Panel kind (#350). Absent ⇒ "image" (backward-compatible). */
+  kind?: CutKind;
+  /** Text-panel background color (CSS color), e.g. "#101820". Optional (#350). */
+  background?: string;
+  /** Text-panel aspect ratio hint, e.g. "4:5". Optional (#350). */
+  aspectRatio?: string;
+}
+
+/** Whether a cut is a text/interstitial panel (#350); missing kind ⇒ image. */
+export function isTextPanel(cut: Pick<Cut, "kind">): boolean {
+  return cut.kind === "text";
 }
 
 export interface CutsFile {
@@ -169,6 +189,16 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     if (cut.overlays !== undefined && !Array.isArray(cut.overlays)) {
       return { valid: false, error: `Cut ${i} overlays must be an array` };
+    }
+    // Text-panel fields (#350) — all optional and backward-compatible.
+    if (cut.kind !== undefined && cut.kind !== "image" && cut.kind !== "text") {
+      return { valid: false, error: `Cut ${i} kind must be "image" or "text"` };
+    }
+    if (cut.background !== undefined && typeof cut.background !== "string") {
+      return { valid: false, error: `Cut ${i} background must be a string` };
+    }
+    if (cut.aspectRatio !== undefined && typeof cut.aspectRatio !== "string") {
+      return { valid: false, error: `Cut ${i} aspectRatio must be a string` };
     }
   }
 

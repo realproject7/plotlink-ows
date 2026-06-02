@@ -1,4 +1,4 @@
-import type { Cut } from "./cuts";
+import { isTextPanel, type Cut } from "./cuts";
 
 const MAX_EXPORT_SIZE = 1024 * 1024;
 
@@ -15,15 +15,22 @@ export function checkCartoonReadiness(cuts: Cut[]): { ready: boolean; issues: st
   for (let i = 0; i < cuts.length; i++) {
     const cut = cuts[i];
     const label = `Cut ${i + 1}`;
+    // Text/interstitial panels (#350) have no clean image — they render text on
+    // a styled background — so they skip the clean-image/lettering gating, but
+    // (like every panel) still export + upload a final image before publish.
+    const textPanel = isTextPanel(cut);
     const isNarrationOnly = !cut.cleanImagePath && (cut.narration || cut.dialogue.length > 0);
 
-    if (!isNarrationOnly && !cut.cleanImagePath) {
+    if (!textPanel && !isNarrationOnly && !cut.cleanImagePath) {
       issues.push(`${label}: missing clean image`);
     }
-    if (!isNarrationOnly && cut.cleanImagePath && cut.overlays.length === 0) {
+    if (!textPanel && !isNarrationOnly && cut.cleanImagePath && cut.overlays.length === 0) {
       issues.push(`${label}: no overlays (text not placed)`);
     }
-    if (!isNarrationOnly && cut.cleanImagePath && !cut.finalImagePath) {
+    if (!textPanel && !isNarrationOnly && cut.cleanImagePath && !cut.finalImagePath) {
+      issues.push(`${label}: not exported`);
+    }
+    if (textPanel && !cut.finalImagePath) {
       issues.push(`${label}: not exported`);
     }
     if (cut.finalImagePath && !cut.exportedAt) {
@@ -276,33 +283,39 @@ export const CARTOON_CLEAN_IMAGE_HELP =
  */
 export interface CartoonCutProgress {
   total: number;
-  /** Cuts that require a clean image. For MVP this is every cut (= total). */
+  /** Cuts that require a clean image — image cuts only; text panels excluded (#350). */
   needClean: number;
   /** Of `needClean`, how many have a clean image recorded. */
   withClean: number;
   /** Of the clean-image cuts, how many have text overlays placed. */
   withText: number;
-  /** Of the clean-image cuts, how many have an exported final image. */
+  /** Cuts (any kind) with an exported final image. */
   exported: number;
-  /** Cuts with a recorded uploaded URL. */
+  /** Cuts (any kind) with a recorded uploaded URL. */
   uploaded: number;
 }
 
 export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
+  let needClean = 0;
   let withClean = 0;
   let withText = 0;
   let exported = 0;
   let uploaded = 0;
   for (const cut of cuts) {
-    if (cut.cleanImagePath) {
-      withClean++;
-      if (cut.overlays.length > 0) withText++;
-      if (cut.finalImagePath && cut.exportedAt) exported++;
+    // Image cuts need a clean image → lettering; text/interstitial panels (#350)
+    // do not (they're text on a styled background). Every panel still exports +
+    // uploads a final image, so those are counted for both kinds.
+    if (!isTextPanel(cut)) {
+      needClean++;
+      if (cut.cleanImagePath) {
+        withClean++;
+        if (cut.overlays.length > 0) withText++;
+      }
     }
+    if (cut.finalImagePath && cut.exportedAt) exported++;
     if (cut.uploadedUrl) uploaded++;
   }
-  // MVP: every cut is image-required, so needClean === total.
-  return { total: cuts.length, needClean: cuts.length, withClean, withText, exported, uploaded };
+  return { total: cuts.length, needClean, withClean, withText, exported, uploaded };
 }
 
 export type CartoonStepKey = "plan" | "clean" | "letter" | "export" | "upload" | "publish";
@@ -350,10 +363,13 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const p = summarizeCutProgress(cuts);
   if (p.total === 0) return { steps: [], nextStep: null };
 
+  // Clean + letter gate only IMAGE cuts (needClean); export + upload gate EVERY
+  // cut including text panels (total). For an all-image story needClean === total
+  // so this is unchanged from before (#350).
   const planDone = p.total > 0;
   const cleanDone = planDone && p.withClean === p.needClean;
   const letterDone = cleanDone && p.withText === p.needClean;
-  const exportDone = letterDone && p.exported === p.needClean;
+  const exportDone = letterDone && p.exported === p.total;
   const uploadDone = exportDone && p.uploaded === p.total;
   const publishDone = uploadDone && published;
 
@@ -368,13 +384,14 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const order: CartoonStepKey[] = ["plan", "clean", "letter", "export", "upload", "publish"];
   const currentIdx = order.findIndex((k) => !complete[k]);
 
-  // needClean === total (every cut is image-required for MVP), and total > 0
-  // here, so the image-step denominators are always countable.
+  // Clean/letter count image cuts (needClean); export/upload count every cut
+  // (total). An all-text-panel episode has needClean === 0 → "no image cuts".
+  const imageDetail = (done: number) => (p.needClean > 0 ? fraction(done, p.needClean) : "no image cuts");
   const detail: Record<CartoonStepKey, string | null> = {
     plan: fraction(p.total, p.total),
-    clean: fraction(p.withClean, p.needClean),
-    letter: fraction(p.withText, p.needClean),
-    export: fraction(p.exported, p.needClean),
+    clean: imageDetail(p.withClean),
+    letter: imageDetail(p.withText),
+    export: fraction(p.exported, p.total),
     upload: fraction(p.uploaded, p.total),
     publish: null,
   };

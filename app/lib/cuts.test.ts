@@ -8,6 +8,7 @@ import {
   readCutsFile,
   writeCutsFile,
   validateCutsFile,
+  isTextPanel,
   SHOT_TYPES,
 } from "./cuts";
 
@@ -205,6 +206,45 @@ describe("validateCutsFile", () => {
       valid: false,
       error: "title must be a string",
     });
+  });
+
+  // #350: text-panel fields are optional and backward-compatible.
+  it("accepts a legacy image cut with no kind (defaults to image)", () => {
+    const cf = createCutsFile("plot-01", 1);
+    expect(validateCutsFile(cf)).toEqual({ valid: true });
+    expect(cf.cuts[0].kind).toBeUndefined();
+  });
+
+  it("accepts a text panel with kind + background + aspectRatio", () => {
+    const cf = createCutsFile("plot-01", 1);
+    const data = { ...cf, cuts: [{ ...cf.cuts[0], kind: "text", background: "#101820", aspectRatio: "4:5" }] };
+    expect(validateCutsFile(data)).toEqual({ valid: true });
+  });
+
+  it("accepts a mixed image/text-panel cut plan", () => {
+    const cf = createCutsFile("plot-01", 2);
+    const data = { ...cf, cuts: [{ ...cf.cuts[0], kind: "image" }, { ...cf.cuts[1], kind: "text" }] };
+    expect(validateCutsFile(data)).toEqual({ valid: true });
+  });
+
+  it("rejects an invalid kind", () => {
+    const cf = createCutsFile("plot-01", 1);
+    const data = { ...cf, cuts: [{ ...cf.cuts[0], kind: "interstitial" }] };
+    expect(validateCutsFile(data)).toEqual({ valid: false, error: 'Cut 0 kind must be "image" or "text"' });
+  });
+
+  it("rejects non-string background / aspectRatio", () => {
+    const cf = createCutsFile("plot-01", 1);
+    expect(validateCutsFile({ ...cf, cuts: [{ ...cf.cuts[0], background: 0 }] }).valid).toBe(false);
+    expect(validateCutsFile({ ...cf, cuts: [{ ...cf.cuts[0], aspectRatio: 5 }] }).valid).toBe(false);
+  });
+});
+
+describe("isTextPanel (#350)", () => {
+  it("is true only for kind 'text'; missing kind ⇒ image", () => {
+    expect(isTextPanel({ kind: "text" })).toBe(true);
+    expect(isTextPanel({ kind: "image" })).toBe(false);
+    expect(isTextPanel({})).toBe(false);
   });
 
   it("rejects cut without numeric id", () => {
