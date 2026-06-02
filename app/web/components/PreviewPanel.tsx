@@ -1065,8 +1065,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <span className="text-xs text-muted">
                   {cartoonAwaitingCount} of {cartoonTotalCuts} cuts still need a final uploaded image
                 </span>
-                <span className="text-xs text-muted">
-                  Next: add clean images, letter the bubbles, export the final images, then upload them.
+                {/* Next-action line tracks the CURRENT cartoon step (#345) — once
+                    clean/letter/export are done it says "upload …", not the
+                    generic full-sequence copy. Shares cartoonChecklist.nextStep
+                    with the Episode steps panel so the two never disagree. */}
+                <span className="text-xs text-muted" data-testid="cartoon-awaiting-next">
+                  Next: {cartoonChecklistData?.nextStep ?? "add clean images, letter the bubbles, export the final images, then upload them."}
                 </span>
               </div>
             )}
