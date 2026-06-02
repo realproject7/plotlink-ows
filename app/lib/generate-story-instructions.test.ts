@@ -193,6 +193,72 @@ describe("generateStoryInstructions", () => {
     expect(out).not.toContain("magick");
     expect(out).not.toContain("Sync clean images");
   });
+
+  // #307: Codex cartoon image generation must not silently hang — confirm
+  // capability, checkpoint, and fail visibly instead of an indefinite Working
+  // state. Match against a whitespace-normalized copy so line-wrapping of the
+  // template literal can change without breaking these assertions.
+  it("cartoon (codex) output carries the image-generation no-hang guardrail", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    const flat = out.replace(/\s+/g, " ");
+    // Capability is not assumed — it must be confirmed.
+    expect(flat).toContain("NOT guaranteed to be available");
+    expect(flat).toContain("Confirm the capability");
+    // One bounded attempt, never an indefinite Working state / retry loop.
+    expect(flat).toContain("ONE bounded attempt");
+    expect(flat).toContain("never retry image generation in a loop");
+    expect(flat).toContain("indefinite `Working` state");
+    // Fail visibly with an explicit blocker line, then fall back cleanly.
+    expect(flat).toContain("Fail visibly, never silently");
+    expect(flat).toContain("Image generation is unavailable in this Codex session; switching to the prompt-and-import handoff.");
+    expect(flat).toContain("An unreported hang is a bug");
+    // Progress checkpoints so the writer never just sees a spinner.
+    expect(flat).toContain("Report progress per file");
+    expect(flat).toContain("Checkpoint first");
+    // The fallback path still exists (and is reached via the guardrail).
+    expect(flat).toContain("Fallback: hand the prompt to the writer");
+  });
+
+  it("cartoon (codex) output adds a cover-specific no-hang fallback via OWS import", () => {
+    const flat = generateStoryInstructions("cartoon", "codex").replace(/\s+/g, " ");
+    expect(flat).toContain("Cover fallback");
+    // Cover-only requests must not hang either; OWS import is the concrete fallback.
+    expect(flat).toContain("Import generated image");
+    expect(flat).toContain("cover-only request");
+    expect(flat).toContain("do NOT hang on the cover");
+  });
+
+  it("the #307 guardrail preserves the #274 create-file primacy (Codex is not told it cannot create files)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // Guardrail is a precondition, not a demotion: create-file is still primary.
+    expect(out).toContain("Create the clean image file directly — your primary job");
+    expect(out).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    // #274 invariant intact — never categorically denied the capability.
+    expect(out).not.toContain("You cannot create image files yourself");
+    expect(out).not.toContain("do **not** generate image files");
+  });
+
+  it("the no-hang guardrail and cover fallback are Codex-only and do not leak into claude/fiction", () => {
+    const codex = generateStoryInstructions("cartoon", "codex");
+    const claude = generateStoryInstructions("cartoon", "claude");
+    const fiction = generateStoryInstructions("fiction");
+    expect(codex).toContain("confirm capability, checkpoint, and never hang");
+    // #307 guardrail/fallback phrasing must NOT appear in Claude/default output
+    // (it would contradict "You cannot create image files yourself"). The shared
+    // Asset Tooling copy stays provider-neutral.
+    for (const phrase of [
+      "confirm capability, checkpoint, and never hang",
+      "Cover fallback",
+      "bounded attempt",
+      "Import generated image",
+      "switching to the prompt-and-import",
+    ]) {
+      expect(claude).not.toContain(phrase);
+      expect(fiction).not.toContain(phrase);
+    }
+    // Claude/default still carries its own can't-create-files handoff intact.
+    expect(claude).toContain("You cannot create image files yourself");
+  });
 });
 
 describe("writeStoryInstructions", () => {
