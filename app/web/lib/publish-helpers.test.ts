@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -225,6 +225,28 @@ describe("episodeTitleFromPlotFile (#347)", () => {
   it("returns null for non-plot filenames", () => {
     expect(episodeTitleFromPlotFile("genesis.md")).toBeNull();
     expect(episodeTitleFromPlotFile("structure.md")).toBeNull();
+  });
+});
+
+describe("isRawFilenameTitle (#358)", () => {
+  it("flags a raw genesis label", () => {
+    expect(isRawFilenameTitle("genesis", "genesis.md")).toBe(true);
+    expect(isRawFilenameTitle("Genesis", "genesis.md")).toBe(true);
+    expect(isRawFilenameTitle("  GENESIS ", "genesis.md")).toBe(true);
+  });
+  it("flags a raw plot-NN label", () => {
+    expect(isRawFilenameTitle("plot-01", "plot-01.md")).toBe(true);
+    expect(isRawFilenameTitle("Plot-07", "plot-07.md")).toBe(true);
+    expect(isRawFilenameTitle("plot-2", "plot-12.md")).toBe(true); // any plot-N shape
+  });
+  it("treats an empty title as raw/unusable", () => {
+    expect(isRawFilenameTitle("", "genesis.md")).toBe(true);
+    expect(isRawFilenameTitle("   ", "plot-01.md")).toBe(true);
+  });
+  it("passes a real reader-facing title", () => {
+    expect(isRawFilenameTitle("Coupon Crush at Closing Time", "genesis.md")).toBe(false);
+    expect(isRawFilenameTitle("Episode 01", "plot-01.md")).toBe(false);
+    expect(isRawFilenameTitle("The Couple Coupon", "plot-01.md")).toBe(false);
   });
 });
 
