@@ -544,8 +544,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={generating}
           className="ml-auto px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="generate-markdown-btn"
+          title="Build the publish-ready episode markdown from the uploaded cut images"
         >
-          {generating ? "Generating..." : "Generate MD"}
+          {generating ? "Preparing…" : "Prepare Publish Markdown"}
         </button>
         <button
           onClick={syncCleanImages}
@@ -614,7 +615,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
               loadCuts();
               return;
             }
-            setUploadProgress("Generating markdown...");
+            setUploadProgress("Preparing publish markdown…");
             const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
             if (mdRes.ok) {
               const data = await mdRes.json();
@@ -627,8 +628,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={uploading || !cutsFile?.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid)}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="upload-generate-btn"
+          title="Upload each cut's final lettered image, then build the publish-ready episode markdown"
         >
-          {uploadProgress || "Upload & Generate"}
+          {uploadProgress || "Upload & Prepare for Publish"}
         </button>
       </div>
       {/* Clean-asset generation done-state (#311): when every cut has a present,
