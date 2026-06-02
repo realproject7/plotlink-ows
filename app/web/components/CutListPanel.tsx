@@ -687,7 +687,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
               loadCuts();
               return;
             }
-            setUploadProgress("Preparing publish markdown…");
+            setUploadProgress("Preparing episode for publishing…");
             const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
             if (mdRes.ok) {
               const data = await mdRes.json();
@@ -700,7 +700,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={uploading || !cutsFile?.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid)}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="upload-generate-btn"
-          title="Upload each cut's final lettered image, then build the publish-ready episode markdown"
+          title="Upload each cut's final lettered image, then prepare the episode for publishing"
         >
           {uploadProgress || "Upload & Prepare for Publish"}
         </button>

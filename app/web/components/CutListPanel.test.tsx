@@ -327,6 +327,50 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("Upload & Prepare button exposes no markdown/MD jargon in its label or hover title (#360)", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [] })],
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    const btn = await screen.findByTestId("upload-generate-btn");
+    const jargon = /markdown|\bMD\b|Generate MD/i;
+    expect(btn.textContent || "").not.toMatch(jargon);
+    expect(btn.getAttribute("title") || "").not.toMatch(jargon);
+  });
+
+  it("Upload & Prepare progress copy uses creator-facing language, not markdown jargon (#360)", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: [makeCut({ id: 1, finalImagePath: "assets/plot-01/cut-01-final.webp", overlays: [] })],
+    };
+    // Hold generate-markdown unresolved so the "Preparing…" progress copy stays rendered.
+    let releaseMd: () => void = () => {};
+    const mdGate = new Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>((resolve) => {
+      releaseMd = () => resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: [] }) });
+    });
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: "QmNewCid123", url: "https://ipfs.example.com/QmNewCid123" }) });
+      if (url.includes("set-uploaded")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      if (url.includes("generate-markdown")) return mdGate;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
+
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+    fireEvent.click(await screen.findByTestId("upload-generate-btn"));
+
+    // While generate-markdown is in flight, the progress copy is shown in the button.
+    await waitFor(() => {
+      expect(screen.getByTestId("upload-generate-btn").textContent || "").toMatch(/Preparing episode for publishing/i);
+    });
+    expect(screen.getByTestId("upload-generate-btn").textContent || "").not.toMatch(/markdown|\bMD\b/i);
+    releaseMd();
+  });
+
   it("Upload & Generate calls upload-plot-image, forwards CID to set-uploaded, then generate-markdown", async () => {
     const cutsData = {
       version: 1, plotFile: "plot-01",
