@@ -11,7 +11,7 @@ function stubFetch() {
     const u = String(url);
     let body: unknown = {};
     if (u.includes("/api/wallet/create")) body = { ok: true };
-    else if (u.includes("/api/wallet")) body = { exists: true, address: "0x0", balances: {} };
+    else if (u.includes("/api/wallet")) body = { exists: true, address: "test-wallet-address", balances: {} };
     else if (u.includes("/api/health")) body = { version: "1.2.7" };
     else if (u.includes("/api/stories")) body = { stories: [] };
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
