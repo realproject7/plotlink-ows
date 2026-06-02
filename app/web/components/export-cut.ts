@@ -57,8 +57,21 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-const SPEECH_FILL = "rgba(255, 255, 255, 0.9)";
-const SPEECH_STROKE = "rgba(0, 0, 0, 0.3)";
+// Webtoon balloon styling (#363). A near-opaque bubble with a strong, clean
+// near-black outline reads as a comic speech balloon rather than a faint UI box
+// (the old rgba(0,0,0,0.3) hairline). Narration is an intentional parchment
+// card with a softer outline; both stroke weights scale with the panel so the
+// look holds at any export resolution.
+const SPEECH_FILL = "rgba(255, 255, 255, 0.95)";
+const SPEECH_STROKE = "#1a1a1a";
+const NARRATION_FILL = "rgba(244, 239, 230, 0.94)";
+const NARRATION_STROKE = "rgba(26, 26, 26, 0.55)";
+
+// Outline weight as a fraction of the rendered panel height, so a balloon keeps
+// the same visual line thickness whether exported small or large (#363).
+function balloonStrokeWidth(renderHeight: number): number {
+  return Math.max(2, renderHeight * 0.004);
+}
 
 // Trace a speech balloon — rounded-rect body plus its pointer tail — as ONE
 // continuous outline, from the SHARED balloonOutline geometry (#341, formerly a
@@ -98,24 +111,34 @@ export function renderOverlays(
     const ow = overlay.width * width;
     const oh = overlay.height * height;
 
+    const strokeW = balloonStrokeWidth(height);
     if (overlay.type === "speech") {
       // Trace the body and its tail as a single outline so the exported balloon
       // has no internal seam between them (#317): one fill, one stroke, with the
       // tail forming part of the balloon's outline instead of a shape laid over
-      // a fully-stroked body border.
+      // a fully-stroked body border. A rounded line join keeps the tail/corner
+      // junctions soft and organic (#363).
       const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
       traceBalloonPath(ctx, ox, oy, ow, oh, tail);
       ctx.fillStyle = SPEECH_FILL;
       ctx.fill();
       ctx.strokeStyle = SPEECH_STROKE;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = strokeW;
+      ctx.lineJoin = "round";
       ctx.stroke();
     } else if (overlay.type === "narration") {
-      ctx.fillStyle = "rgba(240, 235, 225, 0.9)";
-      ctx.fillRect(ox, oy, ow, oh);
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(ox, oy, ow, oh);
+      // Narration stays rectangular but reads as an intentional webtoon caption
+      // card: gently rounded corners + a confident (if softer-than-speech)
+      // outline, instead of a hairline box (#363).
+      const nr = Math.min(ow, oh) * 0.12;
+      ctx.beginPath();
+      ctx.roundRect(ox, oy, ow, oh, nr);
+      ctx.fillStyle = NARRATION_FILL;
+      ctx.fill();
+      ctx.strokeStyle = NARRATION_STROKE;
+      ctx.lineWidth = Math.max(1.5, strokeW * 0.75);
+      ctx.lineJoin = "round";
+      ctx.stroke();
     }
 
     const font = overlay.type === "sfx" ? displayFont : bodyFont;

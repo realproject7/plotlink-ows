@@ -48,10 +48,21 @@ function clamp(v: number, min: number, max: number): number {
  * visible tail to draw). Shared by the export canvas and the editor preview so
  * both render the tail identically.
  */
-// The corner radius balloonOutline uses by default. speechTailPoints mirrors it
-// so the tail mouth is kept clear of the rounded corners (see fitTailMouth).
-function defaultBalloonRadius(ow: number, oh: number): number {
-  return Math.max(0, Math.min(8, ow / 2, oh / 2));
+/**
+ * Default corner radius for a speech balloon. The single source of truth for
+ * balloon rounding: both balloonOutline (body curve) and speechTailPoints (so
+ * the tail mouth stays clear of the rounded corners — see fitTailMouth) use it,
+ * so the body and tail agree and preview and export round identically.
+ *
+ * Proportional to the bubble's shorter side (#363): a soft, webtoon-style
+ * rounding that reads as a comic balloon at any export scale. The previous flat
+ * 8px cap looked rounded on the small editor preview but nearly rectangular on a
+ * large exported panel — the boxiness #363 fixes. Capped strictly below half the
+ * shorter side so the four corner arcs never overrun the body.
+ */
+export function defaultBalloonRadius(ow: number, oh: number): number {
+  const shorter = Math.min(ow, oh);
+  return Math.max(0, Math.min(shorter * 0.4, shorter / 2));
 }
 
 /**
@@ -149,7 +160,7 @@ export function balloonOutline(
   tail: TailPoints | null,
   radius?: number,
 ): BalloonCommand[] {
-  const r = radius ?? Math.max(0, Math.min(8, ow / 2, oh / 2));
+  const r = radius ?? defaultBalloonRadius(ow, oh);
   const right = ox + ow;
   const bottom = oy + oh;
 

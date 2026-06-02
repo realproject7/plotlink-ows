@@ -662,13 +662,19 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 const ow = toPixel(overlay.width, imageBounds.width);
                 const oh = toPixel(overlay.height, imageBounds.height);
                 const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
+                // Strong, clean near-black outline scaled to the preview size so
+                // the bubble reads as a webtoon balloon (matching the export's
+                // proportional stroke), not a faint UI box (#363).
+                const strokeW = Math.max(1.5, imageBounds.height * 0.004);
+                const selected = overlay.id === selectedId;
                 return (
                   <path
                     key={overlay.id}
                     data-testid={`balloon-${overlay.id}`}
                     d={balloonPathD(ox, oy, ow, oh, tail)}
-                    className={`fill-white/80 ${overlay.id === selectedId ? "stroke-accent" : "stroke-foreground/40"}`}
-                    strokeWidth={1}
+                    className={`fill-white/95 ${selected ? "stroke-accent" : "stroke-[#1a1a1a]"}`}
+                    strokeWidth={selected ? strokeW + 0.5 : strokeW}
+                    strokeLinejoin="round"
                   />
                 );
               })}
@@ -687,6 +693,9 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
             // path's accent stroke (plus the resize handle). Narration/SFX keep
             // their bordered box + selection ring as before.
             const isSpeech = overlay.type === "speech";
+            // Narration reads as an intentional parchment caption card (rounded,
+            // filled), mirroring the export, instead of an empty bordered box (#363).
+            const isNarration = overlay.type === "narration";
             const warned = !!overlayWarnings[overlay.id];
 
             return (
@@ -698,9 +707,9 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 onMouseDown={(e) => handleMouseDown(e, overlay.id, "move")}
                 className={`absolute rounded cursor-move select-none ${
                   isSpeech ? "" : `border-2 ${TYPE_BORDER[overlay.type]}`
-                } ${isSelected && !isSpeech ? "ring-2 ring-accent" : ""} ${
-                  warned ? "ring-2 ring-amber-500" : ""
-                }`}
+                } ${isNarration ? "bg-[#f4efe6]/85 rounded-md" : ""} ${
+                  isSelected && !isSpeech ? "ring-2 ring-accent" : ""
+                } ${warned ? "ring-2 ring-amber-500" : ""}`}
                 style={{ left, top, width, height }}
               >
                 {(() => {
