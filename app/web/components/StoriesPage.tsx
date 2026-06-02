@@ -273,6 +273,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setPublishProgress("Reading file...");
     setPublishError(null); // clear any prior durable block on a fresh attempt (#375)
     let coverAttachFailed = false;
+    // Whether the publish proceeded past every pre-stream gate (title, duplicate,
+    // storyline, preflight) and actually opened the publish stream. Returned to
+    // the caller so PreviewPanel drops the selected genesis cover ONLY once the
+    // publish was really attempted — a blocked publish keeps the cover (#375).
+    let attempted = false;
 
     try {
       // Get file content
@@ -320,7 +325,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             : "Set an episode title in the cut plan before publishing — it would otherwise publish as a raw filename.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // Defense-in-depth (#365, tightened #368): a cartoon plot must have an
@@ -333,7 +338,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           "Set a real episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // Defense-in-depth (#359): a cartoon Genesis is the reader-facing opening,
@@ -345,7 +350,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           "Add a “# Title” heading to genesis.md before publishing — the Story opening needs a real title readers see first.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return;
+        return false;
       }
 
       // For plot files, find the storylineId from the genesis publish status
@@ -376,7 +381,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         if (!storylineId) {
           setPublishProgress("Error: Publish genesis first to create the storyline");
           setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 3000);
-          return;
+          return false;
         }
       }
 
@@ -398,10 +403,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             setPublishError(formatPreflightBlock(pre));
             setPublishingFile(null);
             setPublishProgress("");
-            return;
+            return false;
           }
         }
       } catch { /* preflight unreachable — don't hard-block; let the publish stream report */ }
+
+      // Past every pre-stream gate — the publish is now being attempted, so the
+      // caller may drop the selected cover (#375).
+      attempted = true;
 
       // Run publish flow via SSE
       setPublishProgress("Publishing...");
@@ -485,6 +494,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         setPublishProgress("");
       }, 3000);
     }
+    // true once the stream was opened (cover handed off → safe to clear); false
+    // on any pre-stream block so PreviewPanel keeps the writer's cover (#375).
+    return attempted;
   }, [authFetch, storyContentTypes, walletAddress]);
 
   const handleDestroySession = useCallback((name: string) => {

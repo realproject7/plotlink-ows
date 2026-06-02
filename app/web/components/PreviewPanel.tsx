@@ -55,7 +55,10 @@ interface PreviewPanelProps {
   storyName: string | null;
   fileName: string | null;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void;
+  // Resolves to true once the publish actually proceeded past the pre-stream
+  // gates (so a selected cover may be dropped); false/void when blocked before
+  // the stream (e.g. insufficient-balance preflight), so the cover is kept (#375).
+  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void | Promise<boolean | void>;
   publishingFile?: string | null;
   walletAddress?: string | null;
   contentType?: "fiction" | "cartoon";
@@ -1358,7 +1361,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </>
               )}
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!storyName || !fileName) return;
                   if (imageValidation.count > 0) {
                     const msg = `This plot contains ${imageValidation.count} illustration(s). Content is immutable after publishing — image references cannot be changed or removed.\n\nPlease verify illustrations appear correctly in Preview before continuing.\n\nPublish now?`;
@@ -1373,17 +1376,20 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   // through the same attach path.
                   const cover = isGenesis ? coverFile : null;
                   if (cover) {
-                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
-                    // Hand the file to the parent's publish flow, then drop the
-                    // local selection so it can't linger into the Edit panel or be
-                    // re-applied by cover auto-detection.
-                    coverUserTouchedRef.current = true;
-                    setDetectedCover(null);
-                    setDetectedCoverWarning(null);
-                    setCoverStatus("unknown");
-                    setCoverFile(null);
-                    setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-                    if (coverInputRef.current) coverInputRef.current.value = "";
+                    // Drop the local cover selection ONLY after the publish was
+                    // actually attempted (onPublish resolves truthy). A blocked
+                    // preflight (insufficient balance) resolves falsy, so the
+                    // writer's selected cover stays put for the retry (#375).
+                    const attempted = await onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
+                    if (attempted) {
+                      coverUserTouchedRef.current = true;
+                      setDetectedCover(null);
+                      setDetectedCoverWarning(null);
+                      setCoverStatus("unknown");
+                      setCoverFile(null);
+                      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+                      if (coverInputRef.current) coverInputRef.current.value = "";
+                    }
                   } else {
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
