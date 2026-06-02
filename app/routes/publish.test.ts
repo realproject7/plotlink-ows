@@ -404,14 +404,36 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   const NUMBERED_GOOD_PLOT_PAGE =
     `<title>Episode 1 — The Couple Coupon — Coupon Crush — PlotLink</title>` +
     `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush"/>`;
+  const DASHED_STORYLINE_PAGE =
+    `<title>Coupon Crush — After Hours — PlotLink</title>` +
+    `<meta property="og:title" content="Coupon Crush — After Hours"/>`;
+  const DASHED_STORYLINE_PLOT_PAGE =
+    `<title>Episode 1 — The Couple Coupon — Coupon Crush — After Hours — PlotLink</title>` +
+    `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush — After Hours"/>`;
   const STORYLINE_PAGE = `<title>genesis — PlotLink</title><meta property="og:title" content="genesis"/>`;
 
   function stubFetch(html: string, ok = true) {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok, status: ok ? 200 : 404, text: () => Promise.resolve(html) })));
   }
 
+  function stubFetchByUrl(map: Record<string, { html: string; ok?: boolean }>) {
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      const match = map[url];
+      if (!match) return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve("") });
+      return Promise.resolve({
+        ok: match.ok ?? true,
+        status: match.ok === false ? 404 : 200,
+        text: () => Promise.resolve(match.html),
+      });
+    }));
+  }
+
   it("returns the plot title (leading og:title segment) from the plot page", async () => {
-    stubFetch(PLOT_PAGE);
+    stubFetchByUrl({
+      "https://plotlink.xyz/story/59/1": { html: PLOT_PAGE },
+      "https://plotlink.xyz/story/59": { html: STORYLINE_PAGE },
+    });
     const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
     const data = await res.json();
     expect(data).toMatchObject({ ok: true, fetched: true, plotTitle: "plot-01" });
@@ -421,7 +443,24 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   });
 
   it("preserves a numbered reader-facing title when the plot title itself contains an em dash (#394)", async () => {
-    stubFetch(NUMBERED_GOOD_PLOT_PAGE);
+    stubFetchByUrl({
+      "https://plotlink.xyz/story/59/1": { html: NUMBERED_GOOD_PLOT_PAGE },
+      "https://plotlink.xyz/story/59": { html: `<title>Coupon Crush — PlotLink</title><meta property="og:title" content="Coupon Crush"/>` },
+    });
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({
+      ok: true,
+      fetched: true,
+      plotTitle: "Episode 1 — The Couple Coupon",
+    });
+  });
+
+  it("strips the exact storyline suffix when the storyline title also contains an em dash (#394)", async () => {
+    stubFetchByUrl({
+      "https://plotlink.xyz/story/59/1": { html: DASHED_STORYLINE_PLOT_PAGE },
+      "https://plotlink.xyz/story/59": { html: DASHED_STORYLINE_PAGE },
+    });
     const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
     const data = await res.json();
     expect(data).toMatchObject({

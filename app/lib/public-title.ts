@@ -44,13 +44,23 @@ export function extractOgTitle(html: string): string | null {
 
 /**
  * The plot-title portion of a plot page title, where og:title is
- * "<plotTitle> — <storylineTitle>". Strip only the FINAL storyline segment,
- * not the first separator, because a real episode title may itself contain
- * " — " (e.g. "Episode 1 — The Couple Coupon — Coupon Crush"). Returns the
- * whole value when there is no separator. Null for empty/missing input.
+ * "<plotTitle> — <storylineTitle>". Prefer stripping the EXACT storyline title
+ * suffix when known, because the storyline title itself may contain " — ".
+ * Fall back to removing only the FINAL segment, not the first separator,
+ * because a real episode title may itself contain " — " (e.g. "Episode 1 —
+ * The Couple Coupon — Coupon Crush"). Returns the whole value when there is no
+ * separator. Null for empty/missing input.
  */
-export function leadingTitleSegment(title: string | null): string | null {
+export function leadingTitleSegment(title: string | null, storylineTitle?: string | null): string | null {
   if (!title) return null;
+  const story = storylineTitle?.trim();
+  if (story) {
+    const suffix = `${TITLE_SEP}${story}`;
+    if (title.endsWith(suffix)) {
+      const exact = title.slice(0, -suffix.length).trim();
+      return exact || null;
+    }
+  }
   const idx = title.lastIndexOf(TITLE_SEP);
   const seg = (idx === -1 ? title : title.slice(0, idx)).trim();
   return seg || null;

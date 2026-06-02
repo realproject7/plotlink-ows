@@ -130,13 +130,24 @@ publish.get("/public-title", async (c) => {
     : `${PLOTLINK_URL}/story/${storylineId}`;
 
   try {
+    if (isPlot) {
+      const storyUrl = `${PLOTLINK_URL}/story/${storylineId}`;
+      const [plotRes, storyRes] = await Promise.allSettled([fetch(url), fetch(storyUrl)]);
+      const res = plotRes.status === "fulfilled" ? plotRes.value : null;
+      if (!res?.ok) return c.json({ ok: true, fetched: false });
+      const og = extractOgTitle(await res.text());
+      if (!og) return c.json({ ok: true, fetched: false });
+      let storylineTitle: string | null = null;
+      if (storyRes && storyRes.status === "fulfilled" && storyRes.value.ok) {
+        storylineTitle = extractOgTitle(await storyRes.value.text());
+      }
+      return c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(og, storylineTitle) });
+    }
     const res = await fetch(url);
     if (!res.ok) return c.json({ ok: true, fetched: false });
     const og = extractOgTitle(await res.text());
     if (!og) return c.json({ ok: true, fetched: false });
-    return isPlot
-      ? c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(og) })
-      : c.json({ ok: true, fetched: true, storylineTitle: og });
+    return c.json({ ok: true, fetched: true, storylineTitle: og });
   } catch {
     // Network/parse failure → inconclusive; never block on a flaky read.
     return c.json({ ok: true, fetched: false });
