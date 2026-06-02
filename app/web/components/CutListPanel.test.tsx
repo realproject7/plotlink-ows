@@ -607,4 +607,55 @@ describe("CutListPanel", () => {
       expect(urls.filter((u: string) => u.endsWith("/detect-clean-images")).length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  // #311: a clear "clean-asset generation complete" done-state so the operator
+  // knows Codex is finished even if the terminal session is still connected.
+  describe("clean-assets-ready done state (#311)", () => {
+    it("shows the done banner when every cut has a present clean image", async () => {
+      const cutsData = {
+        version: 1, plotFile: "plot-01",
+        cuts: [
+          makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp" }),
+          makeCut({ id: 2, cleanImagePath: "assets/plot-01/cut-02-clean.webp" }),
+        ],
+      };
+      const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+      render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+      await waitFor(() => expect(screen.getByTestId("clean-assets-ready")).toBeInTheDocument());
+      expect(screen.getByTestId("clean-assets-ready")).toHaveTextContent("All 2 clean images present");
+    });
+
+    it("does not show the done banner while a cut is still missing its clean image", async () => {
+      const cutsData = {
+        version: 1, plotFile: "plot-01",
+        cuts: [
+          makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp" }),
+          makeCut({ id: 2, description: "Still missing", cleanImagePath: null }),
+        ],
+      };
+      const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+      render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+      await waitFor(() => expect(screen.getByText("Still missing")).toBeInTheDocument());
+      expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
+    });
+
+    it("does not show the done banner when a recorded clean path is stale/missing on disk", async () => {
+      const cutsData = {
+        version: 1, plotFile: "plot-01",
+        cuts: [makeCut({ id: 1, description: "Has recorded path", cleanImagePath: "assets/plot-01/cut-01-clean.webp" })],
+      };
+      const authFetch = vi.fn((url: string) => {
+        if (url.includes("/detect-clean-images")) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [{ cutId: 1, field: "cleanImagePath", path: "assets/plot-01/cut-01-clean.webp", message: "missing" }] }) });
+        }
+        if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"], { type: "image/webp" })) });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+      });
+      render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+      await waitFor(() => expect(screen.getByText("Has recorded path")).toBeInTheDocument());
+      // Stale recorded path surfaces as "Image missing" in the row header (#302).
+      await waitFor(() => expect(screen.getByText("Image missing")).toBeInTheDocument());
+      expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
+    });
+  });
 });
