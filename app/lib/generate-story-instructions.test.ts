@@ -259,6 +259,17 @@ describe("generateStoryInstructions", () => {
     expect(out).toMatch(/what the lead wants/i);
   });
 
+  it("makes the public-facing title requirement explicit for Genesis AND every episode (#380)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // Every episode needs a reader-facing public title, never a default label.
+    expect(out).toMatch(/public chapter title readers see on PlotLink/i);
+    expect(out).toMatch(/never the raw filename `plot-01`/i);
+    expect(out).toMatch(/never a bare generic\s+"Episode NN"/i);
+    expect(out).toMatch(/EVERY\s+episode\s+needs\s+a\s+public\s+title\s+specific\s+to\s+what\s+happens\s+in\s+it/i);
+    // And the story itself must not publish as the default "Genesis" label.
+    expect(out).toMatch(/Genesis\s+must\s+carry\s+a\s+real\s+`# Title`,\s+never\s+the\s+default\s+`Genesis`\s+label/i);
+  });
+
   it("requires Episode 01 to open on a titled beat continuing from Genesis, not a cold jump (#380)", () => {
     const out = generateStoryInstructions("cartoon", "codex");
     expect(out).toMatch(/titled\s+beat continuing directly from where Genesis leaves off/i);
