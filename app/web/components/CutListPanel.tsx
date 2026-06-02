@@ -476,6 +476,40 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     setRepairing(false);
   }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
 
+  // Append a text/interstitial panel to the cut plan (#352) — a one-click way to
+  // add a narration/title card between image cuts without hand-editing cuts.json.
+  const [addingPanel, setAddingPanel] = useState(false);
+  const addTextPanel = useCallback(async () => {
+    if (!cutsFile) return;
+    setAddingPanel(true);
+    try {
+      const nextId = cutsFile.cuts.reduce((m, c) => Math.max(m, c.id), 0) + 1;
+      const panel = {
+        id: nextId, shotType: "wide", description: "Text panel", characters: [],
+        dialogue: [], narration: "", sfx: "",
+        cleanImagePath: null, finalImagePath: null, exportedAt: null,
+        uploadedCid: null, uploadedUrl: null, overlays: [],
+        kind: "text" as const, background: "#101820", aspectRatio: "4:5",
+      };
+      const updated = { ...cutsFile, cuts: [...cutsFile.cuts, panel] };
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+      if (res.ok) {
+        setExpandedCut(nextId);
+        await loadCuts();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSyncResult(data.error || "Could not add text panel");
+      }
+    } catch {
+      setSyncResult("Could not add text panel");
+    }
+    setAddingPanel(false);
+  }, [cutsFile, authFetch, storyName, plotFile, loadCuts]);
+
   useEffect(() => {
     loadCuts();
     loadDetect();
@@ -576,6 +610,15 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           title="Build the publish-ready episode from the uploaded cut images"
         >
           {generating ? "Preparing…" : "Prepare episode for publish"}
+        </button>
+        <button
+          onClick={addTextPanel}
+          disabled={addingPanel}
+          className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+          data-testid="add-text-panel-btn"
+          title="Add a text/interstitial panel (narration or title card) between image cuts"
+        >
+          {addingPanel ? "Adding…" : "Add text panel"}
         </button>
         <button
           onClick={syncCleanImages}

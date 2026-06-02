@@ -350,6 +350,29 @@ heading, so OWS uses this \`title\` as the public chapter title; without it the
 episode would fall back to a generic "Episode NN" rather than the raw filename
 (\`plot-01\`), but a real title reads far better (#347).
 
+### Text / interstitial panels (#352)
+
+A cut may be a **text panel** instead of an image cut — a narration card, title
+card, time/scene transition ("Three weeks later"), or a beat of pure prose for
+pacing/buildup. Set \`"kind": "text"\` on the cut (image cuts omit \`kind\` or use
+\`"image"\`). A text panel needs **no clean image**: it renders text on a styled
+background and still exports + uploads a final image like any cut.
+
+\`\`\`json
+{ "id": 4, "kind": "text", "shotType": "wide", "description": "Time skip",
+  "background": "#101820", "aspectRatio": "4:5",
+  "characters": [], "dialogue": [], "narration": "Three weeks later.", "sfx": "",
+  "cleanImagePath": null, "finalImagePath": null, "exportedAt": null,
+  "uploadedCid": null, "uploadedUrl": null, "overlays": [] }
+\`\`\`
+
+Use text panels **between image cuts** to control rhythm — an opening title, a
+scene/time transition, an interior-monologue beat, or buildup before a reveal.
+Optional \`background\` (CSS color) and \`aspectRatio\` ("W:H") style the card. In
+OWS the writer can also add one with the **"Add text panel"** button, then open
+the lettering editor to place the text. Don't overuse them; they punctuate the
+visual story, they don't replace it.
+
 ### Required field naming (do NOT use the wrong forms)
 
 | Use this | NOT this |
