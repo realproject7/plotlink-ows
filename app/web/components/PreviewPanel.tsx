@@ -8,7 +8,7 @@ import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
-import { classifyCartoonReadiness, type CartoonReadinessStage as CartoonStage } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, cartoonChecklist, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
 import { validateCoverImage } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
@@ -96,6 +96,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [cartoonStage, setCartoonStage] = useState<CartoonStage | null>(null);
   const [cartoonAwaitingCount, setCartoonAwaitingCount] = useState(0);
   const [cartoonTotalCuts, setCartoonTotalCuts] = useState(0);
+  // Granular 6-step production checklist for the cartoon plot workspace (#335),
+  // computed from cuts.json + asset/upload/publish state in the readiness effect.
+  const [cartoonChecklistData, setCartoonChecklistData] = useState<CartoonChecklist | null>(null);
   const [cartoonGenerating, setCartoonGenerating] = useState(false);
   const [cartoonGenWarnings, setCartoonGenWarnings] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -182,6 +185,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       setCartoonStage(null);
       setCartoonAwaitingCount(0);
       setCartoonTotalCuts(0);
+      setCartoonChecklistData(null);
       return;
     }
     let cancelled = false;
@@ -198,17 +202,20 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonStage("error");
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
+          setCartoonChecklistData(null);
           return;
         }
         const cutsData = await cutsRes.json();
         const cuts = cutsData.cuts || [];
         const content = fileRes.ok ? (await fileRes.json()).content ?? "" : "";
         const result = classifyCartoonReadiness(content, cuts);
+        const checklist = cartoonChecklist({ cuts, published: fileData?.status === "published" });
         if (!cancelled) {
           setCartoonIssues(result.issues);
           setCartoonStage(result.stage);
           setCartoonAwaitingCount(result.awaitingCount);
           setCartoonTotalCuts(result.totalCuts);
+          setCartoonChecklistData(checklist);
         }
       } catch {
         if (!cancelled) {
@@ -216,11 +223,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonStage("error");
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
+          setCartoonChecklistData(null);
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content]);
+  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content, fileData?.status]);
 
   // Auto-detect genre from structure.md when story changes
   useEffect(() => {
@@ -963,15 +971,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {/* Creator-facing step checklist so a first-time user can see which
-                production step is next without internal jargon (#320). */}
-            {isCartoonPlot && (
-              <CartoonStepGuide
-                stage={cartoonStage}
-                awaitingCount={cartoonAwaitingCount}
-                totalCuts={cartoonTotalCuts}
-              />
-            )}
+            {/* Creator-facing 6-step production checklist so a first-time user
+                can see which step is current/next without internal jargon
+                (#320, expanded to per-cut granularity in #335). */}
+            {isCartoonPlot && <CartoonStepGuide checklist={cartoonChecklistData} />}
             {/* Cartoon planning-stage callout: cut plan exists but the episode
                 hasn't been prepared for publish. Surface that action as the next
                 step instead of red errors. */}
@@ -993,7 +996,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     className="px-3 py-1.5 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="generate-md-preview-btn"
                   >
-                    {cartoonGenerating ? "Preparing…" : "Prepare Publish Markdown"}
+                    {cartoonGenerating ? "Preparing…" : "Prepare episode for publish"}
                   </button>
                   {cartoonGenWarnings.length > 0 && (
                     <span className="text-amber-600 text-xs">{cartoonGenWarnings.length} cut(s) still need images</span>
@@ -1237,7 +1240,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
               {isCartoonPlot && cartoonStage === "awaiting-upload" && (
                 <span className="text-muted text-xs" data-testid="publish-disabled-reason">
-                  Upload all final images, then Prepare Publish Markdown — {cartoonAwaitingCount} of {cartoonTotalCuts} still need an uploaded image
+                  Upload all final images, then “Prepare episode for publish” — {cartoonAwaitingCount} of {cartoonTotalCuts} still need an uploaded image
                 </span>
               )}
             </div>

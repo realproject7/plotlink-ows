@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, cartoonWorkflowSteps } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -333,11 +333,12 @@ describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
     const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
     const { ready, issues } = checkMarkdownReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(ready).toBe(false);
-    const prose = issues.find((i) => i.includes("placeholder/instructional prose"))!;
+    const prose = issues.find((i) => i.includes("placeholder/instructional"))!;
     expect(prose).toBeDefined();
-    // Creator-facing action name, not the old "Generate MD" jargon (#320).
-    expect(prose).toContain("re-run Prepare Publish Markdown");
+    // Writer-facing action name — no "Generate MD" or "Markdown" jargon (#320, #335).
+    expect(prose).toContain("Prepare episode for publish");
     expect(prose).not.toMatch(/Generate MD\b/);
+    expect(prose).not.toMatch(/Markdown/);
   });
 
   it("rejects placeholder prose BETWEEN/AFTER cut blocks", () => {
@@ -350,7 +351,7 @@ describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
     const cuts = [makeCut({ uploadedUrl: url }), makeCut({ id: 2, uploadedUrl: url })];
     const { ready, issues } = checkMarkdownReadiness(md, cuts);
     expect(ready).toBe(false);
-    expect(issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+    expect(issues.some((i) => i.includes("placeholder/instructional"))).toBe(true);
   });
 
   it("rejects generic template leftovers (TODO/FIXME)", () => {
@@ -374,7 +375,7 @@ describe("checkMarkdownReadiness — placeholder prose (#286)", () => {
     const md = `${PILOT_PROSE}\n\n${block("cut-001", url)}`;
     const result = classifyCartoonReadiness(md, [makeCut({ uploadedUrl: url })]);
     expect(result.stage).toBe("error");
-    expect(result.issues.some((i) => i.includes("placeholder/instructional prose"))).toBe(true);
+    expect(result.issues.some((i) => i.includes("placeholder/instructional"))).toBe(true);
   });
 });
 
@@ -406,55 +407,104 @@ describe("font/package size impact", () => {
   });
 });
 
-describe("cartoonWorkflowSteps (#320)", () => {
+describe("summarizeCutProgress (#335)", () => {
+  const full = (id: number): Partial<Cut> => ({
+    id,
+    cleanImagePath: "c.webp",
+    overlays: [{ id: `o${id}`, type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }],
+    finalImagePath: "f.webp",
+    exportedAt: "2026-01-01",
+    uploadedUrl: `https://ipfs/Qm${id}`,
+  });
+
+  it("counts per-cut progress across the production fields", () => {
+    const cuts = [
+      makeCut(full(1)),
+      makeCut({ id: 2, cleanImagePath: "c.webp", overlays: [{ id: "o2", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }] }), // clean + text, not exported/uploaded
+      makeCut({ id: 3, cleanImagePath: "c.webp" }), // clean only, no text
+      makeCut({ id: 4 }), // nothing — needs a clean image
+    ];
+    const p = summarizeCutProgress(cuts);
+    expect(p).toEqual({ total: 4, needClean: 4, withClean: 3, withText: 2, exported: 1, uploaded: 1 });
+  });
+
+  it("counts EVERY cut as image-required for MVP, incl. a narrated/dialogue cut (#338 fix)", () => {
+    // A planned cut carries narration/dialogue before any art exists — it must
+    // still be counted as needing a clean image, not inferred as narration-only.
+    const cuts = [makeCut({ id: 1, narration: "Later that night...", dialogue: [{ speaker: "A", text: "Hi" }] })];
+    const p = summarizeCutProgress(cuts);
+    expect(p.needClean).toBe(1);
+    expect(p.total).toBe(1);
+    expect(p.withClean).toBe(0); // no clean image yet
+  });
+});
+
+describe("cartoonChecklist (#335)", () => {
   const keys = (r: { steps: { key: string }[] }) => r.steps.map((s) => s.key);
   const statusOf = (r: { steps: { key: string; status: string }[] }, key: string) =>
     r.steps.find((s) => s.key === key)!.status;
+  const full = (id: number): Partial<Cut> => ({
+    id,
+    cleanImagePath: "c.webp",
+    overlays: [{ id: `o${id}`, type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }],
+    finalImagePath: "f.webp",
+    exportedAt: "2026-01-01",
+    uploadedUrl: `https://ipfs/Qm${id}`,
+  });
 
-  it("returns no steps and no next step for an unknown stage", () => {
-    const r = cartoonWorkflowSteps({ stage: null, awaitingCount: 0, totalCuts: 0 });
+  it("returns no steps for an empty plan (non-cartoon / unparsed)", () => {
+    const r = cartoonChecklist({ cuts: [] });
     expect(r.steps).toEqual([]);
     expect(r.nextStep).toBeNull();
   });
 
-  it("always lists the four milestones in production order", () => {
-    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 3 });
-    expect(keys(r)).toEqual(["plan", "markdown", "images", "publish"]);
-  });
-
-  it("uses creator-facing labels, not internal jargon", () => {
-    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 1 });
+  it("lists the six production steps in order with writer-facing labels (no jargon)", () => {
+    const r = cartoonChecklist({ cuts: [makeCut({ cleanImagePath: "c.webp" })] });
+    expect(keys(r)).toEqual(["plan", "clean", "letter", "export", "upload", "publish"]);
     const labels = r.steps.map((s) => s.label).join(" | ");
-    expect(labels).not.toMatch(/generate md|markdown skeleton|cuts\.json/i);
-    expect(r.steps.find((s) => s.key === "markdown")!.label).toBe("Prepare episode for publish");
+    expect(labels).not.toMatch(/generate md|markdown|cuts\.json/i);
   });
 
-  it("planning: prepare-markdown is current, publish is todo", () => {
-    const r = cartoonWorkflowSteps({ stage: "planning", awaitingCount: 0, totalCuts: 2 });
+  it("with only a cut plan: plan done, create-clean-images is current", () => {
+    const r = cartoonChecklist({ cuts: [makeCut({ id: 1 }), makeCut({ id: 2 })] });
     expect(statusOf(r, "plan")).toBe("done");
-    expect(statusOf(r, "markdown")).toBe("current");
-    expect(statusOf(r, "images")).toBe("todo");
+    expect(statusOf(r, "clean")).toBe("current");
     expect(statusOf(r, "publish")).toBe("todo");
-    expect(r.nextStep).toMatch(/prepare the episode for publish/i);
+    expect(r.nextStep).toMatch(/clean image for each cut/i);
+    expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 2 cuts");
   });
 
-  it("awaiting-upload: images is current and the next step counts remaining uploads", () => {
-    const r = cartoonWorkflowSteps({ stage: "awaiting-upload", awaitingCount: 2, totalCuts: 5 });
-    expect(statusOf(r, "markdown")).toBe("done");
-    expect(statusOf(r, "images")).toBe("current");
-    expect(statusOf(r, "publish")).toBe("todo");
-    expect(r.nextStep).toMatch(/2 of 5 cuts still need an uploaded image/i);
+  // #338 operator finding: a planned cut WITH narration/dialogue but no clean
+  // image must still show "Create clean images" as current at 0/1 — it must not
+  // be treated as a no-image narration-only cut that skips straight to upload.
+  it("a planned narrated/dialogue cut with null cleanImagePath shows Create clean images current at 0/1", () => {
+    const r = cartoonChecklist({
+      cuts: [makeCut({ id: 1, cleanImagePath: null, narration: "Dawn.", dialogue: [{ speaker: "Mira", text: "We're here." }] })],
+    });
+    expect(statusOf(r, "clean")).toBe("current");
+    expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 1 cut");
+    expect(statusOf(r, "upload")).toBe("todo");
+    expect(r.nextStep).toMatch(/clean image for each cut/i);
   });
 
-  it("ready: publish is the current step", () => {
-    const r = cartoonWorkflowSteps({ stage: "ready", awaitingCount: 0, totalCuts: 4 });
-    expect(statusOf(r, "images")).toBe("done");
+  it("clean images done, lettering current", () => {
+    const cuts = [makeCut({ id: 1, cleanImagePath: "c.webp" }), makeCut({ id: 2, cleanImagePath: "c.webp" })];
+    const r = cartoonChecklist({ cuts });
+    expect(statusOf(r, "clean")).toBe("done");
+    expect(statusOf(r, "letter")).toBe("current");
+    expect(r.nextStep).toMatch(/lettering editor|speech bubbles/i);
+  });
+
+  it("all uploaded but unpublished: publish is current", () => {
+    const r = cartoonChecklist({ cuts: [makeCut(full(1)), makeCut(full(2))], published: false });
+    expect(statusOf(r, "upload")).toBe("done");
     expect(statusOf(r, "publish")).toBe("current");
     expect(r.nextStep).toMatch(/preview the episode, then publish/i);
   });
 
-  it("error: points to the issues to resolve", () => {
-    const r = cartoonWorkflowSteps({ stage: "error", awaitingCount: 0, totalCuts: 3 });
-    expect(r.nextStep).toMatch(/resolve the publish issues/i);
+  it("published: every step done", () => {
+    const r = cartoonChecklist({ cuts: [makeCut(full(1))], published: true });
+    expect(r.steps.every((s) => s.status === "done")).toBe(true);
+    expect(r.nextStep).toMatch(/live on plotlink/i);
   });
 });

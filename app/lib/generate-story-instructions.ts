@@ -422,7 +422,7 @@ Correct flow:
 
 1. Upload final (lettered) images via OWS — this records the IPFS URL per cut in
    cuts.json (\`uploadedUrl\`).
-2. Use OWS "Prepare Publish Markdown" / "Upload & Prepare for Publish" to produce
+2. Use OWS "Prepare episode for publish" / "Upload & Prepare for Publish" to produce
    plot-NN.md. OWS emits marker-delimited blocks:
    \`\`\`
    <!-- ows:cartoon-cut cut-001 start -->

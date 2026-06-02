@@ -141,7 +141,7 @@ export function checkMarkdownReadiness(
   const placeholderProse = findPlaceholderProse(markdown);
   if (placeholderProse) {
     issues.push(
-      `Markdown contains placeholder/instructional prose ("${placeholderProse.slice(0, 60)}") — remove it or re-run Prepare Publish Markdown so the published markdown is image-only`,
+      `This episode still has placeholder/instructional text ("${placeholderProse.slice(0, 60)}") — remove it or re-run “Prepare episode for publish” so the published episode is images only`,
     );
   }
 
@@ -254,65 +254,147 @@ export function classifyCartoonReadiness(
   };
 }
 
-export interface CartoonWorkflowStep {
-  key: "plan" | "markdown" | "images" | "publish";
-  /** Creator-facing label — product language, no build/file jargon (#320). */
-  label: string;
-  status: "done" | "current" | "todo";
-}
-
-const WORKFLOW_ORDER: CartoonWorkflowStep["key"][] = ["plan", "markdown", "images", "publish"];
-
-const WORKFLOW_LABELS: Record<CartoonWorkflowStep["key"], string> = {
-  plan: "Plan cuts",
-  markdown: "Prepare episode for publish",
-  images: "Create & upload final lettered images",
-  publish: "Preview & publish",
-};
-
-// Which milestone is the one to act on, per readiness stage.
-const WORKFLOW_CURRENT: Record<CartoonReadinessStage, CartoonWorkflowStep["key"]> = {
-  planning: "markdown",
-  "awaiting-upload": "images",
-  error: "images",
-  ready: "publish",
-};
+// Short, writer-facing reminder that clean images are art only. Shown in the
+// workflow guide so a first-time creator doesn't bake dialogue/SFX into the
+// generated art (the lettering step adds those) (#335).
+export const CARTOON_CLEAN_IMAGE_HELP =
+  "Clean images are the artwork only — no dialogue, narration, sound effects, or speech bubbles. You add those in the lettering step.";
 
 /**
- * Compact, creator-facing checklist for the cartoon plot workspace (#320). Maps
- * the readiness stage to the production sequence in product language so a
- * first-time user can see which step is current/next without internal jargon
- * like "Generate MD". Returns the ordered milestones (done/current/todo) plus a
- * one-line next-step prompt. No steps when the stage is unknown (non-cartoon or
- * not yet classified).
+ * Per-cut production progress, derived straight from cuts.json + local asset
+ * paths + uploaded URLs (#335). Drives the granular workflow checklist so each
+ * production step shows real status, not just a coarse stage.
+ *
+ * MVP rule (#335, operator finding on PR #338): EVERY current-schema cut is
+ * treated as image-required, so `needClean === total`. A planned cut carries its
+ * dialogue/narration in cuts.json before any art exists, so it looks identical
+ * to a deliberately text-only cut — inferring "narration-only" from
+ * `!cleanImagePath && narration/dialogue` would wrongly mark a brand-new planned
+ * cut as needing no image and skip the writer straight past "Create clean
+ * images". Counting all cuts as image-required matches the agent guidance that
+ * every publishable cut gets a clean → final → uploaded image.
  */
-export function cartoonWorkflowSteps(
-  report: { stage: CartoonReadinessStage | null; awaitingCount: number; totalCuts: number },
-): { steps: CartoonWorkflowStep[]; nextStep: string | null } {
-  const { stage, awaitingCount, totalCuts } = report;
-  if (!stage) return { steps: [], nextStep: null };
+export interface CartoonCutProgress {
+  total: number;
+  /** Cuts that require a clean image. For MVP this is every cut (= total). */
+  needClean: number;
+  /** Of `needClean`, how many have a clean image recorded. */
+  withClean: number;
+  /** Of the clean-image cuts, how many have text overlays placed. */
+  withText: number;
+  /** Of the clean-image cuts, how many have an exported final image. */
+  exported: number;
+  /** Cuts with a recorded uploaded URL. */
+  uploaded: number;
+}
 
-  const currentIdx = WORKFLOW_ORDER.indexOf(WORKFLOW_CURRENT[stage]);
-  const steps: CartoonWorkflowStep[] = WORKFLOW_ORDER.map((key, i) => ({
+export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
+  let withClean = 0;
+  let withText = 0;
+  let exported = 0;
+  let uploaded = 0;
+  for (const cut of cuts) {
+    if (cut.cleanImagePath) {
+      withClean++;
+      if (cut.overlays.length > 0) withText++;
+      if (cut.finalImagePath && cut.exportedAt) exported++;
+    }
+    if (cut.uploadedUrl) uploaded++;
+  }
+  // MVP: every cut is image-required, so needClean === total.
+  return { total: cuts.length, needClean: cuts.length, withClean, withText, exported, uploaded };
+}
+
+export type CartoonStepKey = "plan" | "clean" | "letter" | "export" | "upload" | "publish";
+
+export interface CartoonChecklistStep {
+  key: CartoonStepKey;
+  /** Writer-facing label — product language, no build/file jargon (#335). */
+  label: string;
+  status: "done" | "current" | "todo";
+  /** Short progress detail like "3 / 6 cuts", or null when not countable. */
+  detail: string | null;
+}
+
+export interface CartoonChecklist {
+  steps: CartoonChecklistStep[];
+  nextStep: string | null;
+}
+
+const CHECKLIST_LABELS: Record<CartoonStepKey, string> = {
+  plan: "Plan cuts",
+  clean: "Create clean images",
+  letter: "Add speech bubbles & captions",
+  export: "Export final images",
+  upload: "Upload final images",
+  publish: "Publish to PlotLink",
+};
+
+function fraction(done: number, total: number): string {
+  return `${done} / ${total} cut${total === 1 ? "" : "s"}`;
+}
+
+/**
+ * Granular, writer-facing production checklist for a cartoon episode (#335).
+ * Expands the old 4-milestone guide into the six steps a creator actually
+ * performs — plan cuts → create clean images → add bubbles → export → upload →
+ * publish — and derives each step's status from real per-cut progress (clean
+ * images, overlays, exports, uploads) plus the file's publish status. The first
+ * incomplete step is "current"; everything before it is "done", after it "todo"
+ * (a linear checklist), and `nextStep` spells out the next action in plain
+ * language. Returns no steps when there is no cut plan yet (non-cartoon or an
+ * empty/unparsed plan), so the guide simply doesn't render there.
+ */
+export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): CartoonChecklist {
+  const { cuts, published = false } = input;
+  const p = summarizeCutProgress(cuts);
+  if (p.total === 0) return { steps: [], nextStep: null };
+
+  const planDone = p.total > 0;
+  const cleanDone = planDone && p.withClean === p.needClean;
+  const letterDone = cleanDone && p.withText === p.needClean;
+  const exportDone = letterDone && p.exported === p.needClean;
+  const uploadDone = exportDone && p.uploaded === p.total;
+  const publishDone = uploadDone && published;
+
+  const complete: Record<CartoonStepKey, boolean> = {
+    plan: planDone,
+    clean: cleanDone,
+    letter: letterDone,
+    export: exportDone,
+    upload: uploadDone,
+    publish: publishDone,
+  };
+  const order: CartoonStepKey[] = ["plan", "clean", "letter", "export", "upload", "publish"];
+  const currentIdx = order.findIndex((k) => !complete[k]);
+
+  // needClean === total (every cut is image-required for MVP), and total > 0
+  // here, so the image-step denominators are always countable.
+  const detail: Record<CartoonStepKey, string | null> = {
+    plan: fraction(p.total, p.total),
+    clean: fraction(p.withClean, p.needClean),
+    letter: fraction(p.withText, p.needClean),
+    export: fraction(p.exported, p.needClean),
+    upload: fraction(p.uploaded, p.total),
+    publish: null,
+  };
+
+  const steps: CartoonChecklistStep[] = order.map((key, i) => ({
     key,
-    label: WORKFLOW_LABELS[key],
-    status: i < currentIdx ? "done" : i === currentIdx ? "current" : "todo",
+    label: CHECKLIST_LABELS[key],
+    status: currentIdx === -1 ? "done" : i < currentIdx ? "done" : i === currentIdx ? "current" : "todo",
+    detail: detail[key],
   }));
 
-  let nextStep: string;
-  switch (stage) {
-    case "planning":
-      nextStep = "Prepare the episode for publish to lay out each cut, then letter and upload images.";
-      break;
-    case "awaiting-upload":
-      nextStep = `Letter and upload final images — ${awaitingCount} of ${totalCuts} cut${totalCuts === 1 ? "" : "s"} still ${awaitingCount === 1 ? "needs" : "need"} an uploaded image.`;
-      break;
-    case "error":
-      nextStep = "Resolve the publish issues listed below, then prepare the episode again.";
-      break;
-    case "ready":
-      nextStep = "Preview the episode, then publish to PlotLink.";
-      break;
-  }
+  const NEXT: Record<CartoonStepKey, string> = {
+    plan: "Plan the episode's cuts to begin.",
+    clean: "Create a clean image for each cut — artwork only, no text or bubbles.",
+    letter: "Open each cut in the lettering editor and place its speech bubbles and captions.",
+    export: "Export the lettered final image for each cut.",
+    upload: "Upload the exported final images so they're ready to publish.",
+    publish: "Preview the episode, then publish to PlotLink.",
+  };
+  const nextStep = currentIdx === -1 ? "Published — this episode is live on PlotLink." : NEXT[order[currentIdx]];
+
   return { steps, nextStep };
 }
