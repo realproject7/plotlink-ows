@@ -14,10 +14,15 @@ interface Overlay {
 }
 
 // Minimal recording stand-in for CanvasRenderingContext2D: captures the path
-// vertices (moveTo/lineTo) so we can assert what geometry was actually drawn.
+// vertices (moveTo/lineTo, in order) plus fill/stroke counts so we can assert
+// what geometry was actually drawn.
 function recordingCtx() {
   const lineTos: Array<{ x: number; y: number }> = [];
   const moveTos: Array<{ x: number; y: number }> = [];
+  // Ordered moveTo/lineTo vertices, so we can check traversal order (e.g. that
+  // the tail tip is reached between its two base points).
+  const path: Array<{ op: "M" | "L"; x: number; y: number }> = [];
+  const counts = { fill: 0, stroke: 0 };
   const ctx = {
     fillStyle: "",
     strokeStyle: "",
@@ -27,22 +32,23 @@ function recordingCtx() {
     textBaseline: "",
     beginPath() {},
     closePath() {},
-    moveTo(x: number, y: number) { moveTos.push({ x, y }); },
-    lineTo(x: number, y: number) { lineTos.push({ x, y }); },
+    moveTo(x: number, y: number) { moveTos.push({ x, y }); path.push({ op: "M", x, y }); },
+    lineTo(x: number, y: number) { lineTos.push({ x, y }); path.push({ op: "L", x, y }); },
+    arcTo() {},
     measureText(this: { font: string }, text: string) {
       const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
       return { width: text.length * fs * 0.5 } as TextMetrics;
     },
     roundRect() {},
     rect() {},
-    fill() {},
-    stroke() {},
+    fill() { counts.fill++; },
+    stroke() { counts.stroke++; },
     fillRect() {},
     strokeRect() {},
     fillText() {},
     strokeText() {},
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, lineTos, moveTos };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, lineTos, moveTos, path, counts };
 }
 
 function speechOverlay(over: Partial<Overlay> = {}): Overlay {
@@ -86,19 +92,63 @@ describe("renderOverlays speech-bubble tail", () => {
     expect(hitsTip).toBe(true);
   });
 
-  it("draws no tail geometry for a speech bubble without a tailAnchor", () => {
-    // The bubble body is a roundRect (its own ctx call), so the only way a
-    // lineTo appears is the tail — none should be emitted here. This is the
-    // pre-fix behaviour, pinned so the tail can't silently regress.
-    const { ctx, lineTos } = recordingCtx();
+  it("draws a plain rounded-rect balloon (no tail detour) for a speech bubble without a tailAnchor", () => {
+    // The body outline now traces with lineTo, so a tail is detected by an
+    // out-of-bubble vertex (the tip), not by the mere presence of a lineTo.
+    // ox=0,oy=0,ow=200,oh=72 → every body vertex stays inside the bubble rect.
+    const { ctx, path, counts } = recordingCtx();
     renderOverlays(ctx, [speechOverlay({ tailAnchor: undefined })], 800, 600, "Body", "Display");
-    expect(lineTos).toHaveLength(0);
+    expect(path.some((p) => p.y > 72.001 || p.x > 200.001 || p.x < -0.001 || p.y < -0.001)).toBe(false);
+    // Still a single integrated balloon: one fill, one stroke.
+    expect(counts.fill).toBe(1);
+    expect(counts.stroke).toBe(1);
   });
 
-  it("draws no tail when the anchor sits inside the bubble", () => {
-    const { ctx, lineTos } = recordingCtx();
+  it("draws a plain rounded-rect balloon (no tail detour) when the anchor sits inside the bubble", () => {
+    const { ctx, path } = recordingCtx();
     renderOverlays(ctx, [speechOverlay({ tailAnchor: { x: 0.5, y: 0.5 } })], 800, 600, "Body", "Display");
-    expect(lineTos).toHaveLength(0);
+    // tip (100, 36) is inside → speechTailPoints returns null → no tail detour,
+    // so no vertex escapes the bubble rect.
+    expect(path.some((p) => p.y > 72.001 || p.x > 200.001 || p.x < -0.001 || p.y < -0.001)).toBe(false);
+  });
+
+  it("renders the body and tail as one integrated outline with no internal seam (#317)", () => {
+    // ox=0,oy=0,ow=200,oh=72; tailAnchor {0.5,1.2} → bottom-edge tail.
+    // base points: bx=100, baseW=min(200,72)*0.3=21.6 → base1=(89.2,72),
+    // base2=(110.8,72); tip=(100,86.4).
+    const { ctx, path, counts } = recordingCtx();
+    renderOverlays(ctx, [speechOverlay({ tailAnchor: { x: 0.5, y: 1.2 } })], 800, 600, "Body", "Display");
+
+    // A single integrated shape: exactly one fill and one stroke for the
+    // balloon (the pre-fix code filled + stroked the tail and body separately,
+    // which is what stroked a seam line across the tail mouth).
+    expect(counts.fill).toBe(1);
+    expect(counts.stroke).toBe(1);
+
+    // The outline detours through the tail tip *between* its two base points:
+    // on the bottom edge (traced right→left) that is base2 → tip → base1.
+    const tipIdx = path.findIndex((p) => Math.abs(p.x - 100) < 1e-6 && Math.abs(p.y - 86.4) < 1e-6);
+    expect(tipIdx).toBeGreaterThan(0);
+    const before = path[tipIdx - 1];
+    const after = path[tipIdx + 1];
+    expect(before.x).toBeCloseTo(110.8, 5);
+    expect(before.y).toBeCloseTo(72, 5);
+    expect(after.x).toBeCloseTo(89.2, 5);
+    expect(after.y).toBeCloseTo(72, 5);
+
+    // No seam: the bottom border never runs straight between the two tail bases
+    // (which is the line that produced the visible body/tail boundary). Every
+    // adjacent vertex pair on y=72 must be interrupted by the tip.
+    const onBottom = (p: { x: number; y: number }) => Math.abs(p.y - 72) < 1e-6;
+    const seam = path.some((p, i) => {
+      const q = path[i + 1];
+      if (!q) return false;
+      const a = Math.round(p.x * 10) / 10;
+      const b = Math.round(q.x * 10) / 10;
+      return onBottom(p) && onBottom(q) &&
+        ((a === 89.2 && b === 110.8) || (a === 110.8 && b === 89.2));
+    });
+    expect(seam).toBe(false);
   });
 
   it("does not draw a tail for narration or sfx overlays", () => {
@@ -146,7 +196,7 @@ function textRecordingCtx() {
   const fillTexts: Array<{ text: string; x: number; y: number }> = [];
   const ctx = {
     fillStyle: "", strokeStyle: "", lineWidth: 0, font: "", textAlign: "", textBaseline: "",
-    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, roundRect() {}, rect() {},
+    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arcTo() {}, roundRect() {}, rect() {},
     fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
     measureText(this: { font: string }, text: string) {
       const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
