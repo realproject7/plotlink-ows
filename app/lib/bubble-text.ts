@@ -16,6 +16,12 @@ export interface BubbleTextLayout {
   lineHeight: number;
   /** Speaker label font size, or 0 when there is no speaker. */
   speakerFontSize: number;
+  /**
+   * True when the text did not fit even at the minimum font (the lines are a
+   * best-effort wrap that may clip/overflow the box). Drives the editor's
+   * text-overflow warning (#336). Export rendering ignores it (unchanged).
+   */
+  overflow: boolean;
 }
 
 export interface BubbleLayoutOptions {
@@ -104,6 +110,7 @@ export function layoutBubbleText(
         fontSize: f,
         lineHeight: f * lineHeightFactor,
         speakerFontSize: opts.hasSpeaker ? f * 0.8 : 0,
+        overflow: false,
       };
     }
   }
@@ -115,6 +122,7 @@ export function layoutBubbleText(
     fontSize: minFont,
     lineHeight: minFont * lineHeightFactor,
     speakerFontSize: opts.hasSpeaker ? minFont * 0.8 : 0,
+    overflow: true,
   };
 }
 

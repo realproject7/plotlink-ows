@@ -10,6 +10,7 @@ import {
   anchorFromPosition,
   validateOverlaysForExport,
   detectOverlappingOverlays,
+  isOverlayOutOfBounds,
   OVERLAP_AREA_THRESHOLD,
 } from "./overlays";
 
@@ -349,5 +350,22 @@ describe("detectOverlappingOverlays (#318)", () => {
       speech("b", 0.1, 0.1),
     ]);
     expect(pairs).toEqual([]);
+  });
+});
+
+describe("isOverlayOutOfBounds (#336)", () => {
+  const box = (x: number, y: number, width: number, height: number) =>
+    ({ x, y, width, height });
+
+  it("is false for a box fully inside the image (incl. flush against edges)", () => {
+    expect(isOverlayOutOfBounds(box(0.1, 0.1, 0.3, 0.3))).toBe(false);
+    expect(isOverlayOutOfBounds(box(0, 0, 1, 1))).toBe(false); // exactly the full frame
+  });
+
+  it("is true when the box extends past any edge", () => {
+    expect(isOverlayOutOfBounds(box(-0.01, 0.1, 0.3, 0.3))).toBe(true); // off the left
+    expect(isOverlayOutOfBounds(box(0.1, -0.01, 0.3, 0.3))).toBe(true); // off the top
+    expect(isOverlayOutOfBounds(box(0.8, 0.1, 0.3, 0.3))).toBe(true);   // past the right
+    expect(isOverlayOutOfBounds(box(0.1, 0.8, 0.3, 0.3))).toBe(true);   // past the bottom
   });
 });

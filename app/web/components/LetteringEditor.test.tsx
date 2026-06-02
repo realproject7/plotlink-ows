@@ -751,4 +751,174 @@ describe("LetteringEditor", () => {
     fireEvent.click(del); // confirms delete
     await waitFor(() => expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument());
   });
+
+  // #336: insert dialogue/narration/SFX from cuts.json straight into a prefilled
+  // overlay, so the writer never copies text out of the JSON by hand.
+  it("inserts a script line from cuts.json as a prefilled overlay", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [], dialogue: [{ speaker: "Mira", text: "We're here at last." }], narration: "Dawn broke." })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    // The script panel lists the cut's dialogue + narration.
+    expect(screen.getByTestId("script-insert-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+
+    // Clicking a dialogue line adds a speech overlay carrying that text/speaker.
+    fireEvent.click(screen.getByTestId("script-insert-speech-0"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+    const speakerInput = screen.getByTestId("inspector-speaker") as HTMLInputElement;
+    expect(speakerInput.value).toBe("Mira");
+    expect((screen.getByTestId("inspector-text") as HTMLTextAreaElement).value).toBe("We're here at last.");
+
+    // Narration is insertable too.
+    fireEvent.click(screen.getByTestId("script-insert-narration"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("2 overlays");
+  });
+
+  // #336: warn about likely export problems — here a bubble whose body extends
+  // past the image bounds (would be clipped at export).
+  it("warns when a bubble is positioned outside the image bounds", async () => {
+    const overlay: Overlay = {
+      id: "oob",
+      type: "speech",
+      x: 0.9, y: 0.2, width: 0.25, height: 0.12, // x + width = 1.15 > 1 → clipped
+      text: "Edge", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 1.2 },
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    const warning = screen.getByTestId("lettering-export-warning");
+    expect(warning).toHaveTextContent(/outside image/i);
+    expect(screen.getByTestId("overlay-oob")).toHaveAttribute("data-warning", "true");
+  });
+
+  it("shows the per-cut lettering checklist reflecting cut progress", async () => {
+    const overlay: Overlay = {
+      id: "ck", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay], dialogue: [{ speaker: "Mira", text: "Hi" }] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    // makeCut sets a cleanImagePath; dialogue + a placed overlay are present, but
+    // nothing is exported/uploaded yet.
+    expect(screen.getByTestId("lettering-check-clean-image")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-script-text")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-bubbles")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+  });
+
+  // #336 (re1): editing bubbles after an export/upload must invalidate them — the
+  // checklist can't keep reporting "Final exported"/"Uploaded" for a stale image.
+  it("marks export/upload stale after overlays are edited post-export", async () => {
+    const overlay: Overlay = {
+      id: "stale", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+      tailAnchor: { x: 0.5, y: 1.2 },
+    };
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({
+          overlays: [overlay],
+          finalImagePath: "assets/plot-01/cut-01-final.webp",
+          exportedAt: "2026-01-01T00:00:00Z",
+          uploadedUrl: "https://ipfs/QmExported",
+        })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    // On open (no edits) the recorded export/upload count as done, no warning.
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
+    expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument();
+
+    // Edit the bubble text → the prior export/upload no longer match the screen.
+    fireEvent.click(screen.getByTestId("overlay-stale"));
+    fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+  });
+
+  // #336 (re1): the lifecycle that regressed lives in handleExport/React state —
+  // exercise the full edit → stale → successful Export → clear sequence in the
+  // SAME open editor, with export-cut mocked so the export succeeds in jsdom.
+  it("clears the stale-export warning after a successful re-export in the same editor session", async () => {
+    vi.doMock("./export-cut", () => ({
+      exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
+      ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
+    }));
+    try {
+      const overlay: Overlay = {
+        id: "re", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+        tailAnchor: { x: 0.5, y: 1.2 },
+      };
+      render(
+        <LetteringEditor
+          storyName="story"
+          cut={makeCut({
+            overlays: [overlay],
+            finalImagePath: "assets/plot-01/cut-01-final.webp",
+            exportedAt: "2026-01-01T00:00:00Z",
+            uploadedUrl: "https://ipfs/QmExported",
+          })}
+          plotFile="plot-01"
+          authFetch={makeAssetAuthFetch({ ok: true })}
+          onSave={vi.fn().mockResolvedValue(undefined)}
+          onClose={vi.fn()}
+          onExported={vi.fn()}
+        />,
+      );
+      await simulateImageLoad();
+
+      // Edit a bubble → export goes stale.
+      fireEvent.click(screen.getByTestId("overlay-re"));
+      fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
+      await waitFor(() => expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument());
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+
+      // Re-export in the same session → handleExport advances the baseline, so
+      // the warning clears and the checklist steps return to done.
+      await act(async () => { fireEvent.click(screen.getByTestId("export-btn")); });
+      await waitFor(() => expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument());
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
+      expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
+    } finally {
+      vi.doUnmock("./export-cut");
+    }
+  });
 });
