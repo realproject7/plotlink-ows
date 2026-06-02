@@ -33,6 +33,7 @@ describe("CartoonStepGuide (#335)", () => {
   it("teaches the six production steps in order, no jargon, with clean-image help", () => {
     render(<CartoonStepGuide checklist={cartoonChecklist({ cuts: [makeCut({ id: 1 }), makeCut({ id: 2 })] })} />);
     expect(screen.getByTestId("cartoon-step-guide")).toBeInTheDocument();
+    expect(screen.getByTestId("cartoon-step-guide")).toHaveAttribute("data-layout", "diagram");
     STEP_KEYS.forEach((k) => expect(screen.getByTestId(`cartoon-step-${k}`)).toBeInTheDocument());
     // With only a cut plan, creating clean images is the current step.
     expect(screen.getByTestId("cartoon-step-plan")).toHaveAttribute("data-status", "done");

@@ -179,7 +179,6 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
   // Initial load
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch on mount
     setLoading(true);
     loadFile().finally(() => setLoading(false));
   }, [loadFile]);
@@ -679,6 +678,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     ? cartoonGenesisReadiness(fileData?.content ?? "")
     : null;
   const genesisBlocked = !!genesisReadiness && genesisReadiness.blockers.length > 0;
+  const cartoonStatusCardClass = "w-full max-w-[32rem] rounded-xl border px-3 py-3";
 
   // Cartoon cover readiness badge + requirements (#337). Shown wherever a
   // cartoon writer manages the cover (pre-publish picker and the published Edit
@@ -1135,14 +1135,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 step instead of red errors. */}
             {isCartoonPlot && cartoonStage === "planning" && (
               <div
-                className="flex flex-col gap-2 border border-accent/30 bg-accent/5 rounded p-3"
+                className={`${cartoonStatusCardClass} flex flex-col gap-2 border-accent/30 bg-accent/5`}
                 data-testid="cartoon-planning-callout"
               >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs font-medium text-foreground">Cut plan ready — prepare the episode for publish</span>
-                  <span className="text-xs text-muted">
-                    A valid cut plan exists. Prepare the episode for publish to lay out each cut, then letter and upload the final images.
-                  </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Ready</span>
+                  <span className="text-xs font-medium text-foreground">Cut plan is set</span>
+                </div>
+                <div className="text-xs text-muted">
+                  Prepare the episode for publish to lay out the cut blocks. After that, upload the final images.
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -1164,10 +1165,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 that makes the next action clear, NOT a wall of errors. */}
             {isCartoonPlot && cartoonStage === "awaiting-upload" && (
               <div
-                className="flex flex-col gap-1 border border-accent/30 bg-accent/5 rounded p-3"
+                className={`${cartoonStatusCardClass} flex flex-col gap-1.5 border-accent/30 bg-accent/5`}
                 data-testid="cartoon-awaiting-upload"
               >
-                <span className="text-xs font-medium text-foreground">Episode prepared for publish</span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-accent">Waiting</span>
+                  <span className="text-xs font-medium text-foreground">Episode prepared for publish</span>
+                </div>
                 <span className="text-xs text-muted">
                   {cartoonAwaitingCount} of {cartoonTotalCuts} cuts still need a final uploaded image
                 </span>
@@ -1419,12 +1423,23 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               // Grouped by workflow step (#360) so a writer sees "Upload final
               // images" / "Prepare the episode for publish" headings instead of a
               // flat wall of repeated per-cut technical errors.
-              <div className="flex flex-col gap-1.5" data-testid="cartoon-publish-issues">
+              <div
+                className={`${cartoonStatusCardClass} flex flex-col gap-2 border-error/30 bg-error/5`}
+                data-testid="cartoon-publish-issues"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-error px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Before publish</span>
+                  <span className="text-xs font-medium text-foreground">Finish these workflow steps</span>
+                </div>
                 {groupCartoonIssues(cartoonIssues).map((g) => (
-                  <div key={g.key} className="flex flex-col gap-0.5" data-testid={`cartoon-issue-group-${g.key}`}>
-                    <span className="text-error text-xs font-medium">{g.title}</span>
+                  <div
+                    key={g.key}
+                    className="flex flex-col gap-1 rounded-lg border border-error/15 bg-background/70 px-2.5 py-2"
+                    data-testid={`cartoon-issue-group-${g.key}`}
+                  >
+                    <span className="text-[11px] font-medium text-foreground">{g.title}</span>
                     {g.lines.map((line, i) => (
-                      <span key={i} className="text-error/80 text-[11px] pl-2">{line}</span>
+                      <span key={i} className="text-[11px] text-muted">{line}</span>
                     ))}
                   </div>
                 ))}

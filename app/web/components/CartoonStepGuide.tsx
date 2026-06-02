@@ -25,42 +25,66 @@ export function CartoonStepGuide({ checklist }: CartoonStepGuideProps) {
   const { steps, nextStep } = checklist;
 
   return (
-    <div className="flex flex-col gap-1 border border-border rounded p-3" data-testid="cartoon-step-guide">
-      <span className="text-xs font-medium text-foreground">Episode steps</span>
-      <ol className="flex flex-col gap-0.5">
+    <div
+      className="w-full max-w-[32rem] flex flex-col gap-3 rounded-xl border border-border bg-surface/70 p-3"
+      data-testid="cartoon-step-guide"
+      data-layout="diagram"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-foreground">Episode steps</span>
+        <span className="text-[10px] uppercase tracking-[0.18em] text-muted">Flow</span>
+      </div>
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {steps.map((s, i) => (
           <li
             key={s.key}
             data-testid={`cartoon-step-${s.key}`}
             data-status={s.status}
-            className={`text-xs flex items-center gap-1.5 ${
+            className={`rounded-lg border px-2.5 py-2 text-xs ${
               s.status === "current"
-                ? "text-accent font-medium"
+                ? "border-accent/40 bg-accent/10 text-accent"
                 : s.status === "done"
-                  ? "text-muted"
-                  : "text-muted/70"
+                  ? "border-border bg-background/70 text-foreground"
+                  : "border-border/80 bg-background/50 text-muted"
             }`}
           >
-            <span aria-hidden>{STATUS_MARK[s.status]}</span>
-            <span>
-              {i + 1}. {s.label}
-            </span>
-            {s.detail && (
-              <span className="text-muted/70 font-normal" data-testid={`cartoon-step-${s.key}-detail`}>
-                ({s.detail})
+            <div className="flex items-start gap-2">
+              <span
+                aria-hidden
+                className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-medium ${
+                  s.status === "current"
+                    ? "bg-accent text-white"
+                    : s.status === "done"
+                      ? "bg-foreground text-background"
+                      : "bg-surface text-muted"
+                }`}
+              >
+                {STATUS_MARK[s.status]}
               </span>
-            )}
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="leading-tight">
+                  {i + 1}. {s.label}
+                </span>
+                {s.detail && (
+                  <span className="font-normal text-[10px] text-muted" data-testid={`cartoon-step-${s.key}-detail`}>
+                    {s.detail}
+                  </span>
+                )}
+              </span>
+            </div>
           </li>
         ))}
       </ol>
-      {nextStep && (
-        <span className="text-xs text-foreground mt-0.5" data-testid="cartoon-next-step">
-          Next: {nextStep}
+      <div className="rounded-lg border border-border/80 bg-background/60 px-3 py-2">
+        {nextStep && (
+          <span className="block text-xs text-foreground mt-0.5" data-testid="cartoon-next-step">
+            Next: {nextStep}
+          </span>
+        )}
+        <span className="mt-1 block text-[11px] text-muted" data-testid="cartoon-clean-image-help">
+          {CARTOON_CLEAN_IMAGE_HELP}
         </span>
-      )}
-      <span className="text-[11px] text-muted mt-0.5" data-testid="cartoon-clean-image-help">
-        {CARTOON_CLEAN_IMAGE_HELP}
-      </span>
+      </div>
     </div>
   );
 }
