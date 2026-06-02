@@ -175,3 +175,38 @@ describe("handlePublish preflight balance gate (#375 source guard)", () => {
     expect(source).not.toMatch(/setTimeout\([^)]*setPublishError/);
   });
 });
+
+// #379: after a cartoon publish indexes, handlePublish must verify the PUBLIC
+// indexed title and surface a durable warning when PlotLink indexed a
+// raw/generic title. Source guards (same style as above) for the wiring; the
+// decision logic is unit-tested in verify-public-title.test.ts.
+describe("handlePublish public-title verification (#379 source guard)", () => {
+  async function readSource(): Promise<string> {
+    const fs = await import("fs");
+    const path = await import("path");
+    return fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+  }
+
+  it("reads the indexed PlotLink storyline detail and verifies it for cartoon publishes", async () => {
+    const source = await readSource();
+    expect(source).toContain("verifyPublicCartoonTitle");
+    expect(source).toContain("publicTitleWarning");
+    // Uses the existing public read endpoint (no PlotLink API change).
+    expect(source).toContain("https://plotlink.xyz/api/storyline/");
+    // Only for cartoon publishes.
+    expect(source).toMatch(/publishContentType === "cartoon" && data\.storylineId/);
+    // The verification CALL runs after the on-chain `done` event (post-index).
+    // (lastIndexOf skips the import line so we measure the call site.)
+    const doneIdx = source.indexOf('data.step === "done"');
+    const verifyCallIdx = source.lastIndexOf("verifyPublicCartoonTitle(");
+    expect(doneIdx).toBeGreaterThan(-1);
+    expect(verifyCallIdx).toBeGreaterThan(doneIdx);
+  });
+
+  it("surfaces the failure as the durable publish-block error (kept visible for #211)", async () => {
+    const source = await readSource();
+    // A failed verdict becomes a durable error, not a transient progress line.
+    expect(source).toMatch(/titleVerifyWarning = publicTitleWarning\(verdict\)/);
+    expect(source).toMatch(/if \(titleVerifyWarning\) setPublishError\(titleVerifyWarning\)/);
+  });
+});
