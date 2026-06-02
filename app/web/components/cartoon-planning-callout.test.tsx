@@ -106,6 +106,10 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     fireEvent.click(btn);
 
     await waitFor(() => expect(screen.getByTestId("cartoon-awaiting-upload")).toBeInTheDocument());
+    // Creator-facing copy, not internal "markdown skeleton" jargon (#320, re1).
+    const awaiting = screen.getByTestId("cartoon-awaiting-upload");
+    expect(awaiting).toHaveTextContent(/episode prepared for publish/i);
+    expect(awaiting.textContent).not.toMatch(/markdown skeleton/i);
     // The disabled-publish reason now names the remaining-upload blocker.
     expect(screen.getByTestId("publish-disabled-reason")).toHaveTextContent(/still need an uploaded image/i);
     // The step guide advances to the images step.

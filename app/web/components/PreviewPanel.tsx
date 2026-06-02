@@ -994,12 +994,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 className="flex flex-col gap-1 border border-accent/30 bg-accent/5 rounded p-3"
                 data-testid="cartoon-awaiting-upload"
               >
-                <span className="text-xs font-medium text-foreground">Markdown skeleton generated</span>
+                <span className="text-xs font-medium text-foreground">Episode prepared for publish</span>
                 <span className="text-xs text-muted">
-                  {cartoonAwaitingCount} of {cartoonTotalCuts} cuts awaiting final uploaded images
+                  {cartoonAwaitingCount} of {cartoonTotalCuts} cuts still need a final uploaded image
                 </span>
                 <span className="text-xs text-muted">
-                  Next: generate/import clean images, letter them, export final images, then upload.
+                  Next: add clean images, letter the bubbles, export the final images, then upload them.
                 </span>
               </div>
             )}
