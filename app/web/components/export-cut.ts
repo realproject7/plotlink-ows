@@ -1,4 +1,4 @@
-import { speechTailPoints, validateOverlaysForExport } from "@app-lib/overlays";
+import { speechTailPoints, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
@@ -57,6 +57,70 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 const SPEECH_FILL = "rgba(255, 255, 255, 0.9)";
 const SPEECH_STROKE = "rgba(0, 0, 0, 0.3)";
 
+// Trace a speech balloon — rounded-rect body plus its pointer tail — as ONE
+// continuous outline (#317). Drawing the tail and body as separate shapes left
+// the body's border stroked straight across the tail's mouth, so the export
+// showed a visible seam where the two shapes met. Here the tail is instead a
+// detour in the body's perimeter on whichever edge it sits, so filling and
+// stroking this single path yields an integrated balloon: one fill, one outline,
+// and no internal body/tail boundary line. `tail` is null for a bubble with no
+// (or an inside-the-bubble) tail, which traces a plain rounded rectangle.
+function traceBalloonPath(
+  ctx: CanvasRenderingContext2D,
+  ox: number,
+  oy: number,
+  ow: number,
+  oh: number,
+  tail: TailPoints | null,
+) {
+  const r = Math.max(0, Math.min(8, ow / 2, oh / 2));
+  const right = ox + ow;
+  const bottom = oy + oh;
+
+  // speechTailPoints places both base points exactly on one bubble edge, so the
+  // edge each comparison identifies is exact (no float fuzz needed).
+  const onTop = !!tail && tail.base1.y === oy && tail.base2.y === oy;
+  const onRight = !!tail && tail.base1.x === right && tail.base2.x === right;
+  const onBottom = !!tail && tail.base1.y === bottom && tail.base2.y === bottom;
+  const onLeft = !!tail && tail.base1.x === ox && tail.base2.x === ox;
+
+  ctx.beginPath();
+  ctx.moveTo(ox + r, oy);
+  // Top edge, traced left→right (base1.x < base2.x).
+  if (onTop && tail) {
+    ctx.lineTo(tail.base1.x, oy);
+    ctx.lineTo(tail.tip.x, tail.tip.y);
+    ctx.lineTo(tail.base2.x, oy);
+  }
+  ctx.lineTo(right - r, oy);
+  ctx.arcTo(right, oy, right, oy + r, r);
+  // Right edge, traced top→bottom (base1.y < base2.y).
+  if (onRight && tail) {
+    ctx.lineTo(right, tail.base1.y);
+    ctx.lineTo(tail.tip.x, tail.tip.y);
+    ctx.lineTo(right, tail.base2.y);
+  }
+  ctx.lineTo(right, bottom - r);
+  ctx.arcTo(right, bottom, right - r, bottom, r);
+  // Bottom edge, traced right→left (so base2.x first, then base1.x).
+  if (onBottom && tail) {
+    ctx.lineTo(tail.base2.x, bottom);
+    ctx.lineTo(tail.tip.x, tail.tip.y);
+    ctx.lineTo(tail.base1.x, bottom);
+  }
+  ctx.lineTo(ox + r, bottom);
+  ctx.arcTo(ox, bottom, ox, bottom - r, r);
+  // Left edge, traced bottom→top (so base2.y first, then base1.y).
+  if (onLeft && tail) {
+    ctx.lineTo(ox, tail.base2.y);
+    ctx.lineTo(tail.tip.x, tail.tip.y);
+    ctx.lineTo(ox, tail.base1.y);
+  }
+  ctx.lineTo(ox, oy + r);
+  ctx.arcTo(ox, oy, ox + r, oy, r);
+  ctx.closePath();
+}
+
 export function renderOverlays(
   ctx: CanvasRenderingContext2D,
   overlays: Overlay[],
@@ -72,30 +136,13 @@ export function renderOverlays(
     const oh = overlay.height * height;
 
     if (overlay.type === "speech") {
-      // Draw the tail first so the bubble body covers its base, leaving a
-      // seamless join with only the two angled sides outlined — otherwise the
-      // tail the writer positioned never appears in the exported image.
-      const tail = overlay.tailAnchor && speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor);
-      if (tail) {
-        ctx.fillStyle = SPEECH_FILL;
-        ctx.beginPath();
-        ctx.moveTo(tail.base1.x, tail.base1.y);
-        ctx.lineTo(tail.tip.x, tail.tip.y);
-        ctx.lineTo(tail.base2.x, tail.base2.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = SPEECH_STROKE;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(tail.base1.x, tail.base1.y);
-        ctx.lineTo(tail.tip.x, tail.tip.y);
-        ctx.lineTo(tail.base2.x, tail.base2.y);
-        ctx.stroke();
-      }
-
+      // Trace the body and its tail as a single outline so the exported balloon
+      // has no internal seam between them (#317): one fill, one stroke, with the
+      // tail forming part of the balloon's outline instead of a shape laid over
+      // a fully-stroked body border.
+      const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
+      traceBalloonPath(ctx, ox, oy, ow, oh, tail);
       ctx.fillStyle = SPEECH_FILL;
-      ctx.beginPath();
-      ctx.roundRect(ox, oy, ow, oh, 8);
       ctx.fill();
       ctx.strokeStyle = SPEECH_STROKE;
       ctx.lineWidth = 1;
