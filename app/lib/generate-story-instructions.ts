@@ -140,7 +140,15 @@ the manual handoff for each cut:
    "Upload clean image" controls.
 3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
    file actually exists.** Never report an image as generated when you only
-   produced a prompt.`;
+   produced a prompt.
+
+### Cover fallback (only if cover generation is unavailable)
+
+The cover follows the same guardrail. If you cannot generate \`assets/cover.webp\`
+in this session, do NOT hang on the cover: say so in one line and tell the writer
+to import a cover via the OWS "Import generated image" control on the genesis
+publish panel (it accepts a PNG and converts it). The same one-attempt-then-report
+rule applies to a cover-only request.`;
   }
 
   return `### You cannot create image files yourself — hand the prompt to the writer
@@ -327,19 +335,12 @@ guessing at unavailable tooling is exactly what stalls a cartoon episode.
 | Letter & export final images | The writer, in the OWS lettering editor | Speech bubbles, captions, and SFX are placed in the OWS editor and exported to \`assets/plot-NN/cut-XX-final.webp\`. You do NOT composite or letter text — not with magick, not with sharp, not at all. |
 | Upload finals + build markdown | OWS | The writer runs "Upload & Generate"; OWS uploads each final image and emits the publish markdown. You never hand-write \`plot-NN.md\`. |
 
-**No agent-side image tools are required** — OWS provides clean-image sync, the
-lettering/export editor, and upload/markdown generation. Image generation itself
-(the cover and clean cut images) runs in your session, but it is NOT guaranteed to
-be available — so treat it under the capability/checkpoint guardrail below: make
-one bounded attempt, and if it is unavailable or blocked, report that clearly and
-fall back instead of sitting in an indefinite \`Working\` state. Never improvise
-with shell tools to fake a missing capability.
-
-**Cover fallback:** if you cannot generate \`assets/cover.webp\` in this session,
-say so in one line and tell the writer to import a cover via the OWS
-"Import generated image" control on the genesis publish panel (it accepts a PNG
-and converts it) — do NOT hang on the cover. The same one-attempt-then-report
-rule applies to a cover-only request.
+**No agent-side image tools are required** — OWS provides image generation (your
+session), clean-image sync, the lettering/export editor, and upload/markdown
+generation. If a capability you genuinely need is missing (e.g. image generation
+itself is unavailable in this session), do NOT improvise with shell tools: fall
+back to the prompt-and-import handoff below and tell the writer, so the missing
+capability surfaces immediately instead of after a dead-end path.
 
 ## CRITICAL: Clean-Image-First Workflow
 

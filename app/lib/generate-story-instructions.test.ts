@@ -238,14 +238,26 @@ describe("generateStoryInstructions", () => {
     expect(out).not.toContain("do **not** generate image files");
   });
 
-  it("the no-hang guardrail is Codex-only and absent from claude/fiction", () => {
+  it("the no-hang guardrail and cover fallback are Codex-only and do not leak into claude/fiction", () => {
     const codex = generateStoryInstructions("cartoon", "codex");
     const claude = generateStoryInstructions("cartoon", "claude");
     const fiction = generateStoryInstructions("fiction");
     expect(codex).toContain("confirm capability, checkpoint, and never hang");
-    expect(claude).not.toContain("confirm capability, checkpoint, and never hang");
-    expect(fiction).not.toContain("confirm capability, checkpoint, and never hang");
-    expect(fiction).not.toContain("switching to the prompt-and-import");
+    // #307 guardrail/fallback phrasing must NOT appear in Claude/default output
+    // (it would contradict "You cannot create image files yourself"). The shared
+    // Asset Tooling copy stays provider-neutral.
+    for (const phrase of [
+      "confirm capability, checkpoint, and never hang",
+      "Cover fallback",
+      "bounded attempt",
+      "Import generated image",
+      "switching to the prompt-and-import",
+    ]) {
+      expect(claude).not.toContain(phrase);
+      expect(fiction).not.toContain(phrase);
+    }
+    // Claude/default still carries its own can't-create-files handoff intact.
+    expect(claude).toContain("You cannot create image files yourself");
   });
 });
 
