@@ -319,6 +319,7 @@ function CutRow({
           {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0 || isTextPanel(cut)) && (
             <button
               onClick={onOpenEditor}
+              data-testid={`open-editor-${cut.id}`}
               className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"
             >
               Open editor
@@ -586,9 +587,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   const staleTailIds = cutsFile.cuts.filter((c) => isStaleTailedExport(c)).map((c) => c.id);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-[22rem] flex flex-col overflow-hidden" data-testid="cut-list-panel">
       {/* Header with stats */}
-      <div className="px-3 py-2 border-b border-border flex items-center gap-3 text-[10px]">
+      <div className="px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[10px] flex-shrink-0">
         <span className="font-mono text-muted">{cutsFile.cuts.length} cuts</span>
         {stats.missing > 0 && <span className="text-muted">{stats.missing} missing</span>}
         {stats.clean > 0 && <span className="text-green-700">{stats.clean} clean</span>}
@@ -711,7 +712,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       </div>
       {/* Plain-language workflow + text-panel explainer (#360) so a non-technical
           writer understands the order of operations and what a text panel is. */}
-      <div className="px-3 py-1.5 border-b border-border text-[10px] text-muted" data-testid="cartoon-workflow-help">
+      <div className="px-3 py-1.5 border-b border-border text-[10px] text-muted flex-shrink-0" data-testid="cartoon-workflow-help">
         Build your webtoon top-to-bottom: letter each art panel’s bubbles &amp; captions, then export, upload, and prepare the episode for publishing. Use <span className="text-accent">Add narration/text panel</span> to drop a narration or title card between art panels — it’s a solid card exported as a final image, no drawing needed.
       </div>
       {/* Stale bubble-renderer warning (#381): a final image lettered before the
@@ -720,7 +721,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           re-uploads them before publishing. */}
       {staleTailIds.length > 0 && (
         <div
-          className="px-3 py-1.5 border-b border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700"
+          className="px-3 py-1.5 border-b border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700 flex-shrink-0"
           data-testid="stale-bubble-export-warning"
         >
           {staleTailIds.length === 1 ? "Cut" : "Cuts"} {staleTailIds.join(", ")} {staleTailIds.length === 1 ? "was" : "were"} lettered with an older speech-bubble style whose tail can show a visible seam. Re-export {staleTailIds.length === 1 ? "it" : "them"} (open lettering → Export) and re-upload before publishing so the bubble tails are seamless.
@@ -731,7 +732,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           Codex generation is complete even if the terminal session is still
           connected — no more guessing whether it is still Working. */}
       {detectConfirmed && imageCutCount > 0 && stats.missing === 0 && staleByCut.size === 0 && (
-        <div className="px-3 py-1 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1" data-testid="clean-assets-ready">
+        <div className="px-3 py-1 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1 flex-shrink-0" data-testid="clean-assets-ready">
           <span aria-hidden>✓</span>
           <span>
             All {imageCutCount} clean image{imageCutCount === 1 ? "" : "s"} present — clean-asset generation is complete. Ready for lettering in OWS.
@@ -739,18 +740,18 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         </div>
       )}
       {syncResult && (
-        <div className="px-3 py-1 border-b border-border text-[10px] text-muted" data-testid="sync-result">
+        <div className="px-3 py-1 border-b border-border text-[10px] text-muted flex-shrink-0" data-testid="sync-result">
           {syncResult}
         </div>
       )}
       {genWarnings.length > 0 && (
-        <div className="px-3 py-1 border-b border-border text-[10px] text-amber-700">
+        <div className="px-3 py-1 border-b border-border text-[10px] text-amber-700 flex-shrink-0">
           {genWarnings.map((w, i) => <p key={i}>{w}</p>)}
         </div>
       )}
 
       {/* Cut list */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 min-h-56 overflow-y-auto p-3 space-y-2" data-testid="cut-list-scroll">
         {cutsFile.cuts.map((cut) => (
           <CutRow
             key={cut.id}

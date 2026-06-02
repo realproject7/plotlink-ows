@@ -138,6 +138,32 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("keeps later cuts selectable after another row is expanded", async () => {
+    const cutsData = {
+      version: 1, plotFile: "plot-01",
+      cuts: Array.from({ length: 10 }, (_, i) => makeCut({
+        id: i + 1,
+        description: `Cut ${i + 1} scene`,
+        cleanImagePath: `assets/plot-01/cut-${String(i + 1).padStart(2, "0")}-clean.webp`,
+      })),
+    };
+    const authFetch = mockAuthFetch({ ok: true, data: cutsData });
+    render(<CutListPanel storyName="coupon-crush" fileName="plot-01.md" authFetch={authFetch} />);
+
+    const scroll = await screen.findByTestId("cut-list-scroll");
+    expect(scroll).toHaveClass("min-h-56");
+
+    fireEvent.click(screen.getByText("Cut 1 scene"));
+    await waitFor(() => expect(screen.getByTestId("open-editor-1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Cut 9 scene"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("open-editor-1")).not.toBeInTheDocument();
+      expect(screen.getByTestId("open-editor-9")).toBeInTheDocument();
+    });
+  });
+
   it("shows the clean-image handoff helper and Copy prompt button for a cut with no clean image", async () => {
     const cutsData = {
       version: 1, plotFile: "plot-01",

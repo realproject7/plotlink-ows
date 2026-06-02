@@ -873,7 +873,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         )
       ) : isCartoonPlot ? (
-        <div className="flex-1 min-h-0" style={{ background: "var(--paper-bg)" }}>
+        <div className="flex-1 min-h-[22rem] overflow-hidden" style={{ background: "var(--paper-bg)" }}>
           <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} />
         </div>
       ) : (
