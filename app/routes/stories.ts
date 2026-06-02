@@ -727,6 +727,56 @@ stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
 });
 
 
+const COVER_MAX_BYTES = 1024 * 1024;
+// Candidate agent-created cover files, in preference order (#296). The agent
+// writes a single cover under assets/; we never guess plot/cut images here.
+const COVER_CANDIDATES = [
+  { rel: "assets/cover.webp", type: "image/webp", sniff: "webp" as const },
+  { rel: "assets/cover.jpg", type: "image/jpeg", sniff: "jpeg" as const },
+  { rel: "assets/cover.jpeg", type: "image/jpeg", sniff: "jpeg" as const },
+];
+
+/**
+ * GET /api/stories/:name/cover-asset — detect an agent-created cover image so the
+ * genesis pre-publish UI can offer it as the default cover without a manual file
+ * pick (#296). Returns the FIRST candidate that exists, with a byte-validated
+ * `valid` flag (so an oversize or spoofed cover is surfaced as a warning and not
+ * offered/uploaded). `{ found: false }` when no candidate exists.
+ */
+stories.get("/:name/cover-asset", (c) => {
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  for (const cand of COVER_CANDIDATES) {
+    const full = path.join(storyDir, cand.rel);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
+
+    const size = fs.statSync(full).size;
+    let sniffed: SniffedType = "unknown";
+    try {
+      const fd = fs.openSync(full, "r");
+      try {
+        const head = Buffer.alloc(16);
+        const read = fs.readSync(fd, head, 0, 16, 0);
+        sniffed = sniffImageType(head.subarray(0, read));
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch { /* treat as unreadable → invalid below */ }
+
+    if (size > COVER_MAX_BYTES) {
+      return c.json({ found: true, valid: false, path: cand.rel, type: cand.type, size, error: `${cand.rel} is ${(size / 1024).toFixed(0)}KB, exceeds the 1MB cover limit` });
+    }
+    if (sniffed !== cand.sniff) {
+      return c.json({ found: true, valid: false, path: cand.rel, type: cand.type, size, error: `${cand.rel} is not a valid ${cand.sniff.toUpperCase()} image (file contents do not match)` });
+    }
+    return c.json({ found: true, valid: true, path: cand.rel, type: cand.type, size });
+  }
+
+  return c.json({ found: false });
+});
+
 /** GET /api/stories/:name/asset/:assetPath — serve story asset file (supports nested paths) */
 // NOTE: uses a regex splat param (`{.+}`) rather than a bare `*` wildcard.
 // Hono v4 does not populate `c.req.param("*")` for a mixed named/wildcard route
