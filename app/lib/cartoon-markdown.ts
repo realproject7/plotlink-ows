@@ -2,7 +2,9 @@ import type { Cut } from "./cuts";
 
 const MARKER_START = (id: string) => `<!-- ows:cartoon-cut ${id} start -->`;
 const MARKER_END = (id: string) => `<!-- ows:cartoon-cut ${id} end -->`;
-const MARKER_REGEX = /<!-- ows:cartoon-cut (cut-\d+) start -->\n[\s\S]*?<!-- ows:cartoon-cut \1 end -->/g;
+// Matches each existing cut-block START marker (capturing its id), used only to
+// report stale blocks — blocks that existed but no longer map to a cut.
+const START_MARKER_REGEX = /<!-- ows:cartoon-cut (cut-\d+) start -->/g;
 
 function cutId(index: number): string {
   return `cut-${String(index).padStart(3, "0")}`;
@@ -28,66 +30,46 @@ export function generateCartoonMarkdown(cuts: Cut[]): string {
 }
 
 /**
- * Reduce the markdown to ONLY its `ows:cartoon-cut` marker blocks, dropping every
- * other paragraph. Publish-facing cartoon markdown is a pure image sequence, so
- * any non-marker prose — scaffold instructions, stale placeholders, manual
- * commentary, headings — must not survive into it (#319). Earlier we stripped
- * only a known-placeholder allowlist (#286), but the #211 pilot still leaked
- * instructional prose that fell outside those patterns and forced a manual
- * rewrite; dropping all non-marker paragraphs removes that whole class of leak.
- * Paragraphs are blank-line-delimited; a cut block's lines are joined by single
- * newlines, so each block is one paragraph and is preserved intact.
+ * Generate the publish-facing cartoon markdown for a plot from its cut plan.
+ *
+ * Publish-facing cartoon markdown is a PURE `ows:cartoon-cut` image sequence, so
+ * the output is rebuilt entirely from `cuts` rather than edited in place: no
+ * surrounding prose from `existingMd` — scaffold instructions, stale placeholders,
+ * headings, manual commentary — can survive into it (#319). Rebuilding (rather
+ * than the earlier strip-and-replace) also closes the case @re1 flagged where
+ * prose sat in the same blank-line paragraph as a marker block (e.g.
+ * `Intro\n<!-- ...start -->\n…\n<!-- ...end -->\nOutro`) and leaked through a
+ * block-only regex replace.
+ *
+ * `existingMd` is consulted only to (a) leave a non-cartoon document — markerless
+ * and with no cuts, i.e. fiction — untouched, and (b) report cut blocks that
+ * existed before but no longer map to a cut ("stale" blocks).
  */
-function stripNonMarkerProse(markdown: string): string {
-  return markdown
-    .split(/\n{2,}/)
-    .filter((para) => para.includes("ows:cartoon-cut"))
-    .join("\n\n");
-}
-
 export function mergeCartoonMarkdown(
   existingMd: string,
   cuts: Cut[],
 ): { markdown: string; warnings: string[] } {
   const warnings: string[] = [];
 
-  // Only rewrite to a pure image sequence for an actual cartoon document — one
-  // with cuts to publish or existing cut markers. A markerless doc with no cuts
-  // is fiction (the route guards on cuts.json, but keep the function safe too),
-  // so leave it untouched.
+  // A markerless doc with no cuts is fiction — leave it untouched. (The route
+  // already guards on cuts.json, but keep the function safe in isolation.)
   const isCartoonDoc = cuts.length > 0 || /ows:cartoon-cut/.test(existingMd);
-  if (isCartoonDoc) existingMd = stripNonMarkerProse(existingMd);
+  if (!isCartoonDoc) return { markdown: existingMd, warnings };
 
-  const newBlocks = new Map<string, string>();
   for (let i = 0; i < cuts.length; i++) {
-    const id = cutId(i + 1);
-    newBlocks.set(id, generateCutBlock(cuts[i], i + 1));
-
     if (!cuts[i].uploadedUrl) {
       warnings.push(`Cut ${i + 1}: missing upload URL`);
     }
   }
 
-  const existingIds = new Set<string>();
-  const merged = existingMd.replace(MARKER_REGEX, (match, id: string) => {
-    existingIds.add(id);
-    if (newBlocks.has(id)) {
-      const block = newBlocks.get(id)!;
-      newBlocks.delete(id);
-      return block;
-    }
-    warnings.push(`Removed stale block: ${id}`);
-    return "";
-  });
-
-  let result = merged.replace(/\n{3,}/g, "\n\n").trim();
-
-  if (newBlocks.size > 0) {
-    const appended = Array.from(newBlocks.values()).join("\n\n");
-    result = result ? `${result}\n\n${appended}` : appended;
+  // Warn about cut marker blocks present in the old markdown that no longer map
+  // to a cut, so a removed/renumbered cut is not silently dropped.
+  const newIds = new Set<string>(cuts.map((_, i) => cutId(i + 1)));
+  for (const m of existingMd.matchAll(START_MARKER_REGEX)) {
+    if (!newIds.has(m[1])) warnings.push(`Removed stale block: ${m[1]}`);
   }
 
-  return { markdown: result, warnings };
+  return { markdown: generateCartoonMarkdown(cuts), warnings };
 }
 
 export function getReadinessWarnings(cuts: Cut[]): string[] {

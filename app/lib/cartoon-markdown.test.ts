@@ -128,6 +128,27 @@ describe("mergeCartoonMarkdown", () => {
     expect(markdown).toContain("https://new.com");
   });
 
+  it("discards prose directly adjacent to a marker block with no blank-line separator (#319, re1)", async () => {
+    // Prose on the same blank-line paragraph as a cut block used to leak: a
+    // block-only regex replace swapped the marker block but left the
+    // surrounding `Intro`/`Outro` text. Rebuilding from cuts removes it.
+    const existing = [
+      "Intro scaffold text",
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Old](https://old.com)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+      "Outro scaffold text",
+    ].join("\n");
+    const cuts = [makeCut({ uploadedUrl: "https://new.com" })];
+    const { markdown } = mergeCartoonMarkdown(existing, cuts);
+    expect(markdown).not.toContain("Intro scaffold text");
+    expect(markdown).not.toContain("Outro scaffold text");
+    expect(markdown).not.toContain("https://old.com");
+    expect(markdown).toContain("https://new.com");
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    expect(checkMarkdownReadiness(markdown, cuts).ready).toBe(true);
+  });
+
   it("discards arbitrary instructional prose that no placeholder pattern matches (#319)", async () => {
     // The #211 pilot leaked instructional scaffold that fell outside the known
     // placeholder allowlist, so it survived into publish markdown and forced a
