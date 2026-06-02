@@ -608,4 +608,96 @@ describe("LetteringEditor", () => {
     fireEvent.click(screen.getByTestId("export-btn"));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
   });
+
+  // #318: overlapping speech bubbles hide each other's text. The editor must
+  // warn before export/publish, naming the cut and the affected overlay indexes,
+  // without blocking export (overlap can be intentional).
+  it("warns when two bubbles overlap, naming the cut and overlay indexes", async () => {
+    const overlays: Overlay[] = [
+      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "Good news! We are short one", speaker: "Boss" },
+      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "I am not applying for a boyfriend.", speaker: "Mei" },
+    ];
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ id: 7, overlays })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    const warning = screen.getByTestId("overlay-overlap-warning");
+    expect(warning).toHaveTextContent("Cut #7");
+    // Affected overlay indexes (1-based) are identified.
+    expect(warning).toHaveTextContent("#1");
+    expect(warning).toHaveTextContent("#2");
+  });
+
+  it("does not warn when bubbles do not overlap", async () => {
+    const overlays: Overlay[] = [
+      { id: "ov-a", type: "speech", x: 0.0, y: 0.0, width: 0.25, height: 0.15, text: "Hi", speaker: "A" },
+      { id: "ov-b", type: "speech", x: 0.6, y: 0.6, width: 0.25, height: 0.15, text: "Bye", speaker: "B" },
+    ];
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument();
+  });
+
+  it("the overlap warning is non-blocking — export still proceeds", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const overlays: Overlay[] = [
+      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "front", speaker: "A" },
+      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "back", speaker: "B" },
+    ];
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    expect(screen.getByTestId("overlay-overlap-warning")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("export-btn"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+  });
+
+  it("clears the overlap warning once the bubbles are separated (live)", async () => {
+    const overlays: Overlay[] = [
+      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "front", speaker: "A" },
+      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "back", speaker: "B" },
+    ];
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    expect(screen.getByTestId("overlay-overlap-warning")).toBeInTheDocument();
+    // Remove one of the overlapping bubbles → the overlap is gone, warning clears.
+    fireEvent.click(screen.getByTestId("overlay-ov-b"));
+    const del = screen.getByTestId("delete-overlay");
+    fireEvent.click(del); // arms confirmation
+    fireEvent.click(del); // confirms delete
+    await waitFor(() => expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument());
+  });
 });

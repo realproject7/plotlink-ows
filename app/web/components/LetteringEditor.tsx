@@ -6,7 +6,7 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
-import { speechTailPoints, normalizeOverlays } from "@app-lib/overlays";
+import { speechTailPoints, normalizeOverlays, detectOverlappingOverlays } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { useAuthedAsset } from "./asset-image";
 
@@ -88,6 +88,14 @@ const TYPE_BORDER: Record<OverlayType, string> = {
   narration: "border-muted/40",
   sfx: "border-accent/40",
 };
+
+// Short human label for a bubble in the overlap warning (#318): its speaker or
+// a trimmed text snippet, falling back to the type name for empty bubbles.
+function overlapLabel(o: Overlay): string {
+  const snippet = (o.speaker || o.text || "").trim().replace(/\s+/g, " ");
+  if (snippet) return `“${snippet.length > 18 ? `${snippet.slice(0, 18)}…` : snippet}”`;
+  return TYPE_LABEL[o.type];
+}
 
 const MIN_SIZE = 0.05;
 
@@ -329,6 +337,12 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
+  // Flag bubbles whose filled bodies overlap enough to hide each other's text so
+  // the writer gets a readability warning before export/publish (#318). Computed
+  // from the live overlay positions, so it clears as soon as bubbles are moved
+  // apart. Non-blocking: overlap can be intentional, so it never blocks export.
+  const overlapPairs = useMemo(() => detectOverlappingOverlays(overlays), [overlays]);
+
   const isNarrationCut = !cut.cleanImagePath;
 
   if (isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
@@ -384,6 +398,19 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
           Auto-placed overlays from the cut plan — review their positions before exporting.
         </div>
       ) : null}
+
+      {overlapPairs.length > 0 && (
+        <div
+          className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700"
+          data-testid="overlay-overlap-warning"
+        >
+          Cut #{cut.id}: {overlapPairs.length} bubble {overlapPairs.length === 1 ? "pair overlaps" : "pairs overlap"} and may be hard to read —{" "}
+          {overlapPairs
+            .map((p) => `#${p.indexA + 1} ${overlapLabel(overlays[p.indexA])} ↔ #${p.indexB + 1} ${overlapLabel(overlays[p.indexB])}`)
+            .join("; ")}
+          . Move them apart, or export as-is if the overlap is intended.
+        </div>
+      )}
 
       {/* Editor surface */}
       <div className="flex-1 min-h-0 flex">
