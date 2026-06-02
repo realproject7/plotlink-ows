@@ -364,3 +364,53 @@ describe("GET /api/publish/preflight — PlotLink-backed upload flow (#287)", ()
     expect(data.error).toContain("creation fee");
   });
 });
+
+describe("GET /api/publish/public-title — indexed public-title read (#379)", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    app = makeApp();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  const PLOT_PAGE = `<title>plot-01 — genesis — PlotLink</title><meta property="og:title" content="plot-01 — genesis"/>`;
+  const STORYLINE_PAGE = `<title>genesis — PlotLink</title><meta property="og:title" content="genesis"/>`;
+
+  function stubFetch(html: string, ok = true) {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok, status: ok ? 200 : 404, text: () => Promise.resolve(html) })));
+  }
+
+  it("returns the plot title (leading og:title segment) from the plot page", async () => {
+    stubFetch(PLOT_PAGE);
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({ ok: true, fetched: true, plotTitle: "plot-01" });
+    // It fetched the public PLOT page, not a (nonexistent) JSON endpoint.
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0];
+    expect(String(calledUrl)).toContain("/story/59/1");
+  });
+
+  it("returns the storyline title from the storyline page (no plotIndex)", async () => {
+    stubFetch(STORYLINE_PAGE);
+    const res = await app.request("/api/publish/public-title?storylineId=59");
+    const data = await res.json();
+    expect(data).toMatchObject({ ok: true, fetched: true, storylineTitle: "genesis" });
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain("/story/59");
+  });
+
+  it("reports fetched:false (inconclusive) on a non-200 page", async () => {
+    stubFetch("<html>404</html>", false);
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({ ok: true, fetched: false });
+  });
+
+  it("rejects a missing/invalid storylineId", async () => {
+    const res = await app.request("/api/publish/public-title");
+    expect(res.status).toBe(400);
+  });
+});

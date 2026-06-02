@@ -4,6 +4,7 @@ import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
+import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { cartoonGenesisReadiness } from "@app-lib/cartoon-readiness";
 
@@ -273,6 +274,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     setPublishProgress("Reading file...");
     setPublishError(null); // clear any prior durable block on a fresh attempt (#375)
     let coverAttachFailed = false;
+    // Durable #379 public-title verification warning, set after indexing if
+    // PlotLink indexed a raw/generic public title (surfaced even though the
+    // publish itself succeeded — the metadata is immutable).
+    let titleVerifyWarning: string | null = null;
     // Whether the publish actually SUCCEEDED on-chain (the SSE `done` event with a
     // txHash). Returned to the caller so PreviewPanel drops the selected genesis
     // cover ONLY on a confirmed-successful publish. A publish that is blocked
@@ -477,12 +482,42 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                   // way; tell the user so they can retry from Edit Story.
                   if (!coverCid) coverAttachFailed = true;
                 }
+
+                // #379: end-to-end public-title verification. Local guards ensure
+                // OWS sends a reader-facing title, but the pilot showed PlotLink
+                // can still index a raw "genesis"/"plot-NN" title. There is no
+                // public JSON read endpoint, so an OWS server route reads the
+                // rendered public page's og:title (no CORS) and returns the
+                // indexed title; verify it here. Inconclusive reads (page
+                // unreachable / no title) never warn — only a confirmed
+                // raw/generic public title does. The publish is already on-chain +
+                // immutable, so this can only warn.
+                if (publishContentType === "cartoon" && data.storylineId) {
+                  try {
+                    const isPlot = fileName !== "genesis.md";
+                    const q = `storylineId=${data.storylineId}` +
+                      (isPlot && data.plotIndex != null ? `&plotIndex=${data.plotIndex}` : "");
+                    const pubRes = await authFetch(`/api/publish/public-title?${q}`);
+                    if (pubRes.ok) {
+                      const pub = await pubRes.json();
+                      const detail = isPlot
+                        ? { plots: pub.plotTitle != null ? [{ plotIndex: data.plotIndex, title: pub.plotTitle }] : [] }
+                        : { title: pub.storylineTitle };
+                      const verdict = verifyPublicCartoonTitle({ fileName, detail, plotIndex: data.plotIndex });
+                      if (!verdict.ok) titleVerifyWarning = publicTitleWarning(verdict);
+                    }
+                  } catch { /* inconclusive — don't false-warn on a read failure */ }
+                }
               }
             } catch { /* ignore partial SSE */ }
           }
         }
       }
 
+      // A failed public-title verification (#379) is a durable warning that
+      // outranks the transient "Published!" line — the metadata is immutable, so
+      // the writer must know the next publish needs corrected metadata.
+      if (titleVerifyWarning) setPublishError(titleVerifyWarning);
       setPublishProgress(
         coverAttachFailed
           ? "Published, but cover upload failed — set it later from Edit Story."
