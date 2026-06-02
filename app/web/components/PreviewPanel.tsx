@@ -794,8 +794,23 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
               {isPlot && (
                 <button
-                  onClick={() => storyName && fileName && onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw)}
+                  onClick={() => {
+                    if (!storyName || !fileName) return;
+                    // #332: Retry Publish mints a NEW on-chain chainPlot. The
+                    // tx for this episode already exists (status is
+                    // published-not-indexed), so this is only for the rare case
+                    // where indexing never recovers — require an explicit
+                    // duplicate-risk confirm so it can't be clicked by reflex
+                    // instead of Retry Index, which would create a permanent
+                    // duplicate chapter on PlotLink.
+                    const ok = window.confirm(
+                      "This episode is already on-chain — try “Retry Index” first.\n\nRetry Publish creates a NEW on-chain transaction and a SECOND, permanent chapter on PlotLink (PlotLink content is immutable). Only do this if the chapter never appeared after indexing.\n\nCreate a new on-chain chapter anyway?",
+                    );
+                    if (!ok) return;
+                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
+                  }}
                   disabled={!!publishingFile}
+                  data-testid="retry-publish-btn"
                   className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
                 >
                   {publishingFile === fileName ? "Publishing..." : "Retry Publish"}

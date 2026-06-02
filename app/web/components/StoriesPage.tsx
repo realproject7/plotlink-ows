@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -296,6 +296,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       // For plot files, find the storylineId from the genesis publish status
       let storylineId: number | undefined;
       if (fileName.match(/^plot-\d+\.md$/)) {
+        // #332: never mint a second chainPlot for a plot that already has an
+        // on-chain chapter recorded — a duplicate chainPlot creates a permanent
+        // extra chapter on PlotLink. fileData carries the retained txHash/
+        // plotIndex even when a later content edit reset status to "pending".
+        // The published-not-indexed recovery path is exempt (handled in the
+        // preview UI behind an explicit duplicate-risk confirm).
+        if (shouldBlockDuplicatePlotPublish(fileData)) {
+          setPublishProgress(
+            "Already published on PlotLink — republishing would create a duplicate chapter. Open it on PlotLink instead (or use Retry Index if it isn't showing yet).",
+          );
+          setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
+          return;
+        }
         try {
           const storyRes = await authFetch(`/api/stories/${storyName}`);
           if (storyRes.ok) {
