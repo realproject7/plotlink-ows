@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -303,6 +303,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         contentType: publishContentType,
         episodeTitle,
       });
+
+      // Defense-in-depth (#358): never publish a cartoon story/episode whose
+      // public title is still a raw filename label ("genesis"/"plot-NN"). The
+      // publish panel already blocks this, but guard the action too.
+      if (publishContentType === "cartoon" && isRawFilenameTitle(title, fileName)) {
+        setPublishProgress(
+          fileName === "genesis.md"
+            ? "Add a real “# Title” heading to genesis.md before publishing — it would otherwise publish as a raw filename."
+            : "Set an episode title in the cut plan before publishing — it would otherwise publish as a raw filename.",
+        );
+        setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
+        return;
+      }
 
       // For plot files, find the storylineId from the genesis publish status
       let storylineId: number | undefined;

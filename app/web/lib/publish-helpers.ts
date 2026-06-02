@@ -121,6 +121,22 @@ export function prettifyStorySlug(slug: string): string {
 }
 
 /**
+ * Whether a resolved publish title is still a raw internal filename label
+ * ("genesis"/"Genesis" for genesis.md, "plot-NN" for a plot) rather than a
+ * reader-facing title (#358). The publish panel blocks on this so a cartoon
+ * story can't ship raw labels (which are immutable once on-chain). Compared
+ * case-insensitively and trimmed.
+ */
+export function isRawFilenameTitle(title: string, fileName: string): boolean {
+  const t = (title ?? "").trim().toLowerCase();
+  if (!t) return true;
+  if (fileName === "genesis.md") return t === "genesis";
+  const m = fileName.match(/^(plot-\d+)\.md$/);
+  if (m) return t === m[1].toLowerCase() || /^plot-\d+$/.test(t);
+  return false;
+}
+
+/**
  * Friendly episode title from a plot filename (#347): "plot-01.md" → "Episode
  * 01" (numbering preserved, padded to ≥2 digits). Returns null for a non-plot
  * filename. Used as the last-resort cartoon episode title so an episode never

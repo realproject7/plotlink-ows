@@ -9,7 +9,7 @@ import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, cartoonChecklist, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
-import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE } from "../lib/publish-helpers";
+import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
@@ -99,6 +99,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Granular 6-step production checklist for the cartoon plot workspace (#335),
   // computed from cuts.json + asset/upload/publish state in the readiness effect.
   const [cartoonChecklistData, setCartoonChecklistData] = useState<CartoonChecklist | null>(null);
+  // Inputs for resolving + showing the public publish title before publish (#358):
+  // the story structure.md content (genesis story title) and the cut plan's
+  // episode title (cartoon plot).
+  const [structureContent, setStructureContent] = useState<string | null>(null);
+  const [cartoonEpisodeTitle, setCartoonEpisodeTitle] = useState<string | null>(null);
   // Bumped whenever the embedded cut editor mutates the cut plan (export/upload/
   // save), so the readiness effect re-fetches and the Episode-steps panel stays
   // in sync with the cut cards after a lettering export (#343).
@@ -223,6 +228,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonAwaitingCount(result.awaitingCount);
           setCartoonTotalCuts(result.totalCuts);
           setCartoonChecklistData(checklist);
+          // Cut plan's episode title for the publish-title display (#358).
+          setCartoonEpisodeTitle(typeof cutsData.title === "string" ? cutsData.title : null);
         }
       } catch {
         if (!cancelled) {
@@ -244,7 +251,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     authFetch(`/api/stories/${storyName}/structure.md`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
-        if (cancelled || !data?.content) return;
+        if (cancelled) return;
+        // Keep the structure.md content so the publish panel can resolve + show
+        // the public story title before publish (#358).
+        setStructureContent(data?.content ?? null);
+        if (!data?.content) return;
         const match = data.content.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
         if (match) {
           const detected = match[1].replace(/\*+/g, "").trim();
@@ -634,6 +645,27 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const isCartoonGenesis = contentType === "cartoon" && isGenesis;
   const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
 
+  // Resolve + validate the public publish title shown before publish (#358).
+  // Scoped to cartoon (genesis story title + plot episode title); fiction is
+  // unchanged. `resolvedPublishTitle` mirrors what handlePublish/derivePublishTitle
+  // will send on-chain; `rawTitleBlocked` is true when it's still a raw filename
+  // label ("genesis"/"plot-NN"), which must block publish.
+  const showsPublishTitle = (isCartoonGenesis || isCartoonPlot) && !isPublished;
+  const resolvedPublishTitle = showsPublishTitle
+    ? derivePublishTitle({
+        fileName: fileName!,
+        fileContent: fileData?.content ?? "",
+        storySlug: storyName ?? "",
+        structureContent,
+        contentType: "cartoon",
+        episodeTitle: cartoonEpisodeTitle,
+      })
+    : null;
+  const rawTitleBlocked = !!resolvedPublishTitle && isRawFilenameTitle(resolvedPublishTitle, fileName!);
+  // A cartoon plot with no cut-plan title falls back to a friendly "Episode NN"
+  // (not raw) — surface that so the writer can set a real title if they want.
+  const usingEpisodeFallback = isCartoonPlot && !cartoonEpisodeTitle?.trim() && !/^#\s+/m.test(fileData?.content ?? "");
+
   // Cartoon cover readiness badge + requirements (#337). Shown wherever a
   // cartoon writer manages the cover (pre-publish picker and the published Edit
   // Story panel) so the cover step is never silently skipped before publish.
@@ -654,6 +686,37 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       <div className="flex flex-col gap-0.5" data-testid="cartoon-cover-status" data-state={r.state}>
         <span className={`text-[11px] font-medium ${COVER_TONE[r.tone]}`}>{r.label}</span>
         <span className="text-[10px] text-muted" data-testid="cartoon-cover-guidance">{COVER_GUIDANCE}</span>
+      </div>
+    );
+  };
+
+  // The exact public title this file will publish with (#358), shown before the
+  // operator clicks publish. Reader-facing label (Story/Episode title), blocks
+  // when still a raw filename, and notes the friendly Episode-NN fallback.
+  const renderPublishTitle = () => {
+    if (!showsPublishTitle || !resolvedPublishTitle) return null;
+    const label = isGenesis ? "Story title" : "Episode title";
+    return (
+      <div
+        className="flex flex-col gap-0.5"
+        data-testid="publish-title-preview"
+        data-raw={rawTitleBlocked ? "true" : "false"}
+      >
+        <span className="text-[11px] text-foreground">
+          <span className="font-medium">{label}:</span>{" "}
+          <span className={rawTitleBlocked ? "text-error font-medium" : "text-foreground"}>{resolvedPublishTitle}</span>
+        </span>
+        {rawTitleBlocked ? (
+          <span className="text-[10px] text-error" data-testid="publish-title-raw-error">
+            This would publish as a raw filename. {isGenesis
+              ? "Add a real “# Title” heading to genesis.md"
+              : "Set a title in the cut plan (or add a “# Title” to the episode)"} before publishing.
+          </span>
+        ) : usingEpisodeFallback ? (
+          <span className="text-[10px] text-muted" data-testid="publish-title-fallback">
+            No episode title set — this will publish as “{resolvedPublishTitle}”. Add a title in the cut plan to customize it.
+          </span>
+        ) : null}
       </div>
     );
   };
@@ -1227,6 +1290,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </div>
               </div>
             )}
+            {/* Public title shown + validated before publish (#358). */}
+            {renderPublishTitle()}
             <div className="flex items-center gap-2">
               {(isGenesis) && (
                 <>
@@ -1281,7 +1346,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
                 }}
-                disabled={!!publishingFile || overLimit || (isCartoonPlot && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || rawTitleBlocked || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
