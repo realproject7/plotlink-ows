@@ -64,6 +64,36 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
     // The old bare-filename fallback is gone.
     expect(source).not.toContain('fileName.replace(".md", "")');
   });
+
+  // #332: handlePublish must guard against minting a duplicate chainPlot for a
+  // plot that already has an on-chain chapter (incl. the edit-then-republish
+  // path where status was reset to pending but txHash/plotIndex were retained).
+  it("guards plot publish against duplicate chainPlot via shouldBlockDuplicatePlotPublish", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    expect(source).toContain("shouldBlockDuplicatePlotPublish(fileData)");
+    // The guard returns early before reaching the publish SSE call.
+    const guardIdx = source.indexOf("shouldBlockDuplicatePlotPublish(fileData)");
+    const publishIdx = source.indexOf('authFetch("/api/publish/file"');
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(publishIdx);
+  });
+
+  // #332: the duplicate-risk "Retry Publish" (mints a new chainPlot) must be
+  // gated behind an explicit confirm so it can't be clicked instead of the
+  // non-minting "Retry Index" recovery.
+  it("gates the Retry Publish button behind an explicit duplicate-risk confirm", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const source = fs.readFileSync(path.resolve(__dirname, "PreviewPanel.tsx"), "utf-8");
+    const btnIdx = source.indexOf('data-testid="retry-publish-btn"');
+    expect(btnIdx).toBeGreaterThan(-1);
+    // Its onClick window.confirm warns about a duplicate/second chapter.
+    const onClick = source.slice(source.lastIndexOf("onClick", btnIdx), btnIdx);
+    expect(onClick).toContain("window.confirm");
+    expect(onClick).toMatch(/duplicate|second|new on-chain/i);
+  });
 });
 
 describe("publish callback boundary (stale closure regression)", () => {

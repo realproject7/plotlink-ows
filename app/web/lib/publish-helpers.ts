@@ -107,6 +107,39 @@ export function derivePublishTitle(opts: {
   return resolved.slice(0, 60);
 }
 
+/** Minimal publish-status record shape needed to reason about plot duplicates. */
+export interface PlotPublishRecord {
+  status?: "published" | "published-not-indexed" | "pending" | "draft";
+  storylineId?: number;
+  plotIndex?: number;
+  txHash?: string;
+}
+
+/**
+ * Whether a plot file already has a successful on-chain `chainPlot` recorded
+ * (#332). A minted chapter records its txHash + storyline + plotIndex; editing
+ * the file later resets `status` to "pending" but KEEPS those fields, so the
+ * presence of a txHash and a real plotIndex (>0) is the reliable signal that a
+ * chapter for this file already exists on PlotLink — republishing would mint a
+ * permanent duplicate chapter.
+ */
+export function hasPriorOnChainPlot(record: PlotPublishRecord | null | undefined): boolean {
+  return !!record?.txHash && record?.plotIndex != null && record.plotIndex > 0;
+}
+
+/**
+ * Whether a fresh `chainPlot` mint for this plot file must be BLOCKED to avoid a
+ * duplicate chapter (#332). Blocks whenever the file already has an on-chain
+ * chapter, EXCEPT the `published-not-indexed` state: there the on-chain tx
+ * exists but indexing failed, so the recovery flow (Retry Index, or an
+ * explicitly-confirmed Retry Publish in the UI) is intentional and handled
+ * separately. A first-time publish (no prior txHash) is never blocked, so
+ * existing fiction/cartoon first-publish behavior is unchanged.
+ */
+export function shouldBlockDuplicatePlotPublish(record: PlotPublishRecord | null | undefined): boolean {
+  return hasPriorOnChainPlot(record) && record?.status !== "published-not-indexed";
+}
+
 export function getContentTypeForPublish(
   storyContentTypes: Record<string, string>,
   storyName: string,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -213,6 +213,41 @@ describe("derivePublishTitle (#331)", () => {
     const long = "#" + " A".repeat(80);
     const title = derivePublishTitle({ fileName: "genesis.md", fileContent: long, storySlug: "s" });
     expect(title.length).toBe(60);
+  });
+});
+
+describe("hasPriorOnChainPlot (#332)", () => {
+  it("is true when a txHash and a real plotIndex are recorded", () => {
+    expect(hasPriorOnChainPlot({ status: "published", txHash: "0xabc", storylineId: 58, plotIndex: 1 })).toBe(true);
+    // Retained across a content edit that reset status to pending.
+    expect(hasPriorOnChainPlot({ status: "pending", txHash: "0xabc", storylineId: 58, plotIndex: 1 })).toBe(true);
+  });
+  it("is false for a first-time / never-minted plot", () => {
+    expect(hasPriorOnChainPlot({ status: "pending" })).toBe(false);
+    expect(hasPriorOnChainPlot({ status: "draft" })).toBe(false);
+    expect(hasPriorOnChainPlot(null)).toBe(false);
+    expect(hasPriorOnChainPlot(undefined)).toBe(false);
+  });
+  it("is false when plotIndex is missing or 0 even if a txHash exists", () => {
+    expect(hasPriorOnChainPlot({ status: "pending", txHash: "0xabc" })).toBe(false);
+    expect(hasPriorOnChainPlot({ status: "pending", txHash: "0xabc", plotIndex: 0 })).toBe(false);
+  });
+});
+
+describe("shouldBlockDuplicatePlotPublish (#332)", () => {
+  it("blocks a fresh mint for an already-published plot (normal button)", () => {
+    expect(shouldBlockDuplicatePlotPublish({ status: "published", txHash: "0xabc", storylineId: 58, plotIndex: 1 })).toBe(true);
+  });
+  it("blocks the edit-then-republish path (status reset to pending, on-chain fields retained)", () => {
+    expect(shouldBlockDuplicatePlotPublish({ status: "pending", txHash: "0xabc", storylineId: 58, plotIndex: 1 })).toBe(true);
+  });
+  it("does NOT block the published-not-indexed recovery path (UI gates Retry Publish behind a confirm)", () => {
+    expect(shouldBlockDuplicatePlotPublish({ status: "published-not-indexed", txHash: "0xabc", storylineId: 58, plotIndex: 1 })).toBe(false);
+  });
+  it("does NOT block a first-time publish (no prior on-chain tx)", () => {
+    expect(shouldBlockDuplicatePlotPublish({ status: "pending" })).toBe(false);
+    expect(shouldBlockDuplicatePlotPublish({ status: "draft" })).toBe(false);
+    expect(shouldBlockDuplicatePlotPublish(undefined)).toBe(false);
   });
 });
 
