@@ -337,3 +337,49 @@ export function resolveSelectedContentType(
     "fiction"
   );
 }
+
+/** Shape of the `/api/publish/preflight` response we consume in the UI (#375). */
+export interface PublishPreflight {
+  ready?: boolean;
+  error?: string | null;
+  ethBalance?: string;
+  requiredBalance?: string;
+  creationFee?: string;
+  hasEnoughEth?: boolean;
+  address?: string;
+}
+
+/** Format a wei amount (decimal string) as ETH with 6 dp; null if unparseable. */
+function weiToEth(wei: string | undefined): string | null {
+  if (!wei) return null;
+  const n = Number(wei);
+  if (!Number.isFinite(n)) return null;
+  return (n / 1e18).toFixed(6);
+}
+
+/**
+ * Whether a publish preflight result must block opening the publish stream (#375).
+ * A wallet that cannot cover at least the creation fee — or any other not-ready
+ * preflight state — should stop the publish action before `/api/publish/file`
+ * rather than proceed into "Broadcasting…" and silently fail.
+ */
+export function isPreflightBlocked(pre: PublishPreflight | null | undefined): boolean {
+  return !!pre && pre.ready === false;
+}
+
+/**
+ * Build a durable, writer-facing block message for a not-ready publish preflight
+ * (#375). Prefers an explicit insufficient-balance message with the exact
+ * required vs. current ETH; otherwise surfaces preflight's own error.
+ */
+export function formatPreflightBlock(pre: PublishPreflight): string {
+  const need = weiToEth(pre.requiredBalance) ?? weiToEth(pre.creationFee);
+  const have = weiToEth(pre.ethBalance);
+  if (pre.hasEnoughEth === false && need && have) {
+    return (
+      `Insufficient ETH: need at least ${need} ETH to publish; current balance is ${have} ETH.` +
+      (pre.address ? ` Top up the OWS wallet (${pre.address}) and try again.` : " Top up the OWS wallet and try again.")
+    );
+  }
+  return pre.error || "Publish preflight failed — the OWS wallet isn't ready to publish.";
+}

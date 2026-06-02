@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { cartoonGenesisReadiness } from "@app-lib/cartoon-readiness";
 
@@ -42,6 +42,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
+  // Durable publish blocker (#375): unlike the transient publishProgress text,
+  // this stays visible until the writer dismisses it or starts a new publish, so
+  // an insufficient-balance preflight block doesn't silently vanish.
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
@@ -267,6 +271,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handlePublish = useCallback(async (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => {
     setPublishingFile(fileName);
     setPublishProgress("Reading file...");
+    setPublishError(null); // clear any prior durable block on a fresh attempt (#375)
     let coverAttachFailed = false;
 
     try {
@@ -374,6 +379,29 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           return;
         }
       }
+
+      // #375: gate on wallet balance BEFORE opening the publish stream. The
+      // pilot's publish proceeded into "Broadcasting transaction..." despite
+      // preflight already reporting insufficient ETH, then returned to draft with
+      // no durable error. Run preflight here and, if the OWS wallet can't cover at
+      // least the creation fee (or is otherwise not ready), block with a durable,
+      // obvious inline error instead of calling /api/publish/file. A preflight
+      // network/HTTP error is NOT treated as a block — fall through so a flaky
+      // preflight can't stop an otherwise-fundable publish (the stream surfaces
+      // its own error).
+      setPublishProgress("Checking wallet balance...");
+      try {
+        const preRes = await authFetch("/api/publish/preflight");
+        if (preRes.ok) {
+          const pre = await preRes.json();
+          if (isPreflightBlocked(pre)) {
+            setPublishError(formatPreflightBlock(pre));
+            setPublishingFile(null);
+            setPublishProgress("");
+            return;
+          }
+        }
+      } catch { /* preflight unreachable — don't hard-block; let the publish stream report */ }
 
       // Run publish flow via SSE
       setPublishProgress("Publishing...");
@@ -626,6 +654,26 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
             {publishProgress}
+          </div>
+        )}
+        {/* Durable publish blocker (#375) — stays until dismissed or the next
+            publish attempt, so an insufficient-balance block is obvious and
+            doesn't disappear on a timer. */}
+        {publishError && (
+          <div
+            className="px-3 py-2 bg-error/10 border-t border-error/40 text-xs text-error flex items-start justify-between gap-3"
+            data-testid="publish-block-error"
+            role="alert"
+          >
+            <span>{publishError}</span>
+            <button
+              type="button"
+              onClick={() => setPublishError(null)}
+              className="shrink-0 text-error/70 hover:text-error underline"
+              data-testid="publish-block-error-dismiss"
+            >
+              Dismiss
+            </button>
           </div>
         )}
       </div>

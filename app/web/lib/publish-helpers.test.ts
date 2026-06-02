@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle, hasExplicitEpisodeTitle, isGenericEpisodeTitle } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle, hasExplicitEpisodeTitle, isGenericEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -467,5 +467,51 @@ describe("attachCoverToStoryline", () => {
     // both endpoints were attempted
     expect(authFetch).toHaveBeenCalledTimes(2);
     expect(authFetch.mock.calls[1][0]).toContain("/api/publish/update-storyline");
+  });
+});
+
+// #375: block publish before the SSE stream when the OWS wallet can't cover the fee.
+describe("isPreflightBlocked (#375)", () => {
+  it("blocks only when preflight explicitly reports ready === false", () => {
+    expect(isPreflightBlocked({ ready: false })).toBe(true);
+    expect(isPreflightBlocked({ ready: true })).toBe(false);
+    // Missing/unknown readiness must NOT block (avoid stopping a fundable publish
+    // on a flaky/absent preflight).
+    expect(isPreflightBlocked({})).toBe(false);
+    expect(isPreflightBlocked(null)).toBe(false);
+    expect(isPreflightBlocked(undefined)).toBe(false);
+  });
+});
+
+describe("formatPreflightBlock (#375)", () => {
+  it("gives an explicit insufficient-balance message with required vs current ETH + wallet", () => {
+    const msg = formatPreflightBlock({
+      ready: false,
+      hasEnoughEth: false,
+      requiredBalance: "700000000000000", // 0.0007 ETH (creation fee)
+      ethBalance: "286598454085269", // ~0.000287 ETH (the pilot balance)
+      creationFee: "700000000000000",
+      address: "test-wallet-address",
+    });
+    expect(msg).toContain("Insufficient ETH");
+    expect(msg).toContain("0.000700 ETH"); // required
+    expect(msg).toContain("0.000287 ETH"); // current
+    expect(msg).toContain("test-wallet-address");
+  });
+
+  it("falls back to the creation fee when no full required balance is present", () => {
+    const msg = formatPreflightBlock({
+      ready: false, hasEnoughEth: false, creationFee: "700000000000000", ethBalance: "0",
+    });
+    expect(msg).toContain("0.000700 ETH");
+    expect(msg).toContain("0.000000 ETH");
+  });
+
+  it("surfaces preflight's own error for non-balance blockers", () => {
+    expect(formatPreflightBlock({ ready: false, error: "No OWS wallet found" })).toBe("No OWS wallet found");
+  });
+
+  it("has a safe default when preflight is not ready but gives no detail", () => {
+    expect(formatPreflightBlock({ ready: false })).toContain("isn't ready to publish");
   });
 });
