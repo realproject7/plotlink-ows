@@ -416,6 +416,22 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(reloaded.cuts[0].cleanImagePath).toBeNull();
   });
 
+  // #301: an oversize clean image (the browser import could not compress it
+  // under 1MB, or it was uploaded directly) must be rejected without updating
+  // cuts.json, so the cut plan never references an asset PlotLink would reject.
+  it("rejects an oversize clean image (>1MB): 400, cleanImagePath not updated", async () => {
+    const storyDir = seedStory("upl-big");
+    const big = new Uint8Array(1024 * 1024 + 1);
+    big.set(WEBP_BYTES, 0); // valid WebP header, but over the size limit
+    const res = await uploadClean("upl-big", 1, big, "image/webp", "cut.webp");
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("under 1MB");
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+    expect(fs.existsSync(path.join(storyDir, "assets/plot-01/cut-01-clean.webp"))).toBe(false);
+  });
+
   it("GET cuts returns 404 when cuts file is missing", async () => {
     const storyDir = path.join(tmpDir, "no-cuts-story");
     fs.mkdirSync(storyDir, { recursive: true });

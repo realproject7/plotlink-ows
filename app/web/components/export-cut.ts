@@ -1,4 +1,5 @@
 import { speechTailPoints } from "@app-lib/overlays";
+import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
 interface Overlay {
   id: string;
@@ -12,7 +13,10 @@ interface Overlay {
   tailAnchor?: { x: number; y: number };
 }
 
-const MAX_SIZE = 1024 * 1024;
+// Re-exported for the existing export-size validation + tests; the compression
+// policy now lives in the shared image-compress module so the lettering export
+// and the Codex-image import path (#301) stay in lockstep.
+const MAX_SIZE = MAX_IMAGE_BYTES;
 
 export async function ensureFontsReady(families: string[]): Promise<{ ready: boolean; missing: string[] }> {
   if (typeof document === "undefined" || !document.fonts || typeof document.fonts.load !== "function") {
@@ -130,41 +134,6 @@ export function renderOverlays(
   }
 }
 
-async function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  format: string,
-  quality: number,
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error(`Failed to export as ${format}`))),
-      format,
-      quality,
-    );
-  });
-}
-
-async function tryCompress(
-  canvas: HTMLCanvasElement,
-): Promise<Blob> {
-  const webpQualities = [0.9, 0.8, 0.7, 0.6];
-  for (const q of webpQualities) {
-    try {
-      const blob = await canvasToBlob(canvas, "image/webp", q);
-      if (blob.type !== "image/webp") break;
-      if (blob.size <= MAX_SIZE) return blob;
-    } catch { break; }
-  }
-
-  const jpegQualities = [0.85, 0.7, 0.5];
-  for (const q of jpegQualities) {
-    const blob = await canvasToBlob(canvas, "image/jpeg", q);
-    if (blob.size <= MAX_SIZE) return blob;
-  }
-
-  throw new Error("Cannot compress image under 1MB — reduce overlay count or image size");
-}
-
 interface CutTextContent {
   narration?: string;
   dialogue?: { speaker: string; text: string }[];
@@ -235,7 +204,7 @@ export async function exportCut(
     renderCutText(ctx, cutText, width, height, bodyFontFamily);
   }
 
-  return tryCompress(canvas);
+  return compressCanvasToBlob(canvas);
 }
 
 export function validateExportSize(blob: Blob): { valid: boolean; error?: string } {
