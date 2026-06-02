@@ -112,17 +112,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // numeric geometry) on load so the bubbles actually render and export — and
   // surface a note when some could not be auto-placed (#309).
   const overlayNormalization = useMemo(() => normalizeOverlays(cut.overlays), [cut.overlays]);
-  const overlayRepairNote = useMemo(() => {
-    const n = overlayNormalization;
-    if (n.invalid.length > 0) {
-      const c = n.invalid.length;
-      return `${c} overlay${c === 1 ? "" : "s"} from the cut plan had no usable position and ${c === 1 ? "was" : "were"} removed — re-add ${c === 1 ? "it" : "them"} here before exporting.`;
-    }
-    if (n.changed && n.overlays.length > 0) {
-      return "Auto-placed overlays from the cut plan — review their positions before exporting.";
-    }
-    return null;
-  }, [overlayNormalization]);
+  const invalidOverlayCount = overlayNormalization.invalid.length;
+  // Overlays that could not be placed (no geometry, no recognizable position)
+  // are NOT exported. Exporting silently would produce a final missing that
+  // bubble/text, so block export until the writer explicitly discards them (#309).
+  const [acknowledgedInvalid, setAcknowledgedInvalid] = useState(false);
+  const autoPlacedOverlays =
+    invalidOverlayCount === 0 && overlayNormalization.changed && overlayNormalization.overlays.length > 0;
   const [overlays, setOverlays] = useState<Overlay[]>(() => overlayNormalization.overlays as Overlay[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -233,6 +229,17 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   }, [overlays, onSave]);
 
   const handleExport = useCallback(async () => {
+    // Block export when the cut plan contained overlays that could not be placed
+    // (no numeric geometry, no recognizable position). Dropping them silently
+    // would export an image missing the intended bubble/text (#309, re1).
+    // Require an explicit discard first — do not save or export the reduced set.
+    if (invalidOverlayCount > 0 && !acknowledgedInvalid) {
+      const c = invalidOverlayCount;
+      setExportError(
+        `${c} overlay${c === 1 ? "" : "s"} from the cut plan ${c === 1 ? "has" : "have"} no usable position and cannot be exported — re-place ${c === 1 ? "it" : "them"} or discard ${c === 1 ? "it" : "them"} first.`,
+      );
+      return;
+    }
     setExporting(true);
     setExportError(null);
     try {
@@ -285,7 +292,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     } finally {
       setExporting(false);
     }
-  }, [cut, cleanAsset, overlays, storyName, plotFile, bodyFont, displayFont, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported]);
+  }, [cut, cleanAsset, overlays, storyName, plotFile, bodyFont, displayFont, bodyFontFamily, displayFontFamily, authFetch, onSave, onExported, invalidOverlayCount, acknowledgedInvalid]);
 
   const selectedOverlay = overlays.find((o) => o.id === selectedId);
 
@@ -322,11 +329,28 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         </div>
       </div>
 
-      {overlayRepairNote && (
-        <div className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700" data-testid="overlay-repair-note">
-          {overlayRepairNote}
+      {invalidOverlayCount > 0 && !acknowledgedInvalid ? (
+        <div className="px-3 py-1 border-b border-border bg-error/10 text-[10px] text-error flex items-center gap-2 flex-wrap" data-testid="overlay-repair-note">
+          <span>
+            {invalidOverlayCount} overlay{invalidOverlayCount === 1 ? "" : "s"} from the cut plan {invalidOverlayCount === 1 ? "has" : "have"} no usable position and cannot be exported. Re-place {invalidOverlayCount === 1 ? "it" : "them"}, or
+          </span>
+          <button
+            onClick={() => setAcknowledgedInvalid(true)}
+            data-testid="discard-invalid-overlays"
+            className="px-1.5 py-0.5 border border-error/40 rounded hover:bg-error/10"
+          >
+            discard {invalidOverlayCount} unplaceable overlay{invalidOverlayCount === 1 ? "" : "s"}
+          </button>
         </div>
-      )}
+      ) : invalidOverlayCount > 0 ? (
+        <div className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700" data-testid="overlay-repair-note">
+          Discarded {invalidOverlayCount} unplaceable overlay{invalidOverlayCount === 1 ? "" : "s"} — the export will not include {invalidOverlayCount === 1 ? "it" : "them"}.
+        </div>
+      ) : autoPlacedOverlays ? (
+        <div className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700" data-testid="overlay-repair-note">
+          Auto-placed overlays from the cut plan — review their positions before exporting.
+        </div>
+      ) : null}
 
       {/* Editor surface */}
       <div className="flex-1 min-h-0 flex">
