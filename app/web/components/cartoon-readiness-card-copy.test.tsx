@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import { CARTOON_BUBBLE_RENDERER_VERSION } from "@app-lib/overlays";
 import { PreviewPanel } from "./PreviewPanel";
 
 // #345: the "Episode prepared for publish" (awaiting-upload) card's next-action
@@ -22,6 +23,7 @@ const EXPORTED_CUT = {
   finalImagePath: "assets/plot-01/cut-01-final.webp",
   exportedAt: "2026-01-01T00:00:00Z",
   uploadedCid: null, uploadedUrl: null,
+  finalRendererVersion: CARTOON_BUBBLE_RENDERER_VERSION,
   overlays: [{ id: "o1", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira", tailAnchor: { x: 0.5, y: 1.2 } }],
 };
 

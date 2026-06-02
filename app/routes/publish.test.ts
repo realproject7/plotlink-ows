@@ -234,6 +234,29 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(data.error).not.toContain("cuts.json");
   });
 
+  it("blocks cartoon plot when a tailed final image is a stale pre-#381 export (#389)", async () => {
+    const storyDir = setupCartoonStory();
+    const url = "https://ipfs.filebase.io/ipfs/QmExact";
+    const cf = createCutsFile("plot-01", 1);
+    cf.cuts[0].uploadedUrl = url;
+    cf.cuts[0].uploadedCid = "QmExact";
+    cf.cuts[0].finalImagePath = "assets/plot-01/cut-01-final.webp";
+    cf.cuts[0].exportedAt = "2026-01-01";
+    cf.cuts[0].overlays = [
+      { id: "ov1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi", tailAnchor: { x: 0.5, y: 1.2 } },
+    ];
+    writeCutsFile(storyDir, "plot-01", cf);
+
+    const md = `<!-- ows:cartoon-cut cut-001 start -->\n![C](${url})\n<!-- ows:cartoon-cut cut-001 end -->`;
+    const res = await post(publishBody({ content: md }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("re-export required before publish");
+    expect(data.issues).toContain(
+      "Cut 1: re-export required before publish — this final image uses an older speech-bubble tail style that can show a visible seam",
+    );
+  });
+
   it("blocks cartoon plot when uploadedUrl is a local path matched by local markdown", async () => {
     const storyDir = setupCartoonStory();
     const localPath = "assets/plot-01/cut-01-final.webp";

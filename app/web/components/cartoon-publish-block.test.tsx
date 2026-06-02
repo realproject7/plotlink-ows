@@ -79,4 +79,22 @@ describe("cartoon publish blocking in PreviewPanel", () => {
       expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
     });
   });
+
+  it("shows a publish-blocking re-export issue for stale tailed exports (#389)", async () => {
+    const md = "<!-- ows:cartoon-cut cut-001 start -->\n![Scene](https://ipfs/Qm)\n<!-- ows:cartoon-cut cut-001 end -->";
+    const staleUploadedCut = {
+      ...uploadedCut,
+      overlays: [{ id: "ov1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "Hi", tailAnchor: { x: 0.5, y: 1.2 } }],
+      finalRendererVersion: undefined,
+    };
+    const authFetch = makeAuthFetch({ content: md, cuts: { version: 1, plotFile: "plot-01", cuts: [staleUploadedCut] } });
+
+    render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} contentType="cartoon" onPublish={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cartoon-publish-issues")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("cartoon-issue-group-export")).toHaveTextContent(/re-export required before publish/i);
+    expect(screen.getByText("Publish to PlotLink")).toBeDisabled();
+  });
 });
