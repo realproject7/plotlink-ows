@@ -59,7 +59,11 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     });
     // The alarming missing-block error list should NOT be shown during planning.
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
-    expect(screen.getByTestId("generate-md-preview-btn")).toBeInTheDocument();
+    const prepBtn = screen.getByTestId("generate-md-preview-btn");
+    expect(prepBtn).toBeInTheDocument();
+    // #360: the primary action uses writer-facing wording, never "Generate MD"/"markdown".
+    expect(prepBtn).toHaveTextContent("Prepare episode for publish");
+    expect(prepBtn.textContent).not.toMatch(/Generate MD|markdown/i);
   });
 
   it("clicking Generate MD calls the generate-markdown endpoint and advances past planning", async () => {

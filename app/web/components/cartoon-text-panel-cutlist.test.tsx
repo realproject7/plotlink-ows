@@ -84,3 +84,24 @@ describe("CutListPanel text-panel stats (#351)", () => {
     });
   });
 });
+
+describe("CutListPanel self-guiding workflow copy (#360)", () => {
+  it("shows the writer-facing workflow help and a reader-facing 'Add narration/text panel' action (no 'Generate MD'/'markdown')", async () => {
+    const authFetch = makeFetch([makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp" })]);
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    const help = await screen.findByTestId("cartoon-workflow-help");
+    // Explains the order of operations and what a text panel is, in plain terms.
+    expect(help.textContent).toMatch(/Add narration\/text panel/);
+    expect(help.textContent).toMatch(/solid card exported as a final image/i);
+
+    const addBtn = screen.getByTestId("add-text-panel-btn");
+    expect(addBtn).toHaveTextContent("Add narration/text panel");
+
+    const prepBtn = screen.getByTestId("generate-markdown-btn");
+    expect(prepBtn).toHaveTextContent("Prepare episode for publish");
+    // No internal "Generate MD"/"markdown" jargon in the visible primary actions.
+    expect(addBtn.textContent).not.toMatch(/Generate MD|markdown/i);
+    expect(prepBtn.textContent).not.toMatch(/Generate MD|markdown/i);
+  });
+});
