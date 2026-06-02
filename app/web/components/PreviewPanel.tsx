@@ -415,7 +415,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // publish flow attaches it (upload-cover → update-storyline) with no special
   // casing. Invalid/oversize detected assets surface as a warning and are NOT used.
   useEffect(() => {
-    if (fileName !== "genesis.md" || !storyName || fileData?.storylineId) return;
+    if (fileName !== "genesis.md" || !storyName) return;
+    // Wait for the file to load AND confirm it is genuinely unpublished before
+    // touching the shared coverFile/coverPreview. On first render fileData is
+    // null, so without this an auto-detected cover could be set before the file
+    // load resolves and then leak into the published Edit Story panel (re1).
+    if (!fileData) return;
+    if (fileData.storylineId || fileData.status === "published" || fileData.status === "published-not-indexed") return;
     if (coverUserTouchedRef.current) return; // a manual pick/removal wins
     let cancelled = false;
     (async () => {
@@ -440,7 +446,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       } catch { /* best-effort: no detected cover */ }
     })();
     return () => { cancelled = true; };
-  }, [storyName, fileName, fileData?.storylineId, authFetch]);
+  }, [storyName, fileName, fileData, fileData?.status, fileData?.storylineId, authFetch]);
 
   // Fetch current storyline metadata when edit panel opens
   useEffect(() => {

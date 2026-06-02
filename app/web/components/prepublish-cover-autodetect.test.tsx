@@ -95,6 +95,54 @@ describe("PreviewPanel auto-detected cover (#296)", () => {
     expect(onPublish.mock.calls[0][5]).toBeUndefined();
   });
 
+  it("does NOT auto-detect for a PUBLISHED genesis, even when cover-asset resolves first (no leak into Edit Story) (re1)", async () => {
+    // Stub the global fetch the Edit Story panel uses for storyline metadata.
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({
+      ok: true, json: () => Promise.resolve({ genre: "Fantasy", language: "English", isNsfw: false }),
+    })) as unknown as typeof fetch);
+
+    const publishedGenesis = { file: "genesis.md", status: "published", content: "# A story\n\nHook.", storylineId: 77 };
+    const calls: string[] = [];
+    // cover-asset resolves immediately (the race); the genesis file load is
+    // deferred a tick so the detection effect would fire first on the buggy guard.
+    const authFetch = vi.fn((url: string, opts?: RequestInit) => {
+      calls.push((opts?.method ?? "GET") + " " + url);
+      if (url.endsWith("/cover-asset")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ found: true, valid: true, path: "assets/cover.webp", type: "image/webp" }) });
+      }
+      if (url.includes("/asset/")) {
+        return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([WEBP_BYTES], { type: "image/webp" })) });
+      }
+      if (url.includes("/api/publish/upload-cover")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: "QmLeak" }) });
+      }
+      if (url.includes("/api/publish/update-storyline")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      }
+      if (url.includes("/api/stories/") && (!opts || (opts.method ?? "GET") === "GET")) {
+        return new Promise((resolve) => setTimeout(() => resolve({ ok: true, status: 200, json: () => Promise.resolve(publishedGenesis) }), 0));
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+
+    render(
+      <PreviewPanel storyName="my-story" fileName="genesis.md" authFetch={authFetch} onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" />,
+    );
+
+    // Published genesis → Edit Story is the cover surface; open it.
+    const editBtn = await screen.findByRole("button", { name: "Edit Story" });
+    fireEvent.click(editBtn);
+    await screen.findByRole("button", { name: "Save Changes" });
+
+    // No auto-detected cover preview leaked in; Save uploads no cover.
+    expect(screen.queryByAltText("Cover preview")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => expect(calls.some((c) => c.includes("/api/publish/update-storyline"))).toBe(true));
+    expect(calls.some((c) => c.includes("/api/publish/upload-cover"))).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
   it("a manual pick overrides the auto-detected cover", async () => {
     const authFetch = makeAuthFetch({ found: true, valid: true, path: "assets/cover.webp", type: "image/webp" });
     const { onPublish, publishBtn } = await renderDraft(authFetch);
