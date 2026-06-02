@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -213,6 +213,61 @@ describe("derivePublishTitle (#331)", () => {
     const long = "#" + " A".repeat(80);
     const title = derivePublishTitle({ fileName: "genesis.md", fileContent: long, storySlug: "s" });
     expect(title.length).toBe(60);
+  });
+});
+
+describe("episodeTitleFromPlotFile (#347)", () => {
+  it("makes a friendly Episode label from a plot filename", () => {
+    expect(episodeTitleFromPlotFile("plot-01.md")).toBe("Episode 01");
+    expect(episodeTitleFromPlotFile("plot-7.md")).toBe("Episode 07");
+    expect(episodeTitleFromPlotFile("plot-12.md")).toBe("Episode 12");
+  });
+  it("returns null for non-plot filenames", () => {
+    expect(episodeTitleFromPlotFile("genesis.md")).toBeNull();
+    expect(episodeTitleFromPlotFile("structure.md")).toBeNull();
+  });
+});
+
+describe("derivePublishTitle cartoon plot titles (#347)", () => {
+  it("uses the cut plan episode title for a headingless cartoon plot (never the raw filename)", () => {
+    const title = derivePublishTitle({
+      fileName: "plot-01.md",
+      fileContent: "<!-- ows:cartoon-cut cut-001 start -->\n![c](https://x)\n<!-- ows:cartoon-cut cut-001 end -->",
+      storySlug: "s",
+      contentType: "cartoon",
+      episodeTitle: "First Rain",
+    });
+    expect(title).toBe("First Rain");
+  });
+
+  it("falls back to a friendly 'Episode NN', never the raw 'plot-NN', for a headingless cartoon plot with no cuts title", () => {
+    const title = derivePublishTitle({
+      fileName: "plot-01.md",
+      fileContent: "image-only markdown, no heading",
+      storySlug: "s",
+      contentType: "cartoon",
+      episodeTitle: null,
+    });
+    expect(title).toBe("Episode 01");
+    expect(title).not.toBe("plot-01");
+  });
+
+  it("prefers the plot's own H1 over the cuts title", () => {
+    expect(
+      derivePublishTitle({ fileName: "plot-02.md", fileContent: "# Real Heading\nx", storySlug: "s", contentType: "cartoon", episodeTitle: "Cuts Title" }),
+    ).toBe("Real Heading");
+  });
+
+  it("does NOT change fiction plot behavior (still H1-or-filename)", () => {
+    expect(
+      derivePublishTitle({ fileName: "plot-01.md", fileContent: "no heading", storySlug: "s", contentType: "fiction" }),
+    ).toBe("plot-01");
+  });
+
+  it("cartoon headingless genesis still resolves to the structure.md story title (#331 preserved)", () => {
+    expect(
+      derivePublishTitle({ fileName: "genesis.md", fileContent: "hook prose", storySlug: "swipe-right", contentType: "cartoon", structureContent: "# Swipe Right" }),
+    ).toBe("Swipe Right");
   });
 });
 

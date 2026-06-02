@@ -279,18 +279,29 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       // must not fall back to the bare "genesis" filename. For genesis, fetch
       // structure.md so its `# Title` H1 can stand in, with a prettified folder
       // slug as the last resort. Best-effort: structure.md may be absent.
+      const publishContentType = storyContentTypes[storyName];
       let structureContent: string | null = null;
+      let episodeTitle: string | null = null;
       if (fileName === "genesis.md") {
         try {
           const structRes = await authFetch(`/api/stories/${storyName}/structure.md`);
           if (structRes.ok) structureContent = (await structRes.json()).content ?? null;
         } catch { /* best effort — fall back to the prettified slug */ }
+      } else if (publishContentType === "cartoon" && fileName.match(/^plot-\d+\.md$/)) {
+        // Cartoon publish markdown is image-only (no H1), so read the cut plan's
+        // episode title to avoid publishing the raw "plot-NN" filename (#347).
+        try {
+          const cutsRes = await authFetch(`/api/stories/${storyName}/cuts/${fileName.replace(/\.md$/, "")}`);
+          if (cutsRes.ok) episodeTitle = (await cutsRes.json()).title ?? null;
+        } catch { /* best effort — fall back to a friendly "Episode NN" */ }
       }
       const title = derivePublishTitle({
         fileName,
         fileContent: fileData.content,
         storySlug: storyName,
         structureContent,
+        contentType: publishContentType,
+        episodeTitle,
       });
 
       // For plot files, find the storylineId from the genesis publish status
