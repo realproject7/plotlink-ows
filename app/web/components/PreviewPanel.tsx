@@ -8,7 +8,7 @@ import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
-import { classifyCartoonReadiness, cartoonChecklist, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
 import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
@@ -669,6 +669,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const episodeTitleMissing = isCartoonPlot && !isPublished
     && !hasExplicitEpisodeTitle({ fileContent: fileData?.content ?? "", episodeTitle: cartoonEpisodeTitle });
 
+  // Cartoon Genesis prologue readiness (#359). Genesis is the reader-facing
+  // opening readers meet before plot-01, so block a missing H1 title and warn on
+  // a too-short / synopsis-shaped opening. Cartoon-only; fiction is unchanged.
+  const genesisReadiness = (isCartoonGenesis && !isPublished)
+    ? cartoonGenesisReadiness(fileData?.content ?? "")
+    : null;
+  const genesisBlocked = !!genesisReadiness && genesisReadiness.blockers.length > 0;
+
   // Cartoon cover readiness badge + requirements (#337). Shown wherever a
   // cartoon writer manages the cover (pre-publish picker and the published Edit
   // Story panel) so the cover step is never silently skipped before publish.
@@ -723,6 +731,32 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             No episode title set — “{resolvedPublishTitle}” is a placeholder and can’t be published. Set a title in the cut plan (or add a “# Title” to the episode) before publishing.
           </span>
         ) : null}
+      </div>
+    );
+  };
+
+  // Cartoon Genesis prologue readiness panel (#359), shown before publish. Labels
+  // Genesis as the reader-facing Story opening / Prologue, blocks a missing title,
+  // warns on a thin/synopsis-shaped opening, and reminds the writer it should
+  // bridge into Episode 01. Fiction genesis never renders this (isCartoonGenesis).
+  const renderGenesisReadiness = () => {
+    if (!genesisReadiness) return null;
+    return (
+      <div
+        className="flex flex-col gap-1 rounded border border-border bg-surface/50 p-2"
+        data-testid="cartoon-genesis-readiness"
+        data-blocked={genesisBlocked ? "true" : "false"}
+      >
+        <span className="text-[11px] font-medium text-foreground">Story opening (Prologue)</span>
+        <span className="text-[10px] text-muted" data-testid="genesis-readiness-hint">
+          Readers meet this opening before Episode 01 — set up the premise and stakes, then bridge naturally into Episode 01.
+        </span>
+        {genesisReadiness.blockers.map((b, i) => (
+          <span key={`b-${i}`} className="text-[10px] text-error" data-testid="genesis-readiness-blocker">{b}</span>
+        ))}
+        {genesisReadiness.warnings.map((w, i) => (
+          <span key={`w-${i}`} className="text-[10px] text-amber-600" data-testid="genesis-readiness-warning">{w}</span>
+        ))}
       </div>
     );
   };
@@ -1298,6 +1332,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             )}
             {/* Public title shown + validated before publish (#358). */}
             {renderPublishTitle()}
+            {/* Cartoon Genesis prologue readiness checklist (#359). */}
+            {renderGenesisReadiness()}
             <div className="flex items-center gap-2">
               {(isGenesis) && (
                 <>
@@ -1352,7 +1388,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
                 }}
-                disabled={!!publishingFile || overLimit || titleBlocked || (isCartoonPlot && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}

@@ -5,6 +5,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
+import { cartoonGenesisReadiness } from "@app-lib/cartoon-readiness";
 
 interface StoriesPageProps {
   token: string;
@@ -324,6 +325,18 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         && !hasExplicitEpisodeTitle({ fileContent: fileData.content, episodeTitle })) {
         setPublishProgress(
           "Set an episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
+        );
+        setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
+        return;
+      }
+
+      // Defense-in-depth (#359): a cartoon Genesis is the reader-facing opening,
+      // so block publish when it has no real H1 title even if the panel guard is
+      // bypassed. (Warnings are non-blocking and surfaced only in the panel.)
+      if (publishContentType === "cartoon" && fileName === "genesis.md"
+        && cartoonGenesisReadiness(fileData.content).blockers.length > 0) {
+        setPublishProgress(
+          "Add a “# Title” heading to genesis.md before publishing — the Story opening needs a real title readers see first.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
         return;
