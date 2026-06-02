@@ -310,6 +310,18 @@ Valid \`plot-01.cuts.json\`:
 - \`shotType\` must be one of: \`wide\`, \`medium\`, \`close-up\`, \`extreme-close-up\`.
 - All image/export/upload path fields start as \`null\`; OWS fills them in.
 - \`overlays\` starts as an empty array \`[]\`; the lettering editor populates it.
+  **Leave \`overlays\` empty (\`[]\`)** — the writer places bubbles/captions in the
+  OWS lettering editor. If you ever do emit overlays, each MUST use the real OWS
+  overlay schema below — NEVER a semantic \`position\` string like \`"upper-left"\`,
+  which has no geometry, does not render, and would export a blank, unlettered
+  image.
+- **Overlay schema (only if you emit overlays):** each overlay is an object with
+  \`id\` (string), \`type\` (\`"speech"\` | \`"narration"\` | \`"sfx"\`), numeric \`x\`, \`y\`,
+  \`width\`, \`height\` (fractions of the image, 0–1, where \`x\`/\`y\` are the top-left
+  corner), \`text\` (string), optional \`speaker\` (speech only), and optional
+  \`tailAnchor\` (\`{ "x": number, "y": number }\`, speech only). Example:
+  \`{ "id": "ov-1", "type": "speech", "x": 0.08, "y": 0.06, "width": 0.4, "height": 0.16, "text": "...", "speaker": "Hana", "tailAnchor": { "x": 0.5, "y": 1.2 } }\`.
+  There is NO \`position\` field.
 - **Every publishable cut must become a final uploaded image.** Even
   narration-only or background-only cuts must get a clean image, be lettered/
   exported, and uploaded before the episode can publish. \`cleanImagePath\` may

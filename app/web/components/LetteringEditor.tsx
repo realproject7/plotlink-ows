@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   getDefaultFont,
   getDisplayFont,
@@ -6,7 +6,7 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
-import { speechTailPoints } from "@app-lib/overlays";
+import { speechTailPoints, normalizeOverlays } from "@app-lib/overlays";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -108,7 +108,22 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // Clean image lives behind requireAuth, so a raw <img src> would 401. Load it
   // via authFetch into a blob object URL and reuse that same URL for export.
   const cleanAsset = useAuthedAsset(storyName, cut.cleanImagePath, authFetch);
-  const [overlays, setOverlays] = useState<Overlay[]>(cut.overlays || []);
+  // Repair agent-authored overlays (e.g. semantic `position` strings with no
+  // numeric geometry) on load so the bubbles actually render and export — and
+  // surface a note when some could not be auto-placed (#309).
+  const overlayNormalization = useMemo(() => normalizeOverlays(cut.overlays), [cut.overlays]);
+  const overlayRepairNote = useMemo(() => {
+    const n = overlayNormalization;
+    if (n.invalid.length > 0) {
+      const c = n.invalid.length;
+      return `${c} overlay${c === 1 ? "" : "s"} from the cut plan had no usable position and ${c === 1 ? "was" : "were"} removed — re-add ${c === 1 ? "it" : "them"} here before exporting.`;
+    }
+    if (n.changed && n.overlays.length > 0) {
+      return "Auto-placed overlays from the cut plan — review their positions before exporting.";
+    }
+    return null;
+  }, [overlayNormalization]);
+  const [overlays, setOverlays] = useState<Overlay[]>(() => overlayNormalization.overlays as Overlay[]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -306,6 +321,12 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
           <button onClick={onClose} className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded">Close</button>
         </div>
       </div>
+
+      {overlayRepairNote && (
+        <div className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700" data-testid="overlay-repair-note">
+          {overlayRepairNote}
+        </div>
+      )}
 
       {/* Editor surface */}
       <div className="flex-1 min-h-0 flex">

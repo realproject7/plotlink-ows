@@ -1,4 +1,4 @@
-import { speechTailPoints } from "@app-lib/overlays";
+import { speechTailPoints, validateOverlaysForExport } from "@app-lib/overlays";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
 interface Overlay {
@@ -176,6 +176,14 @@ export async function exportCut(
   displayFontFamily: string,
   cutText?: CutTextContent,
 ): Promise<Blob> {
+  // Refuse to export an image whose overlays have invalid geometry — otherwise
+  // malformed (e.g. semantic-position) overlays render nothing and we silently
+  // produce an unlettered final (#309).
+  const overlayCheck = validateOverlaysForExport(overlays);
+  if (!overlayCheck.valid) {
+    throw new Error(overlayCheck.error ?? "Overlay geometry is invalid");
+  }
+
   let width = 800;
   let height = 600;
   let img: HTMLImageElement | null = null;

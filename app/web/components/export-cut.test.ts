@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateExportSize, MAX_SIZE, renderOverlays } from "./export-cut";
+import { validateExportSize, MAX_SIZE, renderOverlays, exportCut } from "./export-cut";
 
 interface Overlay {
   id: string;
@@ -134,5 +134,13 @@ describe("WebP fallback detection", () => {
   it("JPEG blob type is valid for fallback", () => {
     const jpegBlob = new Blob([new Uint8Array(100)], { type: "image/jpeg" });
     expect(jpegBlob.type).toBe("image/jpeg");
+  });
+});
+
+describe("exportCut overlay-geometry guard (#309)", () => {
+  it("rejects (does not silently produce an unlettered image) when an overlay has invalid geometry", async () => {
+    // A malformed/semantic-position overlay that reached export with NaN geometry.
+    const bad = [{ id: "a", type: "speech", text: "Hi", x: NaN, y: 0.1, width: 0.3, height: 0.15 }] as unknown as Parameters<typeof exportCut>[1];
+    await expect(exportCut(null, bad, "sans", "sans")).rejects.toThrow(/invalid geometry/);
   });
 });

@@ -457,4 +457,40 @@ describe("LetteringEditor", () => {
     fireEvent.click(screen.getByText("Close"));
     expect(onClose).toHaveBeenCalled();
   });
+
+  // #309: a cut authored with a semantic `position` overlay (no numeric geometry)
+  // must be repaired on load so it renders and exports, with a visible note.
+  it("normalizes a semantic-position overlay on load and surfaces a repair note", async () => {
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", speaker: "Hana", text: "Hi", position: "upper-left" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(await screen.findByTestId("overlay-repair-note")).toBeInTheDocument();
+    // Repaired (not dropped) → still counted as one overlay.
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+  });
+
+  it("drops an un-placeable overlay on load and warns it was removed", async () => {
+    const authFetch = makeAssetAuthFetch();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        plotFile="plot-01"
+        authFetch={authFetch}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const note = await screen.findByTestId("overlay-repair-note");
+    expect(note).toHaveTextContent(/removed/);
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("0 overlays");
+  });
 });
