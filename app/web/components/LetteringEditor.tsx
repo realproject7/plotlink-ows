@@ -9,6 +9,7 @@ import {
 import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { cutLetteringChecklist, cutScriptLines, isExportStale, overlaysSignature, type ScriptLine } from "@app-lib/lettering-status";
+import { textPanelDimensions } from "@app-lib/cuts";
 import { useAuthedAsset } from "./asset-image";
 
 type OverlayType = "speech" | "narration" | "sfx";
@@ -72,6 +73,11 @@ interface Cut {
   exportedAt?: string | null;
   uploadedUrl?: string | null;
   uploadedCid?: string | null;
+  // Text/interstitial panel (#350/#351): no clean image — the editor uses a
+  // styled background canvas and exports it as the final image.
+  kind?: "image" | "text";
+  background?: string;
+  aspectRatio?: string;
 }
 
 interface LetteringEditorProps {
@@ -188,17 +194,29 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
 
   const updateImageBounds = useCallback(() => {
     const container = containerRef.current;
-    const img = imgRef.current;
-    if (!container || !img || !img.naturalWidth) return;
+    if (!container) return;
     const cw = container.clientWidth;
     const ch = container.clientHeight;
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
+    let iw: number;
+    let ih: number;
+    if (cut.kind === "text") {
+      // A text panel has no image — size the editor canvas from the SAME aspect
+      // ratio the export uses, so lettering and the exported final agree (#351).
+      const dims = textPanelDimensions(cut.aspectRatio) ?? { width: 800, height: 600 };
+      iw = dims.width;
+      ih = dims.height;
+    } else {
+      const img = imgRef.current;
+      if (!img || !img.naturalWidth) return;
+      iw = img.naturalWidth;
+      ih = img.naturalHeight;
+    }
+    if (!cw || !ch) return;
     const scale = Math.min(cw / iw, ch / ih);
     const rw = iw * scale;
     const rh = ih * scale;
     setImageBounds({ x: (cw - rw) / 2, y: (ch - rh) / 2, width: rw, height: rh });
-  }, []);
+  }, [cut.kind, cut.aspectRatio]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -338,10 +356,16 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         return;
       }
       const imgUrl = cleanAsset.url;
-      const blob = await exportCut(imgUrl, overlays, bodyFontFamily, displayFontFamily, {
-        narration: cut.narration,
-        dialogue: cut.dialogue,
-      });
+      const blob = await exportCut(
+        imgUrl,
+        overlays,
+        bodyFontFamily,
+        displayFontFamily,
+        { narration: cut.narration, dialogue: cut.dialogue },
+        // Text panels have no clean image — render the final on a styled
+        // background canvas sized by the panel's aspect ratio (#351).
+        cut.kind === "text" ? { background: cut.background, aspectRatio: cut.aspectRatio } : undefined,
+      );
 
       const fd = new FormData();
       const ext = blob.type === "image/webp" ? "webp" : "jpg";
@@ -432,9 +456,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   }, [overlays, fontsReady, imageBounds, measureWidth, bodyFontFamily, displayFontFamily]);
   const warningCount = Object.keys(overlayWarnings).length;
 
+  const isTextPanel = cut.kind === "text";
   const isNarrationCut = !cut.cleanImagePath;
 
-  if (isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
+  // A text/interstitial panel (#351) is editable on a styled background canvas
+  // even when empty, so it skips the "no clean image" guard that applies to a
+  // would-be image cut with nothing placed yet.
+  if (!isTextPanel && isNarrationCut && overlays.length === 0 && !cut.narration && !cut.dialogue?.length) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted">
         No clean image — upload one first, or add overlays for a narration cut.
@@ -584,6 +612,24 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
               draggable={false}
               onLoad={updateImageBounds}
             />
+          ) : isTextPanel ? (
+            // Text panel: an aspect-ratio-contained canvas (imageBounds), so the
+            // lettering surface matches the exported final's shape (#351, re1).
+            imageBounds.width > 0 && (
+              <div
+                className="absolute flex items-center justify-center text-muted text-xs"
+                style={{
+                  left: imageBounds.x,
+                  top: imageBounds.y,
+                  width: imageBounds.width,
+                  height: imageBounds.height,
+                  background: cut.background || "#ffffff",
+                }}
+                data-testid="text-panel-canvas"
+              >
+                Text panel
+              </div>
+            )
           ) : (
             <div
               className="w-full h-full bg-white flex items-center justify-center text-muted text-xs"

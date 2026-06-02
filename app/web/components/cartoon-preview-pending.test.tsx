@@ -42,4 +42,15 @@ describe("CartoonPreview planned-cut rendering", () => {
       expect(screen.queryByTestId("cut-1-pending")).not.toBeInTheDocument();
     });
   });
+
+  // #351: an intentional text/interstitial panel is NOT "Image pending".
+  it("renders a text panel as an intentional panel, not image-pending", async () => {
+    const authFetch = makeCutsFetch([{ ...plannedTextCut, kind: "text", background: "#101820" }]);
+    render(<CartoonPreview storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+
+    await waitFor(() => expect(screen.getByTestId("cut-1-textpanel")).toBeInTheDocument());
+    expect(screen.queryByTestId("cut-1-pending")).not.toBeInTheDocument();
+    expect(screen.getByText("Text panel")).toBeInTheDocument();
+    expect(screen.queryByText("Image pending")).not.toBeInTheDocument();
+  });
 });

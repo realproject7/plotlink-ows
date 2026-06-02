@@ -21,6 +21,8 @@ interface Cut {
   exportedAt: string | null;
   uploadedCid: string | null;
   uploadedUrl: string | null;
+  kind?: "image" | "text";
+  background?: string;
 }
 
 interface CutsFile {
@@ -67,6 +69,7 @@ function CutCard({ cut, storyName, authFetch }: { cut: Cut; storyName: string; a
   // pending — even if narration/dialogue text already exists in cuts.json. It is
   // NOT a finished narration-only card.
   const hasPlannedText = cut.dialogue.length > 0 || !!cut.narration || !!cut.sfx;
+  const isTextPanel = cut.kind === "text";
 
   return (
     <div className="space-y-2">
@@ -108,8 +111,25 @@ function CutCard({ cut, storyName, authFetch }: { cut: Cut; storyName: string; a
         </div>
       )}
 
+      {/* Intentional text/interstitial panel (#351) — not pending art. Shows on
+          its styled background; the text is the panel content, not a caption. */}
+      {!hasImage && isTextPanel && (
+        <div
+          className="w-full border border-border rounded p-4 space-y-2"
+          style={{ background: cut.background || undefined }}
+          data-testid={`cut-${cut.id}-textpanel`}
+        >
+          <span className="text-[10px] font-mono text-muted">Text panel</span>
+          {hasPlannedText ? (
+            <TextOverlay cut={cut} />
+          ) : (
+            <p className="text-xs text-muted italic">Empty text panel — open the editor to add text.</p>
+          )}
+        </div>
+      )}
+
       {/* Planned image cut — art not generated/uploaded yet */}
-      {!hasImage && (
+      {!hasImage && !isTextPanel && (
         <div
           className="w-full bg-surface border border-dashed border-border rounded p-4 space-y-2"
           data-testid={`cut-${cut.id}-pending`}

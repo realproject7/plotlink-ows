@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
 import { LetteringEditor } from "./LetteringEditor";
 import { installObjectUrlStub, makeAssetAuthFetch, MOCK_BLOB_URL } from "./asset-test-utils";
+import { textPanelDimensions } from "@app-lib/cuts";
 
 beforeAll(() => {
   installObjectUrlStub();
@@ -920,5 +921,29 @@ describe("LetteringEditor", () => {
     } finally {
       vi.doUnmock("./export-cut");
     }
+  });
+
+  // #351 (re1): a text panel's editor canvas must use the SAME aspect ratio the
+  // export uses, so lettering and the exported final agree. The ResizeObserver
+  // stub reports a 400x300 container; a 4:5 panel (800x1000) object-contained in
+  // it is 240x300 — i.e. height/width === 5/4, matching textPanelDimensions.
+  it("sizes a text-panel editor canvas to the export aspect ratio (4:5)", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ cleanImagePath: null, overlays: [], kind: "text", background: "#101820", aspectRatio: "4:5" })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const canvas = await screen.findByTestId("text-panel-canvas");
+    const w = parseFloat(canvas.style.width);
+    const h = parseFloat(canvas.style.height);
+    const dims = textPanelDimensions("4:5")!;
+    // Editor canvas ratio equals the export canvas ratio.
+    expect(h / w).toBeCloseTo(dims.height / dims.width, 5);
+    expect(h / w).toBeCloseTo(5 / 4, 5);
   });
 });

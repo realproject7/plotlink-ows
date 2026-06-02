@@ -46,6 +46,25 @@ export function isTextPanel(cut: Pick<Cut, "kind">): boolean {
   return cut.kind === "text";
 }
 
+/** Base canvas width for a text panel sized from its aspect ratio (#351). */
+export const TEXT_PANEL_BASE_WIDTH = 800;
+
+/**
+ * Canvas dimensions for a text panel from an "W:H" aspect ratio (#351) — shared
+ * by the lettering editor (so its surface matches) and the export, so a text
+ * panel letters and exports at the SAME shape. Returns null for a missing or
+ * malformed ratio; callers fall back to 800×600.
+ */
+export function textPanelDimensions(aspectRatio: string | undefined): { width: number; height: number } | null {
+  if (!aspectRatio) return null;
+  const m = aspectRatio.match(/^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  if (!(w > 0) || !(h > 0)) return null;
+  return { width: TEXT_PANEL_BASE_WIDTH, height: Math.round((TEXT_PANEL_BASE_WIDTH * h) / w) };
+}
+
 export interface CutsFile {
   version: 1;
   plotFile: string;

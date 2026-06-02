@@ -3,6 +3,7 @@ import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
+import { isTextPanel } from "@app-lib/cuts";
 import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 
@@ -36,6 +37,9 @@ interface Cut {
   uploadedCid: string | null;
   uploadedUrl: string | null;
   overlays: Overlay[];
+  kind?: "image" | "text";
+  background?: string;
+  aspectRatio?: string;
 }
 
 interface CutsFile {
@@ -58,12 +62,15 @@ interface CutListPanelProps {
   onCutsChanged?: () => void;
 }
 
-type CutStatus = "missing" | "clean" | "lettered" | "uploaded";
+type CutStatus = "missing" | "clean" | "lettered" | "uploaded" | "text";
 
 function getCutStatus(cut: Cut): CutStatus {
   if (cut.uploadedCid) return "uploaded";
   if (cut.finalImagePath || cut.exportedAt) return "lettered";
   if (cut.cleanImagePath) return "clean";
+  // A text/interstitial panel needs no clean image, so it's never "missing"
+  // (#351) — it's ready to letter on its background.
+  if (isTextPanel(cut)) return "text";
   return "missing";
 }
 
@@ -72,6 +79,7 @@ const STATUS_LABEL: Record<CutStatus, string> = {
   clean: "Clean ready",
   lettered: "Lettered",
   uploaded: "Uploaded",
+  text: "Text panel",
 };
 
 const STATUS_COLOR: Record<CutStatus, string> = {
@@ -79,6 +87,7 @@ const STATUS_COLOR: Record<CutStatus, string> = {
   clean: "text-green-700",
   lettered: "text-amber-700",
   uploaded: "text-green-700",
+  text: "text-accent",
 };
 
 const STATUS_DOT: Record<CutStatus, string> = {
@@ -86,6 +95,7 @@ const STATUS_DOT: Record<CutStatus, string> = {
   clean: "bg-green-600",
   lettered: "bg-amber-500",
   uploaded: "bg-green-600",
+  text: "bg-accent",
 };
 
 function CutRow({
@@ -222,7 +232,10 @@ function CutRow({
             </div>
           )}
 
-          {/* Clean image: copy generation prompt + upload the generated file */}
+          {/* Clean image: copy generation prompt + upload the generated file.
+              Text/interstitial panels need no clean image (#351), so this whole
+              generation/upload handoff is image-cut only. */}
+          {!isTextPanel(cut) && (
           <div className="mt-2 space-y-2">
             <button
               onClick={() => {
@@ -299,9 +312,10 @@ function CutRow({
               <p className="text-xs text-error mt-1">{uploadError}</p>
             )}
           </div>
+          )}
 
-          {/* Open editor button — available for image cuts and narration cuts */}
-          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0) && (
+          {/* Open editor — image cuts, narration cuts, and text panels (#351) */}
+          {(cut.cleanImagePath || cut.narration || cut.dialogue.length > 0 || isTextPanel(cut)) && (
             <button
               onClick={onOpenEditor}
               className="px-3 py-1.5 text-xs border border-accent/30 text-accent rounded hover:bg-accent/5"
@@ -527,8 +541,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       acc[s]++;
       return acc;
     },
-    { missing: 0, clean: 0, lettered: 0, uploaded: 0 } as Record<CutStatus, number>,
+    { missing: 0, clean: 0, lettered: 0, uploaded: 0, text: 0 } as Record<CutStatus, number>,
   );
+  // Text/interstitial panels need no clean image (#351), so the clean-assets
+  // banner/claims reason about IMAGE cuts only — never the total cut count.
+  const imageCutCount = cutsFile.cuts.filter((c) => !isTextPanel(c)).length;
 
   return (
     <div className="h-full flex flex-col">
@@ -539,6 +556,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         {stats.clean > 0 && <span className="text-green-700">{stats.clean} clean</span>}
         {stats.lettered > 0 && <span className="text-amber-700">{stats.lettered} lettered</span>}
         {stats.uploaded > 0 && <span className="text-green-700">{stats.uploaded} uploaded</span>}
+        {stats.text > 0 && <span className="text-accent">{stats.text} text {stats.text === 1 ? "panel" : "panels"}</span>}
         <button
           onClick={async () => {
             setGenerating(true);
@@ -648,11 +666,11 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           valid clean image, surface a clear "done" signal so the operator knows
           Codex generation is complete even if the terminal session is still
           connected — no more guessing whether it is still Working. */}
-      {detectConfirmed && cutsFile.cuts.length > 0 && stats.missing === 0 && staleByCut.size === 0 && (
+      {detectConfirmed && imageCutCount > 0 && stats.missing === 0 && staleByCut.size === 0 && (
         <div className="px-3 py-1 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1" data-testid="clean-assets-ready">
           <span aria-hidden>✓</span>
           <span>
-            All {cutsFile.cuts.length} clean image{cutsFile.cuts.length === 1 ? "" : "s"} present — clean-asset generation is complete. Ready for lettering in OWS.
+            All {imageCutCount} clean image{imageCutCount === 1 ? "" : "s"} present — clean-asset generation is complete. Ready for lettering in OWS.
           </span>
         </div>
       )}

@@ -1,4 +1,7 @@
 import { speechTailPoints, balloonOutline, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
+import { textPanelDimensions } from "@app-lib/cuts";
+// Re-exported so existing importers/tests can keep getting it from export-cut.
+export { textPanelDimensions } from "@app-lib/cuts";
 import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
@@ -199,12 +202,21 @@ function renderCutText(
   }
 }
 
+/** Style for a text/interstitial panel exported without a clean image (#351). */
+export interface TextPanelStyle {
+  /** CSS background color for the panel canvas. Defaults to white. */
+  background?: string;
+  /** Aspect ratio "W:H" (e.g. "4:5") sizing the canvas. Defaults to 800×600. */
+  aspectRatio?: string;
+}
+
 export async function exportCut(
   cleanImageUrl: string | null,
   overlays: Overlay[],
   bodyFontFamily: string,
   displayFontFamily: string,
   cutText?: CutTextContent,
+  textPanel?: TextPanelStyle,
 ): Promise<Blob> {
   // Refuse to export an image whose overlays have invalid geometry — otherwise
   // malformed (e.g. semantic-position) overlays render nothing and we silently
@@ -222,6 +234,14 @@ export async function exportCut(
     img = await loadImage(cleanImageUrl);
     width = img.naturalWidth;
     height = img.naturalHeight;
+  } else if (textPanel) {
+    // Text/interstitial panel: no clean image — render text on a styled canvas
+    // sized by the panel's aspect ratio (#351).
+    const dims = textPanelDimensions(textPanel.aspectRatio);
+    if (dims) {
+      width = dims.width;
+      height = dims.height;
+    }
   }
 
   const canvas = document.createElement("canvas");
@@ -232,7 +252,7 @@ export async function exportCut(
   if (img) {
     ctx.drawImage(img, 0, 0, width, height);
   } else {
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = textPanel?.background || "#ffffff";
     ctx.fillRect(0, 0, width, height);
   }
 
