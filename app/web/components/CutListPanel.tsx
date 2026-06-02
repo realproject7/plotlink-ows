@@ -616,9 +616,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={addingPanel}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="add-text-panel-btn"
-          title="Add a text/interstitial panel (narration or title card) between image cuts"
+          title="Insert a narration/title card between art panels — a solid card exported as a final image panel, no drawing needed"
         >
-          {addingPanel ? "Adding…" : "Add text panel"}
+          {addingPanel ? "Adding…" : "Add narration/text panel"}
         </button>
         <button
           onClick={syncCleanImages}
@@ -687,7 +687,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
               loadCuts();
               return;
             }
-            setUploadProgress("Preparing publish markdown…");
+            setUploadProgress("Preparing episode for publishing…");
             const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
             if (mdRes.ok) {
               const data = await mdRes.json();
@@ -700,10 +700,15 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           disabled={uploading || !cutsFile?.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid)}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="upload-generate-btn"
-          title="Upload each cut's final lettered image, then build the publish-ready episode markdown"
+          title="Upload each cut's final lettered image, then prepare the episode for publishing"
         >
           {uploadProgress || "Upload & Prepare for Publish"}
         </button>
+      </div>
+      {/* Plain-language workflow + text-panel explainer (#360) so a non-technical
+          writer understands the order of operations and what a text panel is. */}
+      <div className="px-3 py-1.5 border-b border-border text-[10px] text-muted" data-testid="cartoon-workflow-help">
+        Build your webtoon top-to-bottom: letter each art panel’s bubbles &amp; captions, then export, upload, and prepare the episode for publishing. Use <span className="text-accent">Add narration/text panel</span> to drop a narration or title card between art panels — it’s a solid card exported as a final image, no drawing needed.
       </div>
       {/* Clean-asset generation done-state (#311): when every cut has a present,
           valid clean image, surface a clear "done" signal so the operator knows

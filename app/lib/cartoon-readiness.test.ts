@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -624,5 +624,55 @@ describe("cartoonGenesisReadiness (#359)", () => {
     const r = cartoonGenesisReadiness(bullets);
     expect(r.blockers).toHaveLength(0);
     expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
+  });
+});
+
+describe("groupCartoonIssues (#360)", () => {
+  it("groups flat readiness issues by workflow step", () => {
+    const groups = groupCartoonIssues([
+      "Cut 1: not uploaded (no recorded uploaded URL)",
+      "Cut 3: not uploaded (no recorded uploaded URL)",
+      "Cut 2: missing or incomplete markdown block",
+      "Markdown is 10001 chars (limit 10,000)",
+    ]);
+    const keys = groups.map((g) => g.key);
+    // Ordered by workflow: assemble before upload before size.
+    expect(keys).toEqual(["assemble", "upload", "size"]);
+    expect(groups.find((g) => g.key === "upload")!.title).toBe("Upload final images");
+  });
+
+  it("collapses repeated per-cut reasons into one line ('Cuts 1, 3, 5')", () => {
+    const groups = groupCartoonIssues([
+      "Cut 1: not uploaded (no recorded uploaded URL)",
+      "Cut 5: not uploaded (no recorded uploaded URL)",
+      "Cut 3: not uploaded (no recorded uploaded URL)",
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].lines).toEqual(["Cuts 1, 3, 5: not uploaded (no recorded uploaded URL)"]);
+  });
+
+  it("keeps a single cut as 'Cut N' (not 'Cuts N')", () => {
+    const groups = groupCartoonIssues(["Cut 2: missing or incomplete markdown block"]);
+    expect(groups[0].lines).toEqual(["Cut 2: missing or incomplete markdown block"]);
+  });
+
+  it("routes leftover-text and image-reference issues to their own steps", () => {
+    const groups = groupCartoonIssues([
+      "This episode still has placeholder/instructional text (\"Placeholder only\") — remove it",
+      "Image reference is not a recorded uploaded cut URL: https://x",
+    ]);
+    expect(groups.map((g) => g.key).sort()).toEqual(["cleanup", "images"]);
+  });
+
+  it("puts unrecognized issues in an 'Other issues' group and drops nothing", () => {
+    const groups = groupCartoonIssues(["Some brand new failure mode"]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe("other");
+    expect(groups[0].title).toBe("Other issues");
+    expect(groups[0].lines).toEqual(["Some brand new failure mode"]);
+  });
+
+  it("returns no groups for an empty issue list", () => {
+    expect(groupCartoonIssues([])).toEqual([]);
   });
 });

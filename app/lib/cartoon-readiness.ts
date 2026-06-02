@@ -261,6 +261,79 @@ export function classifyCartoonReadiness(
   };
 }
 
+/** One step-categorized group of publish-readiness issues for display (#360). */
+export interface CartoonIssueGroup {
+  /** Stable category key. */
+  key: string;
+  /** Writer-facing step heading. */
+  title: string;
+  /** Issue lines in this group, with repeated per-cut reasons collapsed. */
+  lines: string[];
+}
+
+// Maps a raw readiness issue string to a workflow step, so the publish panel can
+// show grouped, plain-language headings instead of a flat wall of repeated
+// per-cut technical errors (#360). Ordered by where the step sits in the flow.
+const CARTOON_ISSUE_CATEGORIES: { key: string; title: string; test: RegExp }[] = [
+  { key: "assemble", title: "Prepare the episode for publish", test: /markdown block|missing or incomplete/i },
+  { key: "upload", title: "Upload final images", test: /not uploaded|no recorded uploaded url/i },
+  { key: "images", title: "Fix image references", test: /image reference|not an http|does not match|exactly one image/i },
+  { key: "cleanup", title: "Remove leftover text", test: /placeholder|instructional|awaiting-upload|awaiting upload/i },
+  { key: "size", title: "Shorten the episode", test: /\blimit\b|\bchars\b/i },
+];
+
+// Collapse repeated "Cut N: <reason>" lines that share a reason into one
+// "Cuts 1, 3, 5: <reason>" line; non-cut lines pass through unchanged.
+function collapseCutLines(items: string[]): string[] {
+  const byReason = new Map<string, number[]>();
+  const order: string[] = [];
+  const passthrough: string[] = [];
+  for (const it of items) {
+    const m = it.match(/^Cut (\d+): (.+)$/);
+    if (m) {
+      const reason = m[2];
+      if (!byReason.has(reason)) { byReason.set(reason, []); order.push(reason); }
+      byReason.get(reason)!.push(Number(m[1]));
+    } else {
+      passthrough.push(it);
+    }
+  }
+  const collapsed = order.map((reason) => {
+    const nums = byReason.get(reason)!.slice().sort((a, b) => a - b);
+    const label = nums.length === 1 ? `Cut ${nums[0]}` : `Cuts ${nums.join(", ")}`;
+    return `${label}: ${reason}`;
+  });
+  return [...collapsed, ...passthrough];
+}
+
+/**
+ * Group flat publish-readiness issues by workflow step for the cartoon publish
+ * panel (#360). A non-technical writer sees "Upload final images" / "Prepare the
+ * episode for publish" headings with collapsed per-cut lines, instead of a long
+ * repeated list of "Cut N: not uploaded" technical errors. Unmatched issues fall
+ * into an "Other issues" group so nothing is dropped. Order follows the workflow.
+ */
+export function groupCartoonIssues(issues: string[]): CartoonIssueGroup[] {
+  const catKey = (issue: string) =>
+    CARTOON_ISSUE_CATEGORIES.find((c) => c.test.test(issue))?.key ?? "other";
+  const buckets = new Map<string, string[]>();
+  for (const issue of issues) {
+    const k = catKey(issue);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k)!.push(issue);
+  }
+  const order = [...CARTOON_ISSUE_CATEGORIES.map((c) => c.key), "other"];
+  const titleOf = (k: string) =>
+    CARTOON_ISSUE_CATEGORIES.find((c) => c.key === k)?.title ?? "Other issues";
+  const groups: CartoonIssueGroup[] = [];
+  for (const k of order) {
+    const items = buckets.get(k);
+    if (!items || items.length === 0) continue;
+    groups.push({ key: k, title: titleOf(k), lines: collapseCutLines(items) });
+  }
+  return groups;
+}
+
 /**
  * Cartoon Genesis is the reader-facing opening/prologue: on PlotLink, readers
  * encounter `genesis.md` before plot-01, so it must establish the premise and

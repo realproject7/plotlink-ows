@@ -8,7 +8,7 @@ import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
-import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
 import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
@@ -1409,9 +1409,17 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
             </div>
             {isCartoonPlot && cartoonStage === "error" && cartoonIssues.length > 0 && (
-              <div className="flex flex-col gap-0.5" data-testid="cartoon-publish-issues">
-                {cartoonIssues.map((issue, i) => (
-                  <span key={i} className="text-error text-xs">{issue}</span>
+              // Grouped by workflow step (#360) so a writer sees "Upload final
+              // images" / "Prepare the episode for publish" headings instead of a
+              // flat wall of repeated per-cut technical errors.
+              <div className="flex flex-col gap-1.5" data-testid="cartoon-publish-issues">
+                {groupCartoonIssues(cartoonIssues).map((g) => (
+                  <div key={g.key} className="flex flex-col gap-0.5" data-testid={`cartoon-issue-group-${g.key}`}>
+                    <span className="text-error text-xs font-medium">{g.title}</span>
+                    {g.lines.map((line, i) => (
+                      <span key={i} className="text-error/80 text-[11px] pl-2">{line}</span>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
