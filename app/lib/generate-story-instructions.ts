@@ -276,6 +276,32 @@ Valid \`plot-01.cuts.json\`:
   be \`null\` during early planning, but a cut with no uploaded image will block
   publish readiness.
 
+## Asset Tooling — use OWS flows, do NOT shell out to image tools
+
+OWS owns the cartoon asset pipeline. Local image tools are NOT part of the
+contract and may be absent — do **NOT** call ImageMagick (\`magick\`/\`convert\`/
+\`identify\`), \`sharp\`, Playwright / headless browsers, or any ad-hoc shell tool to
+resize, convert, composite, letter, or measure images. If you find yourself
+reaching for a CLI image tool, STOP — there is a supported OWS action for it, and
+guessing at unavailable tooling is exactly what stalls a cartoon episode.
+
+**Deterministic handoff — who does what:**
+
+| Step | Who | How (no shell image tools) |
+|------|-----|----------------------------|
+| Generate clean cut images | You (Codex) | Generate at the target size/format and save \`assets/plot-NN/cut-XX-clean.webp\` (WebP/JPEG, < 1MB). Produce it correctly at generation time — do NOT post-process with magick/sharp. |
+| Generate the cover | You (Codex) | Save \`assets/cover.webp\` (~600x900, WebP, < 1MB). OWS auto-detects it for genesis publish — no manual selection needed. |
+| Discover / record clean images | OWS | Run the "Sync clean images" action (or let OWS auto-detect); OWS records \`cleanImagePath\`. Never hand-write paths or stat files yourself. |
+| Letter & export final images | The writer, in the OWS lettering editor | Speech bubbles, captions, and SFX are placed in the OWS editor and exported to \`assets/plot-NN/cut-XX-final.webp\`. You do NOT composite or letter text — not with magick, not with sharp, not at all. |
+| Upload finals + build markdown | OWS | The writer runs "Upload & Generate"; OWS uploads each final image and emits the publish markdown. You never hand-write \`plot-NN.md\`. |
+
+**No agent-side image tools are required** — OWS provides image generation (your
+session), clean-image sync, the lettering/export editor, and upload/markdown
+generation. If a capability you genuinely need is missing (e.g. image generation
+itself is unavailable in this session), do NOT improvise with shell tools: fall
+back to the prompt-and-import handoff below and tell the writer, so the missing
+capability surfaces immediately instead of after a dead-end path.
+
 ## CRITICAL: Clean-Image-First Workflow
 
 **Do NOT bake dialogue, speech bubbles, sound effects, or any text into generated images.**
@@ -301,8 +327,11 @@ ${cleanImageWorkflowSection(provider)}
 After clean images are generated and approved by the writer:
 
 1. The writer uses the OWS lettering editor to add speech bubbles and text
-2. Lettered versions are saved as: \`assets/plot-NN/cut-XX-final.webp\`
-3. Do NOT attempt to add bubbles or text to images — only the writer controls lettering
+2. Lettered versions are saved as: \`assets/plot-NN/cut-XX-final.webp\` (the OWS
+   editor's export writes this file — you do not create or composite it)
+3. Do NOT attempt to add bubbles or text to images — only the writer controls
+   lettering, via the OWS editor. Never composite text with \`magick\`, \`sharp\`,
+   Playwright, or any other tool; lettering/export is not an agent shell task.
 4. The publish markdown references final lettered images, not clean images
 
 ## Publish Markdown — plot-NN.md
