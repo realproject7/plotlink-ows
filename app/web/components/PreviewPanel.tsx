@@ -9,7 +9,7 @@ import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
 import { classifyCartoonReadiness, cartoonChecklist, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
-import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle } from "../lib/publish-helpers";
+import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
@@ -662,9 +662,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       })
     : null;
   const rawTitleBlocked = !!resolvedPublishTitle && isRawFilenameTitle(resolvedPublishTitle, fileName!);
-  // A cartoon plot with no cut-plan title falls back to a friendly "Episode NN"
-  // (not raw) — surface that so the writer can set a real title if they want.
-  const usingEpisodeFallback = isCartoonPlot && !cartoonEpisodeTitle?.trim() && !/^#\s+/m.test(fileData?.content ?? "");
+  // #365: a cartoon plot must have an EXPLICIT reader-facing title — a real
+  // `# Title` H1 or a non-empty cut-plan title. The friendly "Episode NN"
+  // fallback (derivePublishTitle) is diagnostic only and must NOT be published,
+  // so a missing explicit title blocks publish (tightens #358's plot path).
+  const episodeTitleMissing = isCartoonPlot && !isPublished
+    && !hasExplicitEpisodeTitle({ fileContent: fileData?.content ?? "", episodeTitle: cartoonEpisodeTitle });
 
   // Cartoon cover readiness badge + requirements (#337). Shown wherever a
   // cartoon writer manages the cover (pre-publish picker and the published Edit
@@ -692,7 +695,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
 
   // The exact public title this file will publish with (#358), shown before the
   // operator clicks publish. Reader-facing label (Story/Episode title), blocks
-  // when still a raw filename, and notes the friendly Episode-NN fallback.
+  // when still a raw filename (#358) or — for cartoon plots — when there is no
+  // explicit title and only the diagnostic "Episode NN" fallback remains (#365).
+  const titleBlocked = rawTitleBlocked || episodeTitleMissing;
   const renderPublishTitle = () => {
     if (!showsPublishTitle || !resolvedPublishTitle) return null;
     const label = isGenesis ? "Story title" : "Episode title";
@@ -701,10 +706,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         className="flex flex-col gap-0.5"
         data-testid="publish-title-preview"
         data-raw={rawTitleBlocked ? "true" : "false"}
+        data-blocked={titleBlocked ? "true" : "false"}
       >
         <span className="text-[11px] text-foreground">
           <span className="font-medium">{label}:</span>{" "}
-          <span className={rawTitleBlocked ? "text-error font-medium" : "text-foreground"}>{resolvedPublishTitle}</span>
+          <span className={titleBlocked ? "text-error font-medium" : "text-foreground"}>{resolvedPublishTitle}</span>
         </span>
         {rawTitleBlocked ? (
           <span className="text-[10px] text-error" data-testid="publish-title-raw-error">
@@ -712,9 +718,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               ? "Add a real “# Title” heading to genesis.md"
               : "Set a title in the cut plan (or add a “# Title” to the episode)"} before publishing.
           </span>
-        ) : usingEpisodeFallback ? (
-          <span className="text-[10px] text-muted" data-testid="publish-title-fallback">
-            No episode title set — this will publish as “{resolvedPublishTitle}”. Add a title in the cut plan to customize it.
+        ) : episodeTitleMissing ? (
+          <span className="text-[10px] text-error" data-testid="publish-title-episode-required">
+            No episode title set — “{resolvedPublishTitle}” is a placeholder and can’t be published. Set a title in the cut plan (or add a “# Title” to the episode) before publishing.
           </span>
         ) : null}
       </div>
@@ -1346,7 +1352,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
                 }}
-                disabled={!!publishingFile || overLimit || rawTitleBlocked || (isCartoonPlot && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || titleBlocked || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}

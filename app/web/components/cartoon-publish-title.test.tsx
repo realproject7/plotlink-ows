@@ -24,7 +24,7 @@ function imageCut() {
 
 // fileName drives which fixtures matter; opts let each test set genesis/structure
 // content and the cuts title.
-function makeFetch(opts: { genesis?: string; structure?: string; cutsTitle?: string | null }) {
+function makeFetch(opts: { genesis?: string; structure?: string; cutsTitle?: string | null; plot?: string }) {
   return vi.fn((url: string) => {
     if (url.endsWith("/cover-asset")) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ found: false }) });
@@ -39,7 +39,7 @@ function makeFetch(opts: { genesis?: string; structure?: string; cutsTitle?: str
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ file: "genesis.md", status: "draft", content: opts.genesis ?? "" }) });
     }
     if (url.endsWith("/plot-01.md")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ file: "plot-01.md", status: "pending", content: SKELETON_MD }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ file: "plot-01.md", status: "pending", content: opts.plot ?? SKELETON_MD }) });
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
   });
@@ -68,20 +68,34 @@ describe("cartoon publish title preview (#358)", () => {
     expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
   });
 
-  it("shows the cut-plan Episode title for a cartoon plot", async () => {
+  it("shows the cut-plan Episode title for a cartoon plot and does not block on the title (#365)", async () => {
     renderPanel("plot-01.md", makeFetch({ cutsTitle: "The Couple Coupon" }));
     const t = await screen.findByTestId("publish-title-preview");
     expect(t).toHaveTextContent("Episode title:");
     expect(t).toHaveTextContent("The Couple Coupon");
     expect(t).toHaveAttribute("data-raw", "false");
+    expect(t).toHaveAttribute("data-blocked", "false");
+    expect(screen.queryByTestId("publish-title-episode-required")).not.toBeInTheDocument();
   });
 
-  it("a legacy cartoon plot with no cuts title shows 'Episode 01' (never 'plot-01') + a fallback note", async () => {
+  it("a real H1 in the plot markdown satisfies the explicit-title requirement even with no cut-plan title (#365)", async () => {
+    renderPanel("plot-01.md", makeFetch({ cutsTitle: null, plot: "# The Couple Coupon\n\n" + SKELETON_MD }));
+    const t = await screen.findByTestId("publish-title-preview");
+    expect(t).toHaveTextContent("The Couple Coupon");
+    expect(t).toHaveAttribute("data-blocked", "false");
+    expect(screen.queryByTestId("publish-title-episode-required")).not.toBeInTheDocument();
+  });
+
+  it("a legacy cartoon plot with no cuts title shows 'Episode 01' (never 'plot-01') as a diagnostic but blocks publish (#365)", async () => {
     renderPanel("plot-01.md", makeFetch({ cutsTitle: null }));
     const t = await screen.findByTestId("publish-title-preview");
+    // The "Episode 01" fallback is shown as a diagnostic of what the title WOULD
+    // be, but it is no longer publishable (#365) — never the raw 'plot-01'.
     expect(t).toHaveTextContent("Episode 01");
     expect(t.textContent).not.toMatch(/plot-01/);
     expect(t).toHaveAttribute("data-raw", "false");
-    expect(screen.getByTestId("publish-title-fallback")).toBeInTheDocument();
+    expect(t).toHaveAttribute("data-blocked", "true");
+    expect(screen.getByTestId("publish-title-episode-required")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
   });
 });

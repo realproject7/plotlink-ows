@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle } from "./publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, validateCoverImage, COVER_MAX_BYTES, attachCoverToStoryline, derivePublishTitle, extractH1Title, prettifyStorySlug, hasPriorOnChainPlot, shouldBlockDuplicatePlotPublish, cartoonCoverReadiness, COVER_GUIDANCE, episodeTitleFromPlotFile, isRawFilenameTitle, hasExplicitEpisodeTitle } from "./publish-helpers";
 
 describe("getContentTypeForPublish", () => {
   it("returns 'cartoon' for cartoon genesis (no storylineId)", () => {
@@ -247,6 +247,21 @@ describe("isRawFilenameTitle (#358)", () => {
     expect(isRawFilenameTitle("Coupon Crush at Closing Time", "genesis.md")).toBe(false);
     expect(isRawFilenameTitle("Episode 01", "plot-01.md")).toBe(false);
     expect(isRawFilenameTitle("The Couple Coupon", "plot-01.md")).toBe(false);
+  });
+});
+
+describe("hasExplicitEpisodeTitle (#365)", () => {
+  const SKELETON = "<!-- ows:cartoon-cut cut-001 start -->\n![c](https://x)\n<!-- ows:cartoon-cut cut-001 end -->";
+  it("is true when the cut plan has a non-empty title", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "The Couple Coupon" })).toBe(true);
+  });
+  it("is true when the plot markdown has a real H1 (even with no cut-plan title)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: "# The Couple Coupon\n\n" + SKELETON, episodeTitle: null })).toBe(true);
+  });
+  it("is false when there is neither a cut-plan title nor an H1 (Episode NN fallback only)", () => {
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: null })).toBe(false);
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON, episodeTitle: "   " })).toBe(false);
+    expect(hasExplicitEpisodeTitle({ fileContent: SKELETON })).toBe(false);
   });
 });
 

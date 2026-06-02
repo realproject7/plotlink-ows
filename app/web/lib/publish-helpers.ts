@@ -150,6 +150,20 @@ export function episodeTitleFromPlotFile(fileName: string): string | null {
 }
 
 /**
+ * Whether a cartoon plot has an EXPLICIT reader-facing episode title (#365):
+ * a real `# Title` H1 in the plot markdown, or a non-empty cut-plan title.
+ *
+ * #347/#358 stopped raw `plot-NN` titles from publishing by falling back to a
+ * friendly "Episode NN", but operator QA requires a real title, not a generic
+ * placeholder. So "Episode NN" (from `derivePublishTitle`) is now diagnostic
+ * only and may not be published: the publish gate requires this to be true.
+ * Independent of the #358 raw-filename block, which is kept.
+ */
+export function hasExplicitEpisodeTitle(opts: { fileContent: string; episodeTitle?: string | null }): boolean {
+  return !!extractH1Title(opts.fileContent) || !!opts.episodeTitle?.trim();
+}
+
+/**
  * Resolve the title used when publishing a story file to PlotLink (#331, #347).
  *
  * The storyline title is set once, at genesis publish, and is immutable
