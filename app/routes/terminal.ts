@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import { STORIES_DIR, DATA_DIR } from "../lib/paths";
-import { readStoryMeta } from "./stories";
+import { readStoryMeta, writeStoryMeta } from "./stories";
 import type { AgentProvider } from "./stories";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { buildAgentCommand } from "../lib/agent-command";
@@ -215,6 +215,50 @@ export function resolveProvider(args: {
   if (args.isNewStory) return args.optProvider ?? args.sessionProvider ?? "claude";
   if (args.sessionProvider !== undefined) return args.sessionProvider;
   return args.storedProvider ?? "claude";
+}
+
+type StoryMetaShape = ReturnType<typeof readStoryMeta>;
+
+/**
+ * Decide the `.story.json` metadata to persist when a `_new_*` session is
+ * confirmed/renamed into its real story folder (#295).
+ *
+ * The fresh-cartoon repair-banner bug happened because `agentProvider` was only
+ * persisted by a fire-and-forget client POST after the rename — so if that POST
+ * was dropped (or the page reloaded), a cartoon story had `contentType:"cartoon"`
+ * but no recorded provider and falsely looked "legacy". Persisting here makes the
+ * rename the authoritative confirm step.
+ *
+ * Pure/deterministic: merges the new story's intended fields over whatever the
+ * folder already has. Provider falls back to the carried session provider when
+ * the request body omits it (the server already tracks it per session). Returns
+ * null when there is nothing new to record (no provider and no explicit
+ * contentType) so an unrelated rename never rewrites `.story.json`.
+ */
+export function resolveRenamedStoryMeta(args: {
+  existing: StoryMetaShape;
+  bodyContentType?: string;
+  bodyLanguage?: string;
+  bodyAgentMode?: string;
+  bodyProvider?: string;
+  sessionProvider?: AgentProvider;
+}): StoryMetaShape | null {
+  const provider: AgentProvider | undefined =
+    args.bodyProvider === "claude" || args.bodyProvider === "codex" ? args.bodyProvider : args.sessionProvider;
+  const hasExplicitContentType = args.bodyContentType === "cartoon" || args.bodyContentType === "fiction";
+  if (!provider && !hasExplicitContentType) return null;
+
+  const contentType = hasExplicitContentType
+    ? (args.bodyContentType as "cartoon" | "fiction")
+    : args.existing.contentType;
+
+  return {
+    ...args.existing,
+    contentType,
+    ...(typeof args.bodyLanguage === "string" && args.bodyLanguage ? { language: args.bodyLanguage } : {}),
+    ...(args.bodyAgentMode === "bypass" || args.bodyAgentMode === "normal" ? { agentMode: args.bodyAgentMode } : {}),
+    ...(provider ? { agentProvider: provider } : {}),
+  };
 }
 
 /**
@@ -446,7 +490,16 @@ terminal.delete("/:storyName/discard", (c) => {
 
 /** POST /api/terminal/rename — rename a session key without killing the process */
 terminal.post("/rename", async (c) => {
-  const body = await c.req.json<{ oldName?: string; newName?: string }>().catch(() => ({}));
+  const body = await c.req.json<{
+    oldName?: string;
+    newName?: string;
+    // Optional metadata for the confirmed story, persisted atomically with the
+    // rename so a fresh story's contentType/provider/mode survive (#295).
+    contentType?: string;
+    language?: string;
+    agentMode?: string;
+    agentProvider?: string;
+  }>().catch(() => ({}));
   const oldName = body.oldName && safeName(body.oldName);
   const newName = body.newName && safeName(body.newName);
   if (!oldName || !newName) return c.json({ error: "Invalid names" }, 400);
@@ -484,6 +537,28 @@ terminal.post("/rename", async (c) => {
   const sessionMap = loadSessionMap();
   carrySessionAcrossRename(sessionMap, oldName, newName, session.sessionId);
   saveSessionMap(sessionMap);
+
+  // Persist the confirmed story's metadata atomically with the rename so a fresh
+  // story's agentProvider/contentType survive the _new_* → real-folder transition
+  // even if the client's follow-up metadata POST is dropped or the page reloads
+  // (#295). Provider falls back to the carried session value the server already
+  // tracks, so a cartoon's Codex provider is recorded without trusting the body.
+  const storyDir = path.join(STORIES_DIR, newName);
+  if (fs.existsSync(storyDir) && fs.statSync(storyDir).isDirectory()) {
+    const meta = resolveRenamedStoryMeta({
+      existing: readStoryMeta(storyDir),
+      bodyContentType: body.contentType,
+      bodyLanguage: body.language,
+      bodyAgentMode: body.agentMode,
+      bodyProvider: body.agentProvider,
+      sessionProvider: agentProviderBySession.get(newName),
+    });
+    if (meta) {
+      writeStoryMeta(storyDir, meta);
+      // Keep CLAUDE.md provider-aware in step with the recorded provider.
+      writeStoryInstructions(storyDir, meta.contentType, meta.agentProvider);
+    }
+  }
 
   return c.json({ ok: true, sessionId: session.sessionId });
 });

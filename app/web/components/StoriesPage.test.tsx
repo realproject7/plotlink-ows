@@ -7,10 +7,11 @@ import { StoriesPage } from "./StoriesPage";
 const childProps = vi.hoisted(() => ({
   onNewStory: null as null | (() => void),
   onSelectFile: null as null | ((storyName: string, fileName: string) => void),
-  renameRef: null as null | { current: ((o: string, n: string) => Promise<boolean>) | null },
+  renameRef: null as null | { current: ((o: string, n: string, meta?: unknown) => Promise<boolean>) | null },
   agentProviders: null as null | Record<string, "claude" | "codex">,
   needsProviderRepair: null as null | boolean,
   onRepairProvider: null as null | (() => void | Promise<void>),
+  renameCalls: [] as Array<{ oldName: string; newName: string; meta?: unknown }>,
 }));
 
 vi.mock("./StoryBrowser", () => ({
@@ -23,7 +24,7 @@ vi.mock("./StoryBrowser", () => ({
 
 vi.mock("./TerminalPanel", () => ({
   TerminalPanel: (props: {
-    renameRef: { current: ((o: string, n: string) => Promise<boolean>) | null };
+    renameRef: { current: ((o: string, n: string, meta?: unknown) => Promise<boolean>) | null };
     agentProviders?: Record<string, "claude" | "codex">;
     needsProviderRepair?: boolean;
     onRepairProvider?: () => void | Promise<void>;
@@ -32,8 +33,12 @@ vi.mock("./TerminalPanel", () => ({
     childProps.agentProviders = props.agentProviders ?? null;
     childProps.needsProviderRepair = props.needsProviderRepair ?? null;
     childProps.onRepairProvider = props.onRepairProvider ?? null;
-    // Provide a rename implementation so the polling effect proceeds.
-    props.renameRef.current = () => Promise.resolve(true);
+    // Provide a rename implementation so the polling effect proceeds; record the
+    // forwarded metadata so tests can assert provider persistence at rename (#295).
+    props.renameRef.current = (oldName: string, newName: string, meta?: unknown) => {
+      childProps.renameCalls.push({ oldName, newName, meta });
+      return Promise.resolve(true);
+    };
     return <div data-testid="mock-terminal" />;
   },
 }));
@@ -59,6 +64,7 @@ afterEach(() => {
   childProps.agentProviders = null;
   childProps.needsProviderRepair = null;
   childProps.onRepairProvider = null;
+  childProps.renameCalls = [];
 });
 
 interface FetchCall { url: string; body: unknown }
@@ -179,6 +185,26 @@ describe("StoriesPage new-story provider selection", () => {
       expect(Object.values(providers)).not.toContain("claude");
     });
   });
+
+  // #295: when the agent's folder appears and the _new_ session is renamed, the
+  // rename call must forward the cartoon story's metadata (incl. agentProvider:
+  // codex) so the server persists it atomically — the fresh-cartoon repair-banner fix.
+  it("forwards contentType:cartoon + agentProvider:codex to the rename on confirm", async () => {
+    const { fn, appear } = makeAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.click(screen.getByText("Cartoon"));
+
+    appear(); // agent's folder ("my-tale") now shows in /api/stories → triggers rename
+    await waitFor(
+      () => { expect(childProps.renameCalls.length).toBeGreaterThan(0); },
+      { timeout: 5000 },
+    );
+    const call = childProps.renameCalls.find((c) => c.newName === "my-tale");
+    expect(call).toBeDefined();
+    expect(call!.oldName.startsWith("_new_")).toBe(true);
+    expect(call!.meta).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
+  }, 10000);
 
   it("threads provider=claude into agentProviders for a default fiction _new_ session", async () => {
     const { fn } = makeAuthFetch();

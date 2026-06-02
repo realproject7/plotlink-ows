@@ -5,6 +5,14 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
+/** Story metadata persisted with a `_new_*` → real-folder rename (#295). */
+export interface RenameMeta {
+  contentType?: "fiction" | "cartoon";
+  language?: string;
+  agentMode?: "normal" | "bypass";
+  agentProvider?: "claude" | "codex";
+}
+
 interface TerminalPanelProps {
   token: string;
   storyName: string | null;
@@ -13,7 +21,9 @@ interface TerminalPanelProps {
   onDestroySession?: (storyName: string) => void;
   onArchiveStory?: (storyName: string) => void;
   confirmedStories?: Set<string>;
-  renameRef?: React.RefObject<((oldName: string, newName: string) => Promise<boolean>) | null>;
+  // The optional `meta` is persisted to the confirmed story's .story.json
+  // atomically with the rename so a fresh story's provider/contentType survive (#295).
+  renameRef?: React.RefObject<((oldName: string, newName: string, meta?: RenameMeta) => Promise<boolean>) | null>;
   bypassStories?: Record<string, boolean>;
   agentProviders?: Record<string, "claude" | "codex">;
   /** Local agent (Codex) readiness. null/undefined = not yet loaded (fail-open). */
@@ -388,15 +398,16 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
 
   /** Rename a session key (e.g. _new_123 → paper-chair) without killing the PTY.
    *  Returns true on success, false on failure. */
-  const renameSession = useCallback(async (oldName: string, newName: string): Promise<boolean> => {
+  const renameSession = useCallback(async (oldName: string, newName: string, meta?: RenameMeta): Promise<boolean> => {
     const session = sessions.get(oldName);
     if (!session || sessions.has(newName)) return false;
 
-    // Rename on the server first
+    // Rename on the server first. Forward the confirmed story's metadata so the
+    // server persists contentType/provider atomically with the rename (#295).
     const res = await authFetchRef.current("/api/terminal/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ oldName, newName }),
+      body: JSON.stringify({ oldName, newName, ...(meta ?? {}) }),
     });
     if (!res.ok) return false;
 

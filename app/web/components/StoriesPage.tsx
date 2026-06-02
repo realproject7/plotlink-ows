@@ -64,7 +64,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
   const agentProviderMap = useRef<Map<string, "claude" | "codex">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
-  const renameRef = useRef<((oldName: string, newName: string) => Promise<boolean>) | null>(null);
+  const renameRef = useRef<((oldName: string, newName: string, meta?: { contentType?: "fiction" | "cartoon"; language?: string; agentMode?: "normal" | "bypass"; agentProvider?: "claude" | "codex" }) => Promise<boolean>) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -145,16 +145,20 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           if (!knownStoriesRef.current.has(name) && untitledSessions.length > 0) {
             // New story appeared — rename the oldest untitled session to the story name
             const oldName = untitledSessions[0];
+            // Read the pending session's metadata BEFORE the rename so it can be
+            // persisted atomically with the rename server-side (#295).
+            const ct = contentTypeMap.current.get(oldName) || "fiction";
+            const lang = languageMap.current.get(oldName) || "English";
+            const mode = agentModeMap.current.get(oldName) || "normal";
+            const provider = agentProviderMap.current.get(oldName) || "claude";
             let renamed = false;
             if (renameRef.current) {
-              renamed = await renameRef.current(oldName, name).catch(() => false);
+              renamed = await renameRef.current(oldName, name, {
+                contentType: ct, language: lang, agentMode: mode, agentProvider: provider,
+              }).catch(() => false);
             }
             if (renamed) {
               setUntitledSessions((prev) => prev.slice(1));
-              const ct = contentTypeMap.current.get(oldName) || "fiction";
-              const lang = languageMap.current.get(oldName) || "English";
-              const mode = agentModeMap.current.get(oldName) || "normal";
-              const provider = agentProviderMap.current.get(oldName) || "claude";
               contentTypeMap.current.delete(oldName);
               languageMap.current.delete(oldName);
               agentModeMap.current.delete(oldName);

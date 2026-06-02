@@ -8,6 +8,7 @@ import {
   isTerminalSocketOpen,
   resolveBypass,
   resolveProvider,
+  resolveRenamedStoryMeta,
   resolveAgentCommandForSession,
   shellQuote,
 } from "./terminal";
@@ -131,6 +132,50 @@ describe("resolveProvider", () => {
       storyDir: "/stories/_new_123",
     });
     expect(cmd).toEqual({ command: "claude", args: ["--session-id", "fresh-uuid"] });
+  });
+});
+
+describe("resolveRenamedStoryMeta (#295 — persist provider on _new_* confirm)", () => {
+  const fictionExisting = { contentType: "fiction" as const };
+
+  it("persists cartoon + codex for a fresh cartoon story (body carries both)", () => {
+    const meta = resolveRenamedStoryMeta({
+      existing: fictionExisting,
+      bodyContentType: "cartoon",
+      bodyLanguage: "English",
+      bodyAgentMode: "normal",
+      bodyProvider: "codex",
+    });
+    expect(meta).toEqual({ contentType: "cartoon", language: "English", agentMode: "normal", agentProvider: "codex" });
+  });
+
+  it("falls back to the carried session provider when the body omits agentProvider", () => {
+    const meta = resolveRenamedStoryMeta({
+      existing: fictionExisting,
+      bodyContentType: "cartoon",
+      sessionProvider: "codex",
+    });
+    expect(meta?.agentProvider).toBe("codex");
+    expect(meta?.contentType).toBe("cartoon");
+  });
+
+  it("returns null when there is nothing to record (no provider, no explicit contentType)", () => {
+    expect(resolveRenamedStoryMeta({ existing: fictionExisting })).toBeNull();
+  });
+
+  it("merges over existing metadata without dropping fields the body omits", () => {
+    const meta = resolveRenamedStoryMeta({
+      existing: { contentType: "cartoon", language: "Korean", agentMode: "bypass", agentProvider: "codex" },
+      bodyProvider: "codex",
+    });
+    // No explicit contentType in body → keep existing cartoon; language/mode preserved.
+    expect(meta).toEqual({ contentType: "cartoon", language: "Korean", agentMode: "bypass", agentProvider: "codex" });
+  });
+
+  it("does not invent a provider for a fiction story (records contentType only)", () => {
+    const meta = resolveRenamedStoryMeta({ existing: fictionExisting, bodyContentType: "fiction" });
+    expect(meta).toEqual({ contentType: "fiction" });
+    expect(meta?.agentProvider).toBeUndefined();
   });
 });
 
