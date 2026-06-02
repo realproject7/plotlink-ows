@@ -1,5 +1,4 @@
 import type { Cut } from "./cuts";
-import { findPlaceholderProse } from "./cartoon-readiness";
 
 const MARKER_START = (id: string) => `<!-- ows:cartoon-cut ${id} start -->`;
 const MARKER_END = (id: string) => `<!-- ows:cartoon-cut ${id} end -->`;
@@ -29,16 +28,20 @@ export function generateCartoonMarkdown(cuts: Cut[]): string {
 }
 
 /**
- * Drop non-marker paragraphs that are pre-generation / instructional placeholder
- * prose, so generated publish markdown stays image-only (plus marker comments).
- * Paragraphs are blank-line-delimited; a `ows:cartoon-cut` block is a single
- * paragraph (its lines are joined by single newlines) and is always preserved.
- * See #286 — the leaked "Placeholder only ..." line was such a stray paragraph.
+ * Reduce the markdown to ONLY its `ows:cartoon-cut` marker blocks, dropping every
+ * other paragraph. Publish-facing cartoon markdown is a pure image sequence, so
+ * any non-marker prose — scaffold instructions, stale placeholders, manual
+ * commentary, headings — must not survive into it (#319). Earlier we stripped
+ * only a known-placeholder allowlist (#286), but the #211 pilot still leaked
+ * instructional prose that fell outside those patterns and forced a manual
+ * rewrite; dropping all non-marker paragraphs removes that whole class of leak.
+ * Paragraphs are blank-line-delimited; a cut block's lines are joined by single
+ * newlines, so each block is one paragraph and is preserved intact.
  */
-function stripPlaceholderProse(markdown: string): string {
+function stripNonMarkerProse(markdown: string): string {
   return markdown
     .split(/\n{2,}/)
-    .filter((para) => para.includes("ows:cartoon-cut") || !findPlaceholderProse(para))
+    .filter((para) => para.includes("ows:cartoon-cut"))
     .join("\n\n");
 }
 
@@ -48,7 +51,12 @@ export function mergeCartoonMarkdown(
 ): { markdown: string; warnings: string[] } {
   const warnings: string[] = [];
 
-  existingMd = stripPlaceholderProse(existingMd);
+  // Only rewrite to a pure image sequence for an actual cartoon document — one
+  // with cuts to publish or existing cut markers. A markerless doc with no cuts
+  // is fiction (the route guards on cuts.json, but keep the function safe too),
+  // so leave it untouched.
+  const isCartoonDoc = cuts.length > 0 || /ows:cartoon-cut/.test(existingMd);
+  if (isCartoonDoc) existingMd = stripNonMarkerProse(existingMd);
 
   const newBlocks = new Map<string, string>();
   for (let i = 0; i < cuts.length; i++) {

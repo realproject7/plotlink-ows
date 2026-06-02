@@ -94,7 +94,7 @@ describe("mergeCartoonMarkdown", () => {
     expect(markdown).not.toContain("https://old.com");
   });
 
-  it("preserves prose between blocks", () => {
+  it("discards non-marker prose so publish markdown is image-only (#319)", async () => {
     const existing = [
       "# Episode 1",
       "",
@@ -109,18 +109,42 @@ describe("mergeCartoonMarkdown", () => {
 
     const cuts = [makeCut({ uploadedUrl: "https://new.com" })];
     const { markdown } = mergeCartoonMarkdown(existing, cuts);
-    expect(markdown).toContain("Some intro prose.");
-    expect(markdown).toContain("Manual commentary here.");
+    // Non-marker prose/headings are dropped — only the (regenerated) cut block remains.
+    expect(markdown).not.toContain("Some intro prose.");
+    expect(markdown).not.toContain("Manual commentary here.");
+    expect(markdown).not.toContain("# Episode 1");
     expect(markdown).toContain("https://new.com");
+    // The generated markdown is publish-ready with no leftover prose.
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    expect(checkMarkdownReadiness(markdown, cuts).ready).toBe(true);
   });
 
-  it("adds new cut blocks for new cuts", () => {
+  it("adds cut blocks and drops the scaffold prose for new cuts", () => {
     const existing = "# Episode\n\nIntro text.";
     const cuts = [makeCut({ uploadedUrl: "https://new.com" })];
     const { markdown } = mergeCartoonMarkdown(existing, cuts);
-    expect(markdown).toContain("Intro text.");
+    expect(markdown).not.toContain("Intro text.");
     expect(markdown).toContain("cut-001");
     expect(markdown).toContain("https://new.com");
+  });
+
+  it("discards arbitrary instructional prose that no placeholder pattern matches (#319)", async () => {
+    // The #211 pilot leaked instructional scaffold that fell outside the known
+    // placeholder allowlist, so it survived into publish markdown and forced a
+    // manual rewrite. A pure image sequence must drop it regardless of wording.
+    const existing = [
+      "Drop your finished panels here once the artist signs off, then click the button.",
+      "",
+      "<!-- ows:cartoon-cut cut-001 start -->",
+      "![Old](https://old.com)",
+      "<!-- ows:cartoon-cut cut-001 end -->",
+    ].join("\n");
+    const cuts = [makeCut({ uploadedUrl: "https://new.com" })];
+    const { markdown } = mergeCartoonMarkdown(existing, cuts);
+    expect(markdown).not.toContain("Drop your finished panels");
+    expect(markdown).toContain("https://new.com");
+    const { checkMarkdownReadiness } = await import("./cartoon-readiness");
+    expect(checkMarkdownReadiness(markdown, cuts).ready).toBe(true);
   });
 
   it("removes stale blocks and warns", () => {
