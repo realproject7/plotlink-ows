@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { LANGUAGES } from "../../../lib/genres";
-import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle } from "../lib/publish-helpers";
+import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 
 interface StoriesPageProps {
@@ -312,6 +312,18 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           fileName === "genesis.md"
             ? "Add a real “# Title” heading to genesis.md before publishing — it would otherwise publish as a raw filename."
             : "Set an episode title in the cut plan before publishing — it would otherwise publish as a raw filename.",
+        );
+        setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
+        return;
+      }
+
+      // Defense-in-depth (#365): a cartoon plot must have an explicit reader-facing
+      // title (cut-plan title or a real H1). The generic "Episode NN" fallback is
+      // diagnostic only and must not be published, so block the action too.
+      if (publishContentType === "cartoon" && fileName.match(/^plot-\d+\.md$/)
+        && !hasExplicitEpisodeTitle({ fileContent: fileData.content, episodeTitle })) {
+        setPublishProgress(
+          "Set an episode title in the cut plan (or add a “# Title” to the episode) before publishing — a generic “Episode NN” placeholder can’t be published.",
         );
         setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
         return;
