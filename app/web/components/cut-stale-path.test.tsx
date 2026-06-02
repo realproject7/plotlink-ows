@@ -30,14 +30,14 @@ function makeCut(overrides: Record<string, unknown> = {}) {
 }
 
 /** authFetch returning cuts + a detect-clean-images response carrying `stale`. */
-function mockAuthFetch(cutsData: unknown, stale: unknown[], onSync?: () => void) {
+function mockAuthFetch(cutsData: unknown, stale: unknown[], onRepair?: () => void) {
   return vi.fn((url: string, opts?: RequestInit) => {
     if (url.includes("/detect-clean-images")) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale }) });
     }
-    if (url.includes("/sync-clean-images")) {
-      onSync?.();
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, changed: true, synced: [], cleared: [1], rejected: [] }) });
+    if (url.includes("/repair-asset-paths")) {
+      onRepair?.();
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, changed: true, cleared: [{ cutId: 1, field: "finalImagePath", path: "x", message: "m" }] }) });
     }
     if (url.includes("/asset/")) {
       return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"], { type: "image/webp" })) });
@@ -66,11 +66,13 @@ describe("CutListPanel stale asset path surfacing (#302)", () => {
     expect(screen.getByTestId("repair-stale-1")).toBeInTheDocument();
   });
 
-  it("clicking repair calls sync-clean-images", async () => {
-    const cutsData = { version: 1, plotFile: "plot-01", cuts: [makeCut({ cleanImagePath: "assets/plot-01/cut-01-clean.webp" })] };
-    const stale = [{ cutId: 1, field: "cleanImagePath", path: "assets/plot-01/cut-01-clean.webp", message: "Cut 1 clean image path is recorded but the file is missing" }];
-    const onSync = vi.fn();
-    const authFetch = mockAuthFetch(cutsData, stale, onSync);
+  it("clicking repair calls repair-asset-paths (clears clean AND final)", async () => {
+    // Final-only stale: the repair must hit repair-asset-paths, since sync cannot
+    // clear a stale finalImagePath (re1).
+    const cutsData = { version: 1, plotFile: "plot-01", cuts: [makeCut({ finalImagePath: "assets/plot-01/cut-01-final.webp" })] };
+    const stale = [{ cutId: 1, field: "finalImagePath", path: "assets/plot-01/cut-01-final.webp", message: "Cut 1 final image path is recorded but the file is missing" }];
+    const onRepair = vi.fn();
+    const authFetch = mockAuthFetch(cutsData, stale, onRepair);
 
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
     await waitFor(() => expect(screen.getByText("Stale cut")).toBeInTheDocument());
@@ -78,7 +80,13 @@ describe("CutListPanel stale asset path surfacing (#302)", () => {
     await waitFor(() => expect(screen.getByTestId("repair-stale-1")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId("repair-stale-1"));
-    await waitFor(() => expect(onSync).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(onRepair).toHaveBeenCalled();
+      expect(authFetch).toHaveBeenCalledWith(
+        "/api/stories/story/cuts/plot-01/repair-asset-paths",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 
   it("does not show a stale error when no stale paths are reported", async () => {

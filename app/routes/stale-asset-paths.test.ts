@@ -113,4 +113,57 @@ describe("stale cartoon asset paths (#302)", () => {
     const reloaded = readCutsFile(storyDir, "plot-01")!;
     expect(reloaded.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
   });
+
+  it("repair clears a stale finalImagePath — the field sync cannot fix (re1)", async () => {
+    const storyDir = seed("repair-final", 1, {
+      1: { finalImagePath: "assets/plot-01/cut-01-final.webp" }, // recorded, no file
+    });
+
+    const res = await app.request("/api/stories/repair-final/cuts/plot-01/repair-asset-paths", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(true);
+    expect(body.cleared).toEqual([
+      { cutId: 1, field: "finalImagePath", path: "assets/plot-01/cut-01-final.webp", message: "Cut 1 final image path is recorded but the file is missing" },
+    ]);
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].finalImagePath).toBeNull();
+  });
+
+  it("repair clears both stale fields without deleting valid files or touching valid/uploaded cuts", async () => {
+    const storyDir = seed("repair-mix", 3, {
+      1: { cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp" }, // both missing
+      2: { cleanImagePath: "assets/plot-01/cut-02-clean.webp" }, // valid file → preserved
+      3: { finalImagePath: "assets/plot-01/cut-03-final.webp", uploadedUrl: "https://ipfs/x", uploadedCid: "cid" }, // uploaded → preserved
+    });
+    writeAsset(storyDir, "assets/plot-01/cut-02-clean.webp");
+
+    const res = await app.request("/api/stories/repair-mix/cuts/plot-01/repair-asset-paths", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changed).toBe(true);
+    expect(body.cleared.map((c: { cutId: number; field: string }) => `${c.cutId}:${c.field}`)).toEqual([
+      "1:cleanImagePath",
+      "1:finalImagePath",
+    ]);
+
+    const reloaded = readCutsFile(storyDir, "plot-01")!;
+    expect(reloaded.cuts[0].cleanImagePath).toBeNull();
+    expect(reloaded.cuts[0].finalImagePath).toBeNull();
+    expect(reloaded.cuts[1].cleanImagePath).toBe("assets/plot-01/cut-02-clean.webp"); // valid preserved
+    expect(reloaded.cuts[2].finalImagePath).toBe("assets/plot-01/cut-03-final.webp"); // uploaded preserved
+    expect(reloaded.cuts[2].uploadedUrl).toBe("https://ipfs/x");
+    // valid file not deleted by the repair
+    expect(fs.existsSync(path.join(storyDir, "assets/plot-01/cut-02-clean.webp"))).toBe(true);
+  });
+
+  it("detect-clean-images does not flag an already-uploaded cut whose local file is missing", async () => {
+    seed("detect-uploaded", 1, {
+      1: { cleanImagePath: "assets/plot-01/cut-01-clean.webp", uploadedUrl: "https://ipfs/x", uploadedCid: "cid" },
+    });
+
+    const res = await app.request("/api/stories/detect-uploaded/cuts/plot-01/detect-clean-images");
+    const body = await res.json();
+    expect(body.stale).toEqual([]);
+  });
 });

@@ -163,29 +163,83 @@ export function syncCleanImages(
  * Pure: no filesystem access, no mutation. Cuts with null paths produce no
  * issue (an absent path is a normal not-yet-generated state, not staleness).
  */
+const STALE_FIELDS = ["cleanImagePath", "finalImagePath"] as const;
+
+/** Build the precise stale-path issue for a cut field (1-based "Cut N" label). */
+function staleAssetIssue(
+  cut: Cut,
+  index: number,
+  field: "cleanImagePath" | "finalImagePath",
+  path: string,
+): StaleAssetIssue {
+  const noun = field === "cleanImagePath" ? "clean" : "final";
+  return {
+    cutId: cut.id,
+    field,
+    path,
+    message: `Cut ${index + 1} ${noun} image path is recorded but the file is missing`,
+  };
+}
+
 export function findStaleAssetPaths(
   cuts: Cut[],
   assetExists: (relPath: string) => boolean,
 ): StaleAssetIssue[] {
   const issues: StaleAssetIssue[] = [];
   cuts.forEach((cut, i) => {
-    const label = `Cut ${i + 1}`;
-    if (cut.cleanImagePath && !assetExists(cut.cleanImagePath)) {
-      issues.push({
-        cutId: cut.id,
-        field: "cleanImagePath",
-        path: cut.cleanImagePath,
-        message: `${label} clean image path is recorded but the file is missing`,
-      });
-    }
-    if (cut.finalImagePath && !assetExists(cut.finalImagePath)) {
-      issues.push({
-        cutId: cut.id,
-        field: "finalImagePath",
-        path: cut.finalImagePath,
-        message: `${label} final image path is recorded but the file is missing`,
-      });
+    for (const field of STALE_FIELDS) {
+      const recorded = cut[field];
+      if (recorded && !assetExists(recorded)) {
+        issues.push(staleAssetIssue(cut, i, field, recorded));
+      }
     }
   });
   return issues;
+}
+
+export interface ClearStaleResult {
+  cuts: Cut[];
+  changed: boolean;
+  cleared: StaleAssetIssue[];
+}
+
+/**
+ * Repair stale recorded asset paths (#302): clear any `cleanImagePath` /
+ * `finalImagePath` that no longer points to a valid local image back to null,
+ * while preserving valid paths. This is the real per-cut repair behind the UI's
+ * "Clear stale path" action — unlike `syncCleanImages` (clean-only), it also
+ * clears a stale `finalImagePath`, so a final-only stale cut is actually
+ * repairable rather than left blocking publish.
+ *
+ * Already-uploaded cuts (`uploadedUrl` set) are left untouched — their content
+ * is on IPFS, so a missing LOCAL file is not a defect to repair, and their
+ * `uploadedCid`/`uploadedUrl` are never modified.
+ *
+ * Pure: no filesystem access. `assetExists(relPath)` must return true only for a
+ * real, valid image on disk.
+ */
+export function clearStaleAssetPaths(
+  cuts: Cut[],
+  assetExists: (relPath: string) => boolean,
+): ClearStaleResult {
+  const cleared: StaleAssetIssue[] = [];
+  let changed = false;
+
+  const next = cuts.map((cut, i) => {
+    // Preserve already-uploaded cuts (content is on IPFS).
+    if (cut.uploadedUrl) return cut;
+
+    let result = cut;
+    for (const field of STALE_FIELDS) {
+      const recorded = cut[field];
+      if (recorded && !assetExists(recorded)) {
+        cleared.push(staleAssetIssue(cut, i, field, recorded));
+        result = { ...result, [field]: null };
+        changed = true;
+      }
+    }
+    return result;
+  });
+
+  return { cuts: next, changed, cleared };
 }

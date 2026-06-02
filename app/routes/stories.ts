@@ -5,7 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
 import { imageAssetIssue, isValidImageAsset, CLEAN_IMAGE_VALID_EXT } from "../lib/image-asset-validate";
 
 const stories = new Hono();
@@ -640,10 +640,51 @@ stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
 
   // Also report recorded clean/final paths that no longer point to a valid local
   // image (#302) so the client can show a precise per-cut error and offer the
-  // repair/sync action instead of silently treating the cut as image-ready.
-  const stale = findStaleAssetPaths(cutsFile.cuts, (rel) => isValidImageAsset(storyDir, rel));
+  // repair action instead of silently treating the cut as image-ready. Skip
+  // already-uploaded cuts: their content is on IPFS, so a missing LOCAL file is
+  // not a defect to surface.
+  const stale = findStaleAssetPaths(cutsFile.cuts, (rel) => isValidImageAsset(storyDir, rel)).filter(
+    (issue) => {
+      const cut = cutsFile!.cuts.find((ct) => ct.id === issue.cutId);
+      return !cut?.uploadedUrl;
+    },
+  );
 
   return c.json({ detected, stale });
+});
+
+/**
+ * POST /api/stories/:name/cuts/:plotFile/repair-asset-paths — clear stale
+ * recorded asset paths (#302). Any cleanImagePath/finalImagePath that no longer
+ * points to a valid local image is reset to null; valid paths and already-
+ * uploaded cuts (uploadedCid/uploadedUrl) are preserved. This is the real repair
+ * behind the per-cut "Clear stale path" action and, unlike sync-clean-images,
+ * also repairs a stale finalImagePath.
+ */
+stories.post("/:name/cuts/:plotFile/repair-asset-paths", (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  let cutsFile;
+  try {
+    cutsFile = readCutsFile(storyDir, plotFile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const result = clearStaleAssetPaths(cutsFile.cuts, (rel) => isValidImageAsset(storyDir, rel));
+  if (result.changed) {
+    writeCutsFile(storyDir, plotFile, { ...cutsFile, cuts: result.cuts });
+  }
+
+  return c.json({ ok: true, changed: result.changed, cleared: result.cleared });
 });
 
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
+import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, CLEAN_IMAGE_EXTENSIONS } from "./clean-image-sync";
 import { createDefaultCut } from "./cuts";
 
 function cut(id: number, overrides: Partial<ReturnType<typeof createDefaultCut>> = {}) {
@@ -206,5 +206,55 @@ describe("findStaleAssetPaths (#302)", () => {
     ]);
     const issues = findStaleAssetPaths(cuts, (p) => existing.has(p));
     expect(issues).toEqual([]);
+  });
+});
+
+describe("clearStaleAssetPaths (#302 repair)", () => {
+  it("clears a stale finalImagePath (the field sync cannot repair) (re1)", () => {
+    const cuts = [cut(1, { finalImagePath: "assets/plot-01/cut-01-final.webp" })];
+    const res = clearStaleAssetPaths(cuts, () => false);
+    expect(res.changed).toBe(true);
+    expect(res.cuts[0].finalImagePath).toBeNull();
+    expect(res.cleared).toEqual([
+      { cutId: 1, field: "finalImagePath", path: "assets/plot-01/cut-01-final.webp", message: "Cut 1 final image path is recorded but the file is missing" },
+    ]);
+  });
+
+  it("clears both stale cleanImagePath and finalImagePath on the same cut", () => {
+    const cuts = [cut(1, { cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp" })];
+    const res = clearStaleAssetPaths(cuts, () => false);
+    expect(res.changed).toBe(true);
+    expect(res.cuts[0].cleanImagePath).toBeNull();
+    expect(res.cuts[0].finalImagePath).toBeNull();
+    expect(res.cleared.map((c) => c.field)).toEqual(["cleanImagePath", "finalImagePath"]);
+  });
+
+  it("preserves valid existing paths and null cuts (no change)", () => {
+    const cuts = [
+      cut(1),
+      cut(2, { cleanImagePath: "assets/plot-01/cut-02-clean.webp", finalImagePath: "assets/plot-01/cut-02-final.webp" }),
+    ];
+    const existing = new Set(["assets/plot-01/cut-02-clean.webp", "assets/plot-01/cut-02-final.webp"]);
+    const res = clearStaleAssetPaths(cuts, (p) => existing.has(p));
+    expect(res.changed).toBe(false);
+    expect(res.cleared).toEqual([]);
+    expect(res.cuts[1].cleanImagePath).toBe("assets/plot-01/cut-02-clean.webp");
+  });
+
+  it("preserves an already-uploaded cut even when its local paths are missing", () => {
+    const cuts = [
+      cut(1, {
+        cleanImagePath: "assets/plot-01/cut-01-clean.webp",
+        finalImagePath: "assets/plot-01/cut-01-final.webp",
+        uploadedUrl: "https://ipfs/x",
+        uploadedCid: "cid",
+      }),
+    ];
+    const res = clearStaleAssetPaths(cuts, () => false); // files all missing
+    expect(res.changed).toBe(false);
+    expect(res.cleared).toEqual([]);
+    expect(res.cuts[0].cleanImagePath).toBe("assets/plot-01/cut-01-clean.webp");
+    expect(res.cuts[0].finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
+    expect(res.cuts[0].uploadedUrl).toBe("https://ipfs/x");
   });
 });

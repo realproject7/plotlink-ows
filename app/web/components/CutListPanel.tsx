@@ -97,6 +97,8 @@ function CutRow({
   onSyncClean,
   syncing,
   staleMessages,
+  onRepairStale,
+  repairing,
 }: {
   cut: Cut;
   storyName: string;
@@ -110,6 +112,8 @@ function CutRow({
   onSyncClean: () => void;
   syncing: boolean;
   staleMessages: string[];
+  onRepairStale: () => void;
+  repairing: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -182,19 +186,20 @@ function CutRow({
         <div className="px-3 pb-3 space-y-3 border-t border-border">
           {/* Stale recorded asset path (#302): the cut records a clean/final image
               path but the file is missing/invalid. Show the precise reason and a
-              repair action (sync clears a stale cleanImagePath back to null). */}
+              repair action that clears the stale clean AND final fields back to
+              null (valid paths and uploaded URLs are preserved). */}
           {hasStale && (
             <div className="mt-2 rounded border border-error/40 bg-error/5 p-2 space-y-1" data-testid={`stale-asset-${cut.id}`}>
               {staleMessages.map((m, i) => (
                 <p key={i} className="text-[11px] text-error">{m}</p>
               ))}
               <button
-                onClick={onSyncClean}
-                disabled={syncing}
+                onClick={onRepairStale}
+                disabled={repairing}
                 data-testid={`repair-stale-${cut.id}`}
                 className="px-2 py-1 text-[11px] border border-error/40 text-error rounded hover:bg-error/10 disabled:opacity-50"
               >
-                {syncing ? "Repairing…" : "Clear stale path (sync)"}
+                {repairing ? "Repairing…" : "Clear stale path"}
               </button>
             </div>
           )}
@@ -332,6 +337,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [detected, setDetected] = useState<Set<number>>(new Set());
   // cutId → precise stale-path messages (#302), from detect-clean-images.
@@ -411,6 +417,29 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       setSyncResult("Sync failed");
     }
     setSyncing(false);
+  }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
+
+  // Clear stale recorded clean/final paths back to null (#302). Unlike sync,
+  // this repairs a stale finalImagePath too; valid paths and uploaded URLs are
+  // preserved server-side.
+  const repairStalePaths = useCallback(async () => {
+    setRepairing(true);
+    setSyncResult(null);
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/repair-asset-paths`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncResult(data.error || "Repair failed");
+      } else {
+        const clearedCount = Array.isArray(data.cleared) ? data.cleared.length : 0;
+        setSyncResult(clearedCount > 0 ? `Cleared ${clearedCount} stale path${clearedCount === 1 ? "" : "s"}` : "No stale paths to clear");
+        await loadCuts();
+        await loadDetect();
+      }
+    } catch {
+      setSyncResult("Repair failed");
+    }
+    setRepairing(false);
   }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
 
   useEffect(() => {
@@ -621,6 +650,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
             onSyncClean={syncCleanImages}
             syncing={syncing}
             staleMessages={staleByCut.get(cut.id) ?? []}
+            onRepairStale={repairStalePaths}
+            repairing={repairing}
           />
         ))}
       </div>
