@@ -139,11 +139,19 @@ publish.get("/public-title", async (c) => {
       return c.json({ ok: true, fetched: true, storylineTitle: og });
     }
 
-    const [plotRes, storylineRes] = await Promise.all([fetch(url), fetch(storylineUrl)]);
+    const plotRes = await fetch(url);
     if (!plotRes.ok) return c.json({ ok: true, fetched: false });
     const plotOg = extractOgTitle(await plotRes.text());
     if (!plotOg) return c.json({ ok: true, fetched: false });
-    const storylineOg = storylineRes.ok ? extractOgTitle(await storylineRes.text()) : null;
+    let storylineOg: string | null = null;
+    try {
+      const storylineRes = await fetch(storylineUrl);
+      storylineOg = storylineRes.ok ? extractOgTitle(await storylineRes.text()) : null;
+    } catch {
+      // Best-effort read only. If the storyline page fetch rejects, keep the
+      // successful plot-page title and fall back to last-segment stripping.
+      storylineOg = null;
+    }
     return c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(plotOg, storylineOg) });
   } catch {
     // Network/parse failure → inconclusive; never block on a flaky read.

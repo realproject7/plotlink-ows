@@ -463,6 +463,19 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
     });
   });
 
+  it("falls back to last-segment stripping if the storyline fetch rejects while the plot page succeeds", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve(NUMBERED_GOOD_PLOT_PAGE) })
+      .mockRejectedValueOnce(new Error("network down")));
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({
+      ok: true,
+      fetched: true,
+      plotTitle: "Episode 1 — The Couple Coupon",
+    });
+  });
+
   it("returns the storyline title from the storyline page (no plotIndex)", async () => {
     stubFetchSequence({ html: STORYLINE_PAGE });
     const res = await app.request("/api/publish/public-title?storylineId=59");
