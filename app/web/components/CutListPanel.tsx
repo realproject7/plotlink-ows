@@ -4,7 +4,7 @@ import { AssetImage } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
-import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
+import { withRateLimitRetry, createUploadThrottle, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 import { CodexImportPicker } from "./CodexImportPicker";
 
@@ -736,6 +736,17 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
             setGenWarnings([]);
             const toUpload = cutsFile.cuts.filter((ct) => ct.finalImagePath && !ct.uploadedCid);
             const errors: string[] = [];
+            // Proactively pace uploads under PlotLink's 5/min limit so a 7–10 cut
+            // episode completes without manual waiting, instead of firing all at
+            // once and thrashing on reactive 429 backoff (#413). Reuses the same
+            // injectable sleep as the retry path so tests stay deterministic.
+            const throttle = createUploadThrottle({
+              sleep: uploadRetry?.sleep,
+              onWaiting: ({ waitMs }) =>
+                setUploadProgress(
+                  `Upload limit reached — waiting ${Math.round(waitMs / 1000)}s before continuing…`,
+                ),
+            });
             for (let i = 0; i < toUpload.length; i++) {
               const ct = toUpload[i];
               setUploadProgress(`Uploading cut ${ct.id} (${i + 1}/${toUpload.length})...`);
@@ -746,10 +757,12 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
                 const blob = await imgRes.blob();
                 const fd = new FormData();
                 fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
-                // Retry with backoff while the PlotLink endpoint rate-limits us
-                // (5 uploads/min), instead of failing the whole batch (#288).
+                // Proactively wait if we've already used the 5/min budget (#413),
+                // then retry with backoff while the PlotLink endpoint rate-limits us
+                // anyway (5 uploads/min), instead of failing the whole batch (#288).
                 // Already-uploaded cuts are skipped by the `!uploadedCid` filter
                 // above, so a retry never re-uploads a recorded cut.
+                await throttle();
                 const upload = await withRateLimitRetry(
                   async () => {
                     const res = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
