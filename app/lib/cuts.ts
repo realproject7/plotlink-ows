@@ -52,6 +52,46 @@ export function isTextPanel(cut: Pick<Cut, "kind">): boolean {
   return cut.kind === "text";
 }
 
+/** Stable key for a cut's single next production step (#371). */
+export type CutActionKey = "add-art" | "letter" | "review";
+
+/**
+ * The one next production action for a single cut (#371), used to deep-link from
+ * the Preview / Cut Inspector straight into that cut's editing step instead of
+ * making the writer hunt for it in the Edit tab. Mirrors the per-cut status the
+ * Edit tab shows (no clean art → letter → final ready) but in creator-facing
+ * language, and reports whether the lettering editor can open directly for it.
+ *
+ * - "add-art": an image cut with no clean image yet → the writer adds/imports the
+ *   clean art first, so the CTA focuses the cut's row (there is nothing to letter
+ *   yet, so the editor does not open).
+ * - "letter": a clean image cut, or a text/interstitial panel, that still needs
+ *   overlays or a final export → open the lettering editor directly.
+ * - "review": a final image already exists → open the editor to review/redo it.
+ */
+export interface CutNextAction {
+  key: CutActionKey;
+  /** Creator-facing CTA label — no markdown/schema jargon (#371). */
+  label: string;
+  /** Whether the lettering editor can be opened directly for this cut. */
+  opensEditor: boolean;
+}
+
+export function cutNextAction(
+  cut: Pick<Cut, "cleanImagePath" | "finalImagePath" | "exportedAt" | "kind">,
+): CutNextAction {
+  const hasFinal = !!cut.finalImagePath || !!cut.exportedAt;
+  if (hasFinal) {
+    return { key: "review", label: "Review final panel", opensEditor: true };
+  }
+  // A clean image or a text/interstitial panel is ready to letter; a text panel
+  // letters on its background and needs no clean image (#350).
+  if (cut.cleanImagePath || isTextPanel(cut)) {
+    return { key: "letter", label: "Letter this cut", opensEditor: true };
+  }
+  return { key: "add-art", label: "Add clean art for this cut", opensEditor: false };
+}
+
 /**
  * Whether a cut's exported final image is STALE for #381: it has a final image
  * AND renders at least one visible speech-bubble tail AND was exported by an
