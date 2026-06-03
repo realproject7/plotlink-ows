@@ -13,6 +13,26 @@ export type OverlayType = (typeof OVERLAY_TYPES)[number];
  */
 export const CARTOON_BUBBLE_RENDERER_VERSION = 2;
 
+export interface OverlayTextStyle {
+  /** Default: auto-fit. Manual keeps the chosen font size until changed. */
+  mode?: "auto" | "manual";
+  /** Font size as a fraction of the rendered panel height. */
+  fontScale?: number;
+  /** Line advance as a multiple of body font size. */
+  lineHeightFactor?: number;
+  /** Speaker-label size as a multiple of body font size. */
+  speakerScale?: number;
+}
+
+export interface OverlayBubbleStyle {
+  /** Horizontal padding as a fraction of bubble width. */
+  paddingX?: number;
+  /** Vertical padding as a fraction of bubble height. */
+  paddingY?: number;
+  /** Corner roundness as a fraction of the bubble's shorter side. */
+  cornerRadius?: number;
+}
+
 export interface Overlay {
   id: string;
   type: OverlayType;
@@ -23,7 +43,11 @@ export interface Overlay {
   text: string;
   speaker?: string;
   tailAnchor?: { x: number; y: number };
+  textStyle?: OverlayTextStyle;
+  bubbleStyle?: OverlayBubbleStyle;
 }
+
+import { defaultBubbleFontRange, type BubbleLayoutOptions } from "./bubble-text";
 
 export function toPixel(norm: number, containerSize: number): number {
   return norm * containerSize;
@@ -47,6 +71,63 @@ export interface TailPoints {
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
+}
+
+function clampOptional(v: unknown, min: number, max: number): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? clamp(v, min, max) : undefined;
+}
+
+function normalizeTextStyle(raw: unknown): OverlayTextStyle | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const mode = r.mode === "manual" ? "manual" : r.mode === "auto" ? "auto" : undefined;
+  const fontScale = clampOptional(r.fontScale, 0.015, 0.12);
+  const lineHeightFactor = clampOptional(r.lineHeightFactor, 0.9, 2);
+  const speakerScale = clampOptional(r.speakerScale, 0.5, 1.5);
+  if (!mode && fontScale === undefined && lineHeightFactor === undefined && speakerScale === undefined) return undefined;
+  return { ...(mode ? { mode } : {}), ...(fontScale !== undefined ? { fontScale } : {}), ...(lineHeightFactor !== undefined ? { lineHeightFactor } : {}), ...(speakerScale !== undefined ? { speakerScale } : {}) };
+}
+
+function normalizeBubbleStyle(raw: unknown): OverlayBubbleStyle | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const paddingX = clampOptional(r.paddingX, 0, 0.25);
+  const paddingY = clampOptional(r.paddingY, 0, 0.25);
+  const cornerRadius = clampOptional(r.cornerRadius, 0, 0.49);
+  if (paddingX === undefined && paddingY === undefined && cornerRadius === undefined) return undefined;
+  return { ...(paddingX !== undefined ? { paddingX } : {}), ...(paddingY !== undefined ? { paddingY } : {}), ...(cornerRadius !== undefined ? { cornerRadius } : {}) };
+}
+
+export function bubbleLayoutOptionsForOverlay(
+  overlay: Pick<Overlay, "type" | "speaker" | "textStyle" | "bubbleStyle">,
+  renderHeight: number,
+  boxWidth: number,
+  boxHeight: number,
+): BubbleLayoutOptions {
+  const { minFontSize, maxFontSize } = defaultBubbleFontRange(renderHeight);
+  const textStyle = normalizeTextStyle(overlay.textStyle);
+  const bubbleStyle = normalizeBubbleStyle(overlay.bubbleStyle);
+  return {
+    minFontSize,
+    maxFontSize,
+    hasSpeaker: overlay.type !== "sfx" && !!overlay.speaker,
+    ...(textStyle?.lineHeightFactor !== undefined ? { lineHeightFactor: textStyle.lineHeightFactor } : {}),
+    ...(textStyle?.speakerScale !== undefined ? { speakerScale: textStyle.speakerScale } : {}),
+    ...(textStyle?.mode === "manual" && textStyle.fontScale !== undefined
+      ? { fontSize: Math.max(1, renderHeight * textStyle.fontScale) }
+      : {}),
+    ...(bubbleStyle?.paddingX !== undefined ? { paddingX: boxWidth * bubbleStyle.paddingX } : {}),
+    ...(bubbleStyle?.paddingY !== undefined ? { paddingY: boxHeight * bubbleStyle.paddingY } : {}),
+  };
+}
+
+export function balloonRadiusForOverlay(
+  overlay: Pick<Overlay, "bubbleStyle">,
+  ow: number,
+  oh: number,
+): number | undefined {
+  const bubbleStyle = normalizeBubbleStyle(overlay.bubbleStyle);
+  return bubbleStyle?.cornerRadius !== undefined ? Math.min(ow, oh) * bubbleStyle.cornerRadius : undefined;
 }
 
 /**
@@ -366,6 +447,10 @@ export function normalizeOverlay(raw: unknown): Overlay | null {
   } else if (typeof r.speaker === "string" && r.speaker) {
     overlay.speaker = r.speaker;
   }
+  const textStyle = normalizeTextStyle(r.textStyle);
+  const bubbleStyle = normalizeBubbleStyle(r.bubbleStyle);
+  if (textStyle) overlay.textStyle = textStyle;
+  if (bubbleStyle) overlay.bubbleStyle = bubbleStyle;
   return overlay;
 }
 
@@ -433,6 +518,20 @@ export function validateOverlaysForExport(overlays: Overlay[]): { valid: boolean
       return {
         valid: false,
         error: `Overlay ${i + 1}${o?.type ? ` (${o.type})` : ""} has invalid geometry — repair or re-place it in the lettering editor before export`,
+      };
+    }
+    const textStyle = normalizeTextStyle(o?.textStyle);
+    if (o?.textStyle && !textStyle) {
+      return {
+        valid: false,
+        error: `Overlay ${i + 1}${o?.type ? ` (${o.type})` : ""} has invalid typography controls — reset them in the lettering editor before export`,
+      };
+    }
+    const bubbleStyle = normalizeBubbleStyle(o?.bubbleStyle);
+    if (o?.bubbleStyle && !bubbleStyle) {
+      return {
+        valid: false,
+        error: `Overlay ${i + 1}${o?.type ? ` (${o.type})` : ""} has invalid bubble controls — reset them in the lettering editor before export`,
       };
     }
   }

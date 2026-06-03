@@ -29,6 +29,17 @@ interface Overlay {
   text: string;
   speaker?: string;
   tailAnchor?: { x: number; y: number };
+  textStyle?: {
+    mode?: "auto" | "manual";
+    fontScale?: number;
+    lineHeightFactor?: number;
+    speakerScale?: number;
+  };
+  bubbleStyle?: {
+    paddingX?: number;
+    paddingY?: number;
+    cornerRadius?: number;
+  };
 }
 
 afterEach(cleanup);
@@ -429,6 +440,48 @@ describe("LetteringEditor", () => {
     expect(onSave).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ type: "speech" })]),
     );
+  });
+
+  it("saves manual typography and bubble controls through the inspector", async () => {
+    const onSave = vi.fn();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ id: "manual", type: "speech", x: 0.1, y: 0.1, width: 0.25, height: 0.12, text: "Hello", speaker: "Mira" }] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    fireEvent.click(screen.getByTestId("overlay-manual"));
+    fireEvent.click(screen.getByTestId("inspector-text-manual"));
+    fireEvent.change(screen.getByTestId("inspector-font-scale"), { target: { value: "4.5" } });
+    fireEvent.change(screen.getByTestId("inspector-line-height"), { target: { value: "1.35" } });
+    fireEvent.change(screen.getByTestId("inspector-speaker-scale"), { target: { value: "0.9" } });
+    fireEvent.change(screen.getByTestId("inspector-padding-x"), { target: { value: "12" } });
+    fireEvent.change(screen.getByTestId("inspector-padding-y"), { target: { value: "10" } });
+    fireEvent.change(screen.getByTestId("inspector-corner-radius"), { target: { value: "25" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(onSave).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        id: "manual",
+        textStyle: expect.objectContaining({
+          mode: "manual",
+          fontScale: 0.045,
+          lineHeightFactor: 1.35,
+          speakerScale: 0.9,
+        }),
+        bubbleStyle: expect.objectContaining({
+          paddingX: 0.12,
+          paddingY: 0.1,
+          cornerRadius: 0.25,
+        }),
+      }),
+    ]));
   });
 
   it("shows tail anchor controls for speech overlay without tailAnchor field", async () => {

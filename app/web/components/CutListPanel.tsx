@@ -16,6 +16,18 @@ interface Overlay {
   height: number;
   text: string;
   speaker?: string;
+  tailAnchor?: { x: number; y: number };
+  textStyle?: {
+    mode?: "auto" | "manual";
+    fontScale?: number;
+    lineHeightFactor?: number;
+    speakerScale?: number;
+  };
+  bubbleStyle?: {
+    paddingX?: number;
+    paddingY?: number;
+    cornerRadius?: number;
+  };
 }
 
 interface CutDialogue {

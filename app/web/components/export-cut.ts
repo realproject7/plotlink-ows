@@ -1,8 +1,15 @@
-import { speechTailPoints, balloonOutline, validateOverlaysForExport, type TailPoints } from "@app-lib/overlays";
+import {
+  speechTailPoints,
+  balloonOutline,
+  validateOverlaysForExport,
+  bubbleLayoutOptionsForOverlay,
+  balloonRadiusForOverlay,
+  type TailPoints,
+} from "@app-lib/overlays";
 import { textPanelDimensions } from "@app-lib/cuts";
 // Re-exported so existing importers/tests can keep getting it from export-cut.
 export { textPanelDimensions } from "@app-lib/cuts";
-import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
+import { layoutBubbleText } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
 
 interface Overlay {
@@ -15,6 +22,17 @@ interface Overlay {
   text: string;
   speaker?: string;
   tailAnchor?: { x: number; y: number };
+  textStyle?: {
+    mode?: "auto" | "manual";
+    fontScale?: number;
+    lineHeightFactor?: number;
+    speakerScale?: number;
+  };
+  bubbleStyle?: {
+    paddingX?: number;
+    paddingY?: number;
+    cornerRadius?: number;
+  };
 }
 
 // Re-exported for the existing export-size validation + tests; the compression
@@ -87,9 +105,10 @@ function traceBalloonPath(
   ow: number,
   oh: number,
   tail: TailPoints | null,
+  radius?: number,
 ) {
   ctx.beginPath();
-  for (const c of balloonOutline(ox, oy, ow, oh, tail)) {
+  for (const c of balloonOutline(ox, oy, ow, oh, tail, radius)) {
     if (c.k === "M") ctx.moveTo(c.x, c.y);
     else if (c.k === "L") ctx.lineTo(c.x, c.y);
     else ctx.arcTo(c.cornerX, c.cornerY, c.x, c.y, c.r);
@@ -118,8 +137,9 @@ export function renderOverlays(
       // tail forming part of the balloon's outline instead of a shape laid over
       // a fully-stroked body border. A rounded line join keeps the tail/corner
       // junctions soft and organic (#363).
-      const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
-      traceBalloonPath(ctx, ox, oy, ow, oh, tail);
+      const radius = balloonRadiusForOverlay(overlay, ow, oh);
+      const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius) : null;
+      traceBalloonPath(ctx, ox, oy, ow, oh, tail, radius);
       ctx.fillStyle = SPEECH_FILL;
       ctx.fill();
       ctx.strokeStyle = SPEECH_STROKE;
@@ -148,12 +168,13 @@ export function renderOverlays(
       ctx.font = `${fontSize}px ${font}`;
       return ctx.measureText(text).width;
     };
-    const { minFontSize, maxFontSize } = defaultBubbleFontRange(height);
-    const layout = layoutBubbleText(measure, overlay.text, ow, oh, {
-      minFontSize,
-      maxFontSize,
-      hasSpeaker,
-    });
+    const layout = layoutBubbleText(
+      measure,
+      overlay.text,
+      ow,
+      oh,
+      bubbleLayoutOptionsForOverlay(overlay, height, ow, oh),
+    );
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

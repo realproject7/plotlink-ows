@@ -11,6 +11,17 @@ interface Overlay {
   text: string;
   speaker?: string;
   tailAnchor?: { x: number; y: number };
+  textStyle?: {
+    mode?: "auto" | "manual";
+    fontScale?: number;
+    lineHeightFactor?: number;
+    speakerScale?: number;
+  };
+  bubbleStyle?: {
+    paddingX?: number;
+    paddingY?: number;
+    cornerRadius?: number;
+  };
 }
 
 // Minimal recording stand-in for CanvasRenderingContext2D: captures the path
@@ -351,6 +362,54 @@ describe("renderOverlays text wrapping (#310)", () => {
     renderOverlays(s.ctx, [{ id: "f", type: "sfx", x: 0.05, y: 0.05, width: 0.5, height: 0.2, text: "crash bang boom wallop smash" }], 800, 600, "Body", "Display");
     // SFX uses stroke+fill per line; assert multiple distinct fill lines drawn.
     expect(s.fillTexts.length).toBeGreaterThan(1);
+  });
+
+  it("uses manual typography and bubble padding controls when present", () => {
+    const manual = textRecordingCtx();
+    renderOverlays(
+      manual.ctx,
+      [{
+        id: "m",
+        type: "speech",
+        x: 0.05,
+        y: 0.05,
+        width: 0.4,
+        height: 0.25,
+        text: longLine,
+        textStyle: { mode: "manual", fontScale: 0.06, lineHeightFactor: 1.4 },
+        bubbleStyle: { paddingX: 0.14, paddingY: 0.12 },
+      }],
+      800,
+      600,
+      "Body",
+      "Display",
+    );
+    const auto = textRecordingCtx();
+    renderOverlays(auto.ctx, [{ id: "a", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.25, text: longLine }], 800, 600, "Body", "Display");
+    expect(manual.fillTexts.length).toBeGreaterThan(auto.fillTexts.length);
+  });
+
+  it("uses manual corner radius when tracing a speech balloon", () => {
+    const rounded = recordingCtx();
+    renderOverlays(
+      rounded.ctx,
+      [speechOverlay({ bubbleStyle: { cornerRadius: 0.1 } })],
+      800,
+      600,
+      "Body",
+      "Display",
+    );
+    const soft = recordingCtx();
+    renderOverlays(
+      soft.ctx,
+      [speechOverlay({ bubbleStyle: { cornerRadius: 0.45 } })],
+      800,
+      600,
+      "Body",
+      "Display",
+    );
+    expect(rounded.moveTos[0].x).toBeCloseTo(7.2, 3);
+    expect(soft.moveTos[0].x).toBeCloseTo(32.4, 3);
   });
 });
 

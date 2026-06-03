@@ -65,7 +65,18 @@ export function cutLetteringChecklist(
  */
 export function overlaysSignature(overlays: Overlay[] | undefined): string {
   return JSON.stringify(
-    (overlays ?? []).map((o) => [o.type, o.x, o.y, o.width, o.height, o.text, o.speaker ?? "", o.tailAnchor ?? null]),
+    (overlays ?? []).map((o) => [
+      o.type,
+      o.x,
+      o.y,
+      o.width,
+      o.height,
+      o.text,
+      o.speaker ?? "",
+      o.tailAnchor ?? null,
+      o.textStyle ?? null,
+      o.bubbleStyle ?? null,
+    ]),
   );
 }
 
