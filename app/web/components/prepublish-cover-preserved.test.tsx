@@ -26,9 +26,14 @@ afterEach(() => {
 });
 
 const WALLET = "test-wallet-address";
-// Draft cartoon genesis with a real H1 (so it is not title-/genesis-blocked) and
-// thus a live "Publish to PlotLink" button.
-const DRAFT_GENESIS = { file: "genesis.md", status: "draft", content: "# A Story\n\nHook." };
+// Draft cartoon genesis that is a valid multi-paragraph story opening (#400), so
+// it is not genesis-blocked and the "Publish to PlotLink" button stays live.
+const DRAFT_GENESIS = {
+  file: "genesis.md",
+  status: "draft",
+  content:
+    "# A Story\n\nThe harbor lights flicker out one by one as Dana ties off the last mooring line, her hands raw from a double shift she never agreed to take.\n\nShe has until dawn to find the manifest her brother hid before the inspectors arrive, or the whole crew loses the boat that has fed them for years.\n\nOut past the breakwater, an unfamiliar engine cuts its lights and waits. Whatever is coming, it starts tonight.",
+};
 
 function makeAuthFetch() {
   return vi.fn((url: string, opts?: RequestInit) => {

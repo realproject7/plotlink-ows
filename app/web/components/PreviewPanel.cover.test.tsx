@@ -131,11 +131,14 @@ describe("PreviewPanel cover selection", () => {
   });
 });
 
-// Unpublished genesis — the cover is picked BEFORE first publish (#284).
+// Unpublished genesis — the cover is picked BEFORE first publish (#284). Content
+// is a valid multi-paragraph story opening so the cartoon Genesis gate (#400)
+// leaves the "Publish to PlotLink" button enabled for these cover tests.
 const DRAFT_GENESIS = {
   file: "genesis.md",
   status: "draft",
-  content: "# A story\n\nHook.",
+  content:
+    "# A Story\n\nThe harbor lights flicker out one by one as Dana ties off the last mooring line, her hands raw from a double shift she never agreed to take.\n\nShe has until dawn to find the manifest her brother hid before the inspectors arrive, or the whole crew loses the boat that has fed them for years.\n\nOut past the breakwater, an unfamiliar engine cuts its lights and waits. Whatever is coming, it starts tonight.",
 };
 
 function makeDraftAuthFetch() {

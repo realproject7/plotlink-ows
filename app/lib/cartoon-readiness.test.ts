@@ -614,7 +614,7 @@ describe("text panels (#350)", () => {
   });
 });
 
-describe("cartoonGenesisReadiness (#359)", () => {
+describe("cartoonGenesisReadiness (#359, hardened in #400)", () => {
   // A reader-facing prologue: a real title + a couple of prose paragraphs of setup.
   const goodOpening = [
     "# Coupon Crush at Closing Time",
@@ -624,8 +624,26 @@ describe("cartoonGenesisReadiness (#359)", () => {
     "He grins, holding up a coupon she's never seen before. Game on.",
   ].join("\n");
 
-  it("passes a real reader-facing opening (title + prose, no blockers/warnings)", () => {
+  it("passes a real reader-facing opening (title + multi-paragraph prose, no blockers/warnings)", () => {
     const r = cartoonGenesisReadiness(goodOpening);
+    expect(r.hasTitle).toBe(true);
+    expect(r.blockers).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it("passes a 3-6 paragraph story-opening prologue with a real title", () => {
+    const prologue = [
+      "# Signal Lost Over Neo-Busan",
+      "",
+      "Rain sheets across the megastack as Jin pries open a maintenance hatch forty floors above the flooded streets, the city's neon bleeding through the storm.",
+      "",
+      "She has one job tonight: splice the old broadcast tower before the syndicate's blackout goes live and swallows the last free channel in the district.",
+      "",
+      "But the wiring is already warm — someone got here first, and the access log shows her own ID badge, used twenty minutes ago.",
+      "",
+      "Down in the dark, something answers the dead frequency. Episode 01 starts the moment she keys the mic.",
+    ].join("\n");
+    const r = cartoonGenesisReadiness(prologue);
     expect(r.hasTitle).toBe(true);
     expect(r.blockers).toHaveLength(0);
     expect(r.warnings).toHaveLength(0);
@@ -634,21 +652,20 @@ describe("cartoonGenesisReadiness (#359)", () => {
   it("blocks a Genesis with no H1 title", () => {
     const r = cartoonGenesisReadiness("Mina races the clock to hit her quota before the mall closes for good, and the only person left is her smug rival. " + "x".repeat(150));
     expect(r.hasTitle).toBe(false);
-    expect(r.blockers).toHaveLength(1);
-    expect(r.blockers[0]).toMatch(/# Title/);
+    expect(r.blockers.some((b) => /# Title/.test(b))).toBe(true);
   });
 
   it("treats an H1 with only whitespace as no title", () => {
     expect(cartoonGenesisReadiness("#   \n\nbody").hasTitle).toBe(false);
   });
 
-  it("warns (does not block) when the opening is too short", () => {
+  it("blocks (not warns) when the opening is too short", () => {
     const r = cartoonGenesisReadiness("# Coupon Crush\n\nMina has nine minutes.");
-    expect(r.blockers).toHaveLength(0);
-    expect(r.warnings.some((w) => /short/i.test(w))).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+    expect(r.blockers.some((b) => /too short/i.test(b))).toBe(true);
   });
 
-  it("warns when the Genesis reads like a metadata synopsis/outline, not prose", () => {
+  it("blocks when the Genesis reads like a metadata synopsis/outline, not prose", () => {
     const synopsis = [
       "# Coupon Crush",
       "",
@@ -660,11 +677,11 @@ describe("cartoonGenesisReadiness (#359)", () => {
     ].join("\n");
     const r = cartoonGenesisReadiness(synopsis);
     expect(r.hasTitle).toBe(true);
-    expect(r.blockers).toHaveLength(0);
-    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+    expect(r.blockers.some((b) => /synopsis or outline/i.test(b))).toBe(true);
   });
 
-  it("warns when a long body is only bullet points (no opening scene)", () => {
+  it("blocks when a long body is only bullet points (no opening scene)", () => {
     const bullets = [
       "# Coupon Crush",
       "",
@@ -674,24 +691,24 @@ describe("cartoonGenesisReadiness (#359)", () => {
       "- A mysterious coupon could decide the whole closing-time standoff between them",
     ].join("\n");
     const r = cartoonGenesisReadiness(bullets);
-    expect(r.blockers).toHaveLength(0);
-    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+    expect(r.blockers.some((b) => /synopsis or outline/i.test(b))).toBe(true);
   });
 
-  // #380: a long single block of prose passes the length + synopsis-shape checks
-  // but reads as a cold open — warn that the opening needs buildup across a few
-  // short paragraphs that lead into Episode 01.
-  it("warns when real prose is a single dense block (no buildup) (#380)", () => {
+  // #380/#400: a long single block of prose passes the length + synopsis-shape
+  // checks but reads as a cold open — block, since the opening needs buildup
+  // across a few short paragraphs that lead into Episode 01.
+  it("blocks when real prose is a single dense block (no buildup) (#380/#400)", () => {
     const oneBlock =
       "# Coupon Crush at Closing Time\n\n" +
       "The mall's last fluorescent light buzzes as Mina slaps a clearance sticker on a rack of umbrellas, nine minutes to hit her quota or lose the bonus that covers rent, while the smug rival cashier from the kiosk across the hall grins and holds up a coupon she has never seen before and the standoff begins right there.";
     const r = cartoonGenesisReadiness(oneBlock);
-    expect(r.blockers).toHaveLength(0);
-    expect(r.warnings.some((w) => /synopsis or outline/i.test(w))).toBe(false);
-    expect(r.warnings.some((w) => /room to build|buildup|short paragraphs/i.test(w))).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+    expect(r.blockers.some((b) => /synopsis or outline/i.test(b))).toBe(false);
+    expect(r.blockers.some((b) => /room to build|buildup|short paragraphs|single dense block/i.test(b))).toBe(true);
   });
 
-  it("does NOT warn about buildup for a multi-paragraph prologue (#380)", () => {
+  it("does NOT block on buildup for a multi-paragraph prologue (#380)", () => {
     const prologue = [
       "# Coupon Crush at Closing Time",
       "",
