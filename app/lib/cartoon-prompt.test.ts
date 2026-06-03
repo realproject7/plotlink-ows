@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildCleanImagePrompt, buildCodexTaskPrompt, cleanImageOutputPath } from "./cartoon-prompt";
+import {
+  buildCleanImagePrompt,
+  buildCodexTaskPrompt,
+  cleanImageOutputPath,
+  CLEAN_IMAGE_STYLE_LOCK,
+} from "./cartoon-prompt";
 import type { Cut } from "./cuts";
 
 function makeCut(overrides: Partial<Cut> = {}): Cut {
@@ -59,6 +64,17 @@ describe("buildCleanImagePrompt", () => {
     expect(prompt).toContain(NO_TEXT_CONSTRAINT);
   });
 
+  it("locks the illustrated style with hard anti-photoreal negatives (#404)", () => {
+    const prompt = buildCleanImagePrompt(makeCut());
+    // The whole style-lock block is embedded verbatim...
+    expect(prompt).toContain(CLEAN_IMAGE_STYLE_LOCK);
+    // ...and it carries both the positive look and the hard negatives that fight drift.
+    expect(prompt).toContain("illustrated comic/webtoon panel");
+    expect(prompt).toContain("NOT photorealistic");
+    expect(prompt).toContain("NOT a 3D/CGI render");
+    expect(prompt).toContain("NOT concept art");
+  });
+
   it("does NOT include dialogue, narration, or sfx text in the prompt", () => {
     const prompt = buildCleanImagePrompt(
       makeCut({
@@ -94,19 +110,22 @@ describe("buildCodexTaskPrompt", () => {
     expect(prompt).toContain("assets/plot-01/cut-03-clean.webp");
   });
 
-  it("tells the agent to create the actual file, not describe it", () => {
+  it("tells the agent to produce the actual image, not just a prompt", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("SAVE IT AS AN ACTUAL FILE");
+    expect(prompt).toContain("Produce the actual image");
     expect(prompt).toContain("do not just describe it or return a prompt");
   });
 
-  it("requires verifying the file exists before reporting success", () => {
+  it("accepts a generated PNG and routes it to the Import from Codex picker (#403)", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("VERIFY the file exists");
-    expect(prompt).toContain("Do not claim success unless the file is actually written");
+    // A PNG in the cache is an accepted outcome — the agent must NOT convert it.
+    expect(prompt).toContain("only produces a PNG");
+    expect(prompt).toContain("~/.codex/generated_images");
+    expect(prompt).toContain("do NOT convert or rename it yourself");
+    expect(prompt).toContain("Import from Codex");
   });
 
-  it("states the format and size limit", () => {
+  it("states the format and size limit for the direct-save path", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
     expect(prompt).toContain("WebP");
     expect(prompt).toContain("under 1MB");
@@ -127,6 +146,16 @@ describe("buildCodexTaskPrompt", () => {
     const cut = makeCut({ shotType: "wide", description: "Rain-soaked city", characters: ["Mira"] });
     const prompt = buildCodexTaskPrompt(cut, "plot-01");
     expect(prompt).toContain(buildCleanImagePrompt(cut));
+  });
+
+  it("carries the style lock and a regenerate-if-photoreal instruction (#404)", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    // Inherited via the embedded visual prompt...
+    expect(prompt).toContain(CLEAN_IMAGE_STYLE_LOCK);
+    expect(prompt).toContain("NOT photorealistic");
+    // ...plus an explicit task-level reminder to regenerate off-style results.
+    expect(prompt).toContain("Hold the style lock above");
+    expect(prompt).toContain("regenerate it as illustrated panel art");
   });
 
   it("still excludes dialogue/narration/sfx text", () => {

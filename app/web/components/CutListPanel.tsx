@@ -336,9 +336,10 @@ function CutRow({
               >
                 <p className="text-[11px] font-medium text-foreground">Ask Codex to generate clean image</p>
                 <p className="text-[10px] text-muted">
-                  Paste this task into the Codex terminal to create{" "}
-                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>,
-                  then use &ldquo;Sync clean images&rdquo; (or it is auto-detected).
+                  Paste this task into the Codex terminal. If Codex saves a WebP/JPEG at{" "}
+                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>{" "}
+                  it is auto-detected via &ldquo;Sync clean images&rdquo;. If Codex generates a PNG, import it with
+                  &ldquo;Import from Codex&rdquo; above (the PNG is converted automatically).
                 </p>
                 <button
                   onClick={() => {
