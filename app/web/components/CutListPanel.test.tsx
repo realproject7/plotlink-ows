@@ -176,8 +176,15 @@ describe("CutListPanel", () => {
     fireEvent.click(screen.getByText("Wide city shot"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("clean-image-handoff-1")).toBeInTheDocument();
-      expect(screen.getByText(/Generate externally, then upload or import the clean image/)).toBeInTheDocument();
+      const handoff = screen.getByTestId("clean-image-handoff-1");
+      expect(handoff).toBeInTheDocument();
+      // #408: creator-facing flow names Codex + Import from Codex, keeps manual
+      // upload as the alternate, and points at lettering next — no "externally" jargon.
+      expect(handoff.textContent).toMatch(/Generate this cut in Codex/);
+      expect(handoff.textContent).toMatch(/Import from Codex/);
+      expect(handoff.textContent).toMatch(/upload an image manually/);
+      expect(handoff.textContent).toMatch(/Letter it next/);
+      expect(handoff.textContent).not.toMatch(/externally/i);
       expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
       // existing upload control still renders
       expect(screen.getByText("Upload clean image")).toBeInTheDocument();
@@ -557,9 +564,15 @@ describe("CutListPanel", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
-      expect(screen.getByTestId("ask-codex-1")).toBeInTheDocument();
+      const askCodex = screen.getByTestId("ask-codex-1");
+      expect(askCodex).toBeInTheDocument();
       expect(screen.getByTestId("ask-codex-copy-1")).toBeInTheDocument();
       expect(screen.getByText("Upload clean image")).toBeInTheDocument();
+      // #408: the Ask Codex copy is creator-facing — names Codex + Import from Codex,
+      // no "externally"/mixed-flow jargon.
+      expect(askCodex.textContent).toMatch(/Generate this cut in Codex/);
+      expect(askCodex.textContent).toMatch(/Import from Codex/);
+      expect(askCodex.textContent).not.toMatch(/externally/i);
     });
   });
 

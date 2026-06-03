@@ -326,7 +326,8 @@ function CutRow({
             )}
             {!cut.cleanImagePath && (
               <p className="text-xs text-muted" data-testid={`clean-image-handoff-${cut.id}`}>
-                Generate externally, then upload or import the clean image (PNG is converted to WebP automatically)
+                Generate this cut in Codex, then import the cached PNG with &ldquo;Import from Codex&rdquo; — or
+                upload an image manually. Letter it next.
               </p>
             )}
             {status === "missing" && (
@@ -334,12 +335,13 @@ function CutRow({
                 className="rounded border border-border bg-surface/60 p-2 space-y-1"
                 data-testid={`ask-codex-${cut.id}`}
               >
-                <p className="text-[11px] font-medium text-foreground">Ask Codex to generate clean image</p>
+                <p className="text-[11px] font-medium text-foreground">Generate this cut in Codex</p>
                 <p className="text-[10px] text-muted">
-                  Paste this task into the Codex terminal. If Codex saves a WebP/JPEG at{" "}
-                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>{" "}
-                  it is auto-detected via &ldquo;Sync clean images&rdquo;. If Codex generates a PNG, import it with
-                  &ldquo;Import from Codex&rdquo; above (the PNG is converted automatically).
+                  Copy the task below and paste it into Codex. Codex usually saves a PNG to its
+                  image cache — bring it into this cut with &ldquo;Import from Codex&rdquo; above (the PNG
+                  becomes a WebP automatically). If Codex instead writes a WebP/JPEG at{" "}
+                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>,
+                  it&rsquo;s picked up by &ldquo;Sync clean images&rdquo;.
                 </p>
                 <button
                   onClick={() => {
