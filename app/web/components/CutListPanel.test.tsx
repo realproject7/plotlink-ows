@@ -44,7 +44,7 @@ function makeCut(overrides: Record<string, unknown> = {}) {
     id: 1, shotType: "medium", description: "Test scene",
     characters: [], dialogue: [], narration: "", sfx: "",
     cleanImagePath: null, finalImagePath: null,
-    exportedAt: null, uploadedCid: null, uploadedUrl: null,
+    exportedAt: null, uploadedCid: null, uploadedUrl: null, overlays: [],
     ...overrides,
   };
 }
@@ -565,6 +565,45 @@ describe("CutListPanel", () => {
       expect(uploadCalls).toBe(7);
       expect(setUploadedIds.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(authFetch.mock.calls.some((c: [string]) => c[0].includes("generate-markdown"))).toBe(true);
+    });
+  });
+
+  it("guided Finish episode panel: the primary button uploads finals then prepares markdown (#414)", async () => {
+    const cuts = [
+      makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp", finalImagePath: "assets/plot-01/cut-01-final.webp", exportedAt: "t", overlays: [{ id: "o", type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "hi" }] }),
+      makeCut({ id: 2, cleanImagePath: "assets/plot-01/cut-02-clean.webp", finalImagePath: "assets/plot-01/cut-02-final.webp", exportedAt: "t", overlays: [{ id: "o", type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "ho" }] }),
+    ];
+    const cutsData = { version: 1, plotFile: "plot-01", cuts };
+    let uploadCalls = 0;
+    let markdownCalled = false;
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") { uploadCalls += 1; return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: `Qm${uploadCalls}`, url: `https://x/Qm${uploadCalls}` }) }); }
+      if (url.includes("set-uploaded")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      if (url.includes("generate-markdown")) { markdownCalled = true; return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: [] }) }); }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
+
+    render(
+      <CutListPanel
+        storyName="story"
+        fileName="plot-01.md"
+        authFetch={authFetch}
+        uploadRetry={{ sleep: () => Promise.resolve(), baseDelayMs: 0 }}
+      />,
+    );
+
+    // The guided panel renders with writer-language step status; "Upload final
+    // images" is the current step (everything before it done, publish todo).
+    await waitFor(() => expect(screen.getByTestId("finish-episode-panel")).toBeInTheDocument());
+    expect(screen.getByTestId("finish-step-upload").getAttribute("data-status")).toBe("current");
+
+    fireEvent.click(screen.getByTestId("finish-episode-btn"));
+
+    await waitFor(() => {
+      expect(uploadCalls).toBe(2);
+      expect(markdownCalled).toBe(true);
     });
   });
 

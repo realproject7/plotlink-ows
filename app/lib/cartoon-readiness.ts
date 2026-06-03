@@ -492,7 +492,9 @@ export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
       needClean++;
       if (cut.cleanImagePath) {
         withClean++;
-        if (cut.overlays.length > 0) withText++;
+        // Guard a malformed/legacy cut missing `overlays` — the checklist runs on
+        // every cut-list render now (#414), so a bad persisted cut must not crash it.
+        if ((cut.overlays?.length ?? 0) > 0) withText++;
       }
     }
     if (cut.finalImagePath && cut.exportedAt) exported++;
