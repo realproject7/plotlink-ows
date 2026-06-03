@@ -6,6 +6,7 @@ import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
 import { withRateLimitRetry, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
+import { CodexImportPicker } from "./CodexImportPicker";
 
 interface Overlay {
   id: string;
@@ -155,13 +156,18 @@ function CutRow({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [askCopied, setAskCopied] = useState(false);
+  // #403: show the Codex generated-image cache picker so a writer imports a
+  // generated PNG into this cut without hunting through a hidden folder.
+  const [showCodexPicker, setShowCodexPicker] = useState(false);
   const status = getCutStatus(cut);
   // A recorded cleanImagePath/finalImagePath whose file is missing/invalid (#302):
   // surface it precisely rather than letting the field-based status claim the cut
   // is image-ready.
   const hasStale = staleMessages.length > 0;
 
-  const handleUpload = useCallback(async (file: File) => {
+  // Returns true on a successful upload so callers (e.g. the Codex import picker)
+  // can close themselves only when the clean image was actually recorded.
+  const handleUpload = useCallback(async (file: File): Promise<boolean> => {
     setUploading(true);
     setUploadError(null);
     try {
@@ -176,7 +182,7 @@ function CutRow({
           upload = await importImageToCompliantBlob(file);
         } catch (err) {
           setUploadError(err instanceof Error ? err.message : "Could not import image");
-          return;
+          return false;
         }
       }
 
@@ -190,11 +196,13 @@ function CutRow({
       if (!res.ok) {
         const data = await res.json();
         setUploadError(data.error || "Upload failed");
-      } else {
-        onUpdated();
+        return false;
       }
+      onUpdated();
+      return true;
     } catch {
       setUploadError("Upload failed");
+      return false;
     } finally {
       setUploading(false);
     }
@@ -293,10 +301,32 @@ function CutRow({
               >
                 {uploading ? "Uploading..." : cut.cleanImagePath ? "Replace clean image" : "Upload clean image"}
               </button>
+              {/* #403: import a Codex-generated PNG straight from its cache, so a
+                  writer never has to hunt through ~/.codex/generated_images in an
+                  OS file dialog. Same in-browser PNG→WebP conversion + upload. */}
+              <button
+                onClick={() => setShowCodexPicker((v) => !v)}
+                disabled={uploading}
+                data-testid={`import-codex-${cut.id}`}
+                className="px-3 py-1.5 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
+              >
+                {showCodexPicker ? "Hide Codex images" : "Import from Codex"}
+              </button>
             </div>
+            {showCodexPicker && (
+              <CodexImportPicker
+                authFetch={authFetch}
+                cutId={cut.id}
+                onImport={async (file) => {
+                  const ok = await handleUpload(file);
+                  if (ok) setShowCodexPicker(false);
+                }}
+                onClose={() => setShowCodexPicker(false)}
+              />
+            )}
             {!cut.cleanImagePath && (
               <p className="text-xs text-muted" data-testid={`clean-image-handoff-${cut.id}`}>
-                Generate externally, then upload clean image (PNG is converted to WebP automatically)
+                Generate externally, then upload or import the clean image (PNG is converted to WebP automatically)
               </p>
             )}
             {status === "missing" && (
