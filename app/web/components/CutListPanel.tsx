@@ -7,6 +7,8 @@ import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
 import { withRateLimitRetry, createUploadThrottle, type RetryDeps } from "../lib/upload-retry";
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 import { CodexImportPicker } from "./CodexImportPicker";
+import { FinishEpisodePanel } from "./FinishEpisodePanel";
+import { cartoonChecklist } from "@app-lib/cartoon-readiness";
 
 interface Overlay {
   id: string;
@@ -550,6 +552,93 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     setSyncing(false);
   }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
 
+  // Guided "Finish episode" orchestration (#414): upload every exported final
+  // image (paced under the rate limit, #413/#288), then prepare the publish
+  // markdown — in order, resumable (already-uploaded cuts are skipped by the
+  // `!uploadedCid` filter). Surfaced as the primary "Finish episode" action and
+  // reused by the lower-level "Upload & Prepare for Publish" control.
+  const finishEpisode = useCallback(async () => {
+    if (!cutsFile) return;
+    setUploading(true);
+    setUploadProgress("");
+    setGenWarnings([]);
+    const toUpload = cutsFile.cuts.filter((ct) => ct.finalImagePath && !ct.uploadedCid);
+    const errors: string[] = [];
+    // Proactively pace uploads under PlotLink's 5/min limit so a 7–10 cut episode
+    // completes without manual waiting, instead of firing all at once and thrashing
+    // on reactive 429 backoff (#413). Reuses the same injectable sleep as the retry
+    // path so tests stay deterministic.
+    const throttle = createUploadThrottle({
+      sleep: uploadRetry?.sleep,
+      onWaiting: ({ waitMs }) =>
+        setUploadProgress(
+          `Upload limit reached — waiting ${Math.round(waitMs / 1000)}s before continuing…`,
+        ),
+    });
+    for (let i = 0; i < toUpload.length; i++) {
+      const ct = toUpload[i];
+      setUploadProgress(`Uploading cut ${ct.id} (${i + 1}/${toUpload.length})...`);
+      try {
+        const assetRel = ct.finalImagePath!.startsWith("assets/") ? ct.finalImagePath!.slice(7) : ct.finalImagePath!;
+        const imgRes = await authFetch(`/api/stories/${storyName}/asset/${assetRel}`);
+        if (!imgRes.ok) { errors.push(`Cut ${ct.id}: failed to fetch asset`); continue; }
+        const blob = await imgRes.blob();
+        const fd = new FormData();
+        fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
+        // Proactively wait if we've already used the 5/min budget (#413), then retry
+        // with backoff while the PlotLink endpoint rate-limits us anyway (5
+        // uploads/min), instead of failing the whole batch (#288). Already-uploaded
+        // cuts are skipped by the `!uploadedCid` filter above, so a retry never
+        // re-uploads a recorded cut.
+        await throttle();
+        const upload = await withRateLimitRetry(
+          async () => {
+            const res = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
+            if (res.ok) {
+              const { cid, url } = await res.json();
+              return { ok: true as const, status: res.status, cid, url };
+            }
+            const e = await res.json().catch(() => ({}));
+            return { ok: false as const, status: res.status, errorMessage: (e as { error?: string }).error };
+          },
+          {
+            ...uploadRetry,
+            onWaiting: ({ attempt, maxRetries, waitMs }) =>
+              setUploadProgress(
+                `Cut ${ct.id} rate-limited — waiting ${Math.round(waitMs / 1000)}s before retry ${attempt}/${maxRetries}...`,
+              ),
+          },
+        );
+        if (!upload.ok) { errors.push(`Cut ${ct.id}: upload failed — ${upload.errorMessage || "unknown"}`); continue; }
+        const { cid, url } = upload;
+        const setRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cid, url }),
+        });
+        if (!setRes.ok) { errors.push(`Cut ${ct.id}: failed to record upload`); }
+      } catch (err) {
+        errors.push(`Cut ${ct.id}: ${err instanceof Error ? err.message : "failed"}`);
+      }
+    }
+    if (errors.length > 0) {
+      setGenWarnings(errors);
+      setUploading(false);
+      setUploadProgress("");
+      loadCuts();
+      return;
+    }
+    setUploadProgress("Preparing episode for publishing…");
+    const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+    if (mdRes.ok) {
+      const data = await mdRes.json();
+      if (data.warnings?.length > 0) setGenWarnings(data.warnings);
+    }
+    setUploading(false);
+    setUploadProgress("");
+    loadCuts();
+  }, [cutsFile, authFetch, storyName, plotFile, uploadRetry, loadCuts]);
+
   // Clear stale recorded clean/final paths back to null (#302). Unlike sync,
   // this repairs a stale finalImagePath too; valid paths and uploaded URLs are
   // preserved server-side.
@@ -681,6 +770,14 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // must be re-exported before publish. Only tailed speech bubbles are affected.
   const staleTailIds = cutsFile.cuts.filter((c) => isStaleTailedExport(c)).map((c) => c.id);
 
+  // Guided "Finish episode" state (#414): writer-language step status + whether
+  // there's anything left to finish (an exported final to upload, or uploads done
+  // so the publish markdown can be (re)prepared).
+  const finishChecklist = cartoonChecklist({ cuts: cutsFile.cuts });
+  const canFinish =
+    cutsFile.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid) ||
+    cutsFile.cuts.some((ct) => ct.uploadedCid);
+
   return (
     <div className="h-full min-h-[22rem] flex flex-col overflow-hidden" data-testid="cut-list-panel">
       {/* Header with stats */}
@@ -729,87 +826,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {syncing ? "Syncing..." : "Sync clean images"}
         </button>
         <button
-          onClick={async () => {
-            if (!cutsFile) return;
-            setUploading(true);
-            setUploadProgress("");
-            setGenWarnings([]);
-            const toUpload = cutsFile.cuts.filter((ct) => ct.finalImagePath && !ct.uploadedCid);
-            const errors: string[] = [];
-            // Proactively pace uploads under PlotLink's 5/min limit so a 7–10 cut
-            // episode completes without manual waiting, instead of firing all at
-            // once and thrashing on reactive 429 backoff (#413). Reuses the same
-            // injectable sleep as the retry path so tests stay deterministic.
-            const throttle = createUploadThrottle({
-              sleep: uploadRetry?.sleep,
-              onWaiting: ({ waitMs }) =>
-                setUploadProgress(
-                  `Upload limit reached — waiting ${Math.round(waitMs / 1000)}s before continuing…`,
-                ),
-            });
-            for (let i = 0; i < toUpload.length; i++) {
-              const ct = toUpload[i];
-              setUploadProgress(`Uploading cut ${ct.id} (${i + 1}/${toUpload.length})...`);
-              try {
-                const assetRel = ct.finalImagePath!.startsWith("assets/") ? ct.finalImagePath!.slice(7) : ct.finalImagePath!;
-                const imgRes = await authFetch(`/api/stories/${storyName}/asset/${assetRel}`);
-                if (!imgRes.ok) { errors.push(`Cut ${ct.id}: failed to fetch asset`); continue; }
-                const blob = await imgRes.blob();
-                const fd = new FormData();
-                fd.append("file", blob, `cut-${ct.id}.${blob.type === "image/webp" ? "webp" : "jpg"}`);
-                // Proactively wait if we've already used the 5/min budget (#413),
-                // then retry with backoff while the PlotLink endpoint rate-limits us
-                // anyway (5 uploads/min), instead of failing the whole batch (#288).
-                // Already-uploaded cuts are skipped by the `!uploadedCid` filter
-                // above, so a retry never re-uploads a recorded cut.
-                await throttle();
-                const upload = await withRateLimitRetry(
-                  async () => {
-                    const res = await authFetch("/api/publish/upload-plot-image", { method: "POST", body: fd });
-                    if (res.ok) {
-                      const { cid, url } = await res.json();
-                      return { ok: true as const, status: res.status, cid, url };
-                    }
-                    const e = await res.json().catch(() => ({}));
-                    return { ok: false as const, status: res.status, errorMessage: (e as { error?: string }).error };
-                  },
-                  {
-                    ...uploadRetry,
-                    onWaiting: ({ attempt, maxRetries, waitMs }) =>
-                      setUploadProgress(
-                        `Cut ${ct.id} rate-limited — waiting ${Math.round(waitMs / 1000)}s before retry ${attempt}/${maxRetries}...`,
-                      ),
-                  },
-                );
-                if (!upload.ok) { errors.push(`Cut ${ct.id}: upload failed — ${upload.errorMessage || "unknown"}`); continue; }
-                const { cid, url } = upload;
-                const setRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/set-uploaded/${ct.id}`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ cid, url }),
-                });
-                if (!setRes.ok) { errors.push(`Cut ${ct.id}: failed to record upload`); }
-              } catch (err) {
-                errors.push(`Cut ${ct.id}: ${err instanceof Error ? err.message : "failed"}`);
-              }
-            }
-            if (errors.length > 0) {
-              setGenWarnings(errors);
-              setUploading(false);
-              setUploadProgress("");
-              loadCuts();
-              return;
-            }
-            setUploadProgress("Preparing episode for publishing…");
-            const mdRes = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
-            if (mdRes.ok) {
-              const data = await mdRes.json();
-              if (data.warnings?.length > 0) setGenWarnings(data.warnings);
-            }
-            setUploading(false);
-            setUploadProgress("");
-            loadCuts();
-          }}
+          onClick={finishEpisode}
           disabled={uploading || !cutsFile?.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid)}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
           data-testid="upload-generate-btn"
@@ -866,11 +883,19 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {syncResult}
         </div>
       )}
-      {genWarnings.length > 0 && (
-        <div className="px-3 py-1 border-b border-border text-[10px] text-amber-700 flex-shrink-0">
-          {genWarnings.map((w, i) => <p key={i}>{w}</p>)}
-        </div>
-      )}
+      {/* Guided Finish-episode flow (#414): writer-language step status, one primary
+          "Finish episode" action that uploads finals then prepares the publish
+          markdown in order, and any blockers grouped by the step that fixes them —
+          replacing the old flat amber warning list. The lower-level controls in the
+          header above stay available for manual recovery. */}
+      <FinishEpisodePanel
+        checklist={finishChecklist}
+        issues={genWarnings}
+        onFinish={finishEpisode}
+        finishing={uploading}
+        progressText={uploadProgress}
+        canFinish={canFinish}
+      />
 
       {/* Cut list */}
       <div className="flex-1 min-h-56 overflow-y-auto p-3 space-y-2" data-testid="cut-list-scroll">
