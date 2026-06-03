@@ -177,7 +177,7 @@ describe("CutListPanel", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("clean-image-handoff-1")).toBeInTheDocument();
-      expect(screen.getByText(/Generate externally, then upload clean image/)).toBeInTheDocument();
+      expect(screen.getByText(/Generate externally, then upload or import the clean image/)).toBeInTheDocument();
       expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
       // existing upload control still renders
       expect(screen.getByText("Upload clean image")).toBeInTheDocument();
