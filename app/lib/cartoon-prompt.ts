@@ -11,6 +11,26 @@ const NO_TEXT_CONSTRAINT =
   "No speech bubbles, captions, sound effects, narration, or any text or lettering in the image.";
 
 /**
+ * Baseline visual style lock for every clean cut image (#404).
+ *
+ * Image generation drifts toward polished photoreal / painterly concept art unless
+ * the prompt fights it explicitly — "semi-realistic webtoon" alone is too weak (it
+ * was the #211 Sci-fi pilot's failure mode). This block pins the requested
+ * illustrated-panel look with strong positive descriptors AND hard negative
+ * constraints (no photorealism, no painterly concept art, no 3D render), so it is
+ * reusable across every cut and the agent-facing "Copy Codex task" prompt without
+ * each cut re-stating it. Story-specific style (palette, line weight, the exact
+ * webtoon reference) is layered on top via structure.md's Visual Style Guide.
+ */
+export const CLEAN_IMAGE_STYLE_LOCK =
+  "Style lock — illustrated comic/webtoon panel art: clean black contour/ink lines, " +
+  "flat or cel shading, simplified but realistic (semi-realistic) anatomy and faces, " +
+  "backgrounds drawn as illustrated comic panels. Hold this same style on every cut for " +
+  "character and panel consistency. " +
+  "Hard negatives — NOT photorealistic, NOT a photograph, NOT a glossy or painterly digital " +
+  "painting, NOT concept art, NOT a 3D/CGI render, NOT airbrushed, no photoreal textures.";
+
+/**
  * Build a deterministic clean-image generation prompt from a cut's fields only.
  *
  * Pure function — no side effects. Dialogue, narration, and SFX text are
@@ -26,6 +46,7 @@ export function buildCleanImagePrompt(cut: Cut): string {
     lines.push(`Characters: ${cut.characters.join(", ")}.`);
   }
 
+  lines.push(CLEAN_IMAGE_STYLE_LOCK);
   lines.push(NO_TEXT_CONSTRAINT);
 
   return lines.join("\n").trim();
@@ -60,6 +81,7 @@ export function buildCodexTaskPrompt(cut: Cut, plotFile: string): string {
     `- If your image tool can write a WebP or JPEG under 1MB, save it at ${outputPath} and run "Sync clean images".`,
     "- If it only produces a PNG (e.g. built-in image generation saves to ~/.codex/generated_images), that is fine — do NOT convert or rename it yourself. Leave it there and import it into this cut with the OWS \"Import from Codex\" button, which converts the PNG automatically.",
     "- Clean image only: no text, speech bubbles, captions, sound effects, signage, watermark, or signature.",
+    "- Hold the style lock above — an illustrated comic/webtoon panel, NOT a photoreal photo, painterly concept art, or 3D render. If a result reads photorealistic, regenerate it as illustrated panel art.",
     "- Do not letter or upload anything — final lettering and upload happen later in OWS.",
   ].join("\n");
 }

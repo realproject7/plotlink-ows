@@ -44,6 +44,23 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("No text overlays");
   });
 
+  it("cartoon output requires a style lock with hard anti-photoreal negatives, for both providers (#404)", () => {
+    for (const provider of ["claude", "codex"] as const) {
+      const out = generateStoryInstructions("cartoon", provider);
+      // structure.md must require an explicit, reusable Style Lock...
+      expect(out).toContain("Style Lock");
+      // ...and the clean-image workflow must reinforce holding it per generation.
+      expect(out).toContain("do not drift to photoreal");
+      // The hard negatives that actually fight drift must be present.
+      expect(out).toContain("NOT photorealistic");
+      expect(out).toContain("3D render");
+      expect(out).toContain("concept art");
+      // And the positive illustrated-panel descriptors.
+      expect(out).toContain("illustrated comic/webtoon panel");
+      expect(out).toContain("cel shading");
+    }
+  });
+
   it("Claude/default cartoon output explains the clean-image prompt handoff and never claims it created files", () => {
     // Default provider is Claude (matches the absent⇒Claude default; see #268).
     const out = generateStoryInstructions("cartoon");

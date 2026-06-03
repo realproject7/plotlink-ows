@@ -312,6 +312,22 @@ assets/
    - Color palette (full color, limited palette, monochrome + spot color)
    - Line weight and inking style
    - Panel/cut layout preferences (grid, dynamic, full-bleed)
+   - **Style Lock (REQUIRED — prevents photoreal drift).** Write one short,
+     reusable block that locks the rendering style and you repeat on EVERY image
+     generation. It MUST carry both positive descriptors and hard negatives,
+     because image generation drifts into polished digital painting / photoreal
+     concept art unless the prompt fights it. Pattern (adapt the specifics to this
+     story's reference, e.g. a semi-realistic Korean webtoon):
+     - **Positive:** illustrated comic/webtoon panel art; clean black contour/ink
+       lines; flat or cel shading; simplified-but-realistic (semi-realistic)
+       anatomy and faces; backgrounds drawn as illustrated panels, not photos.
+     - **Hard negatives:** NOT photorealistic, NOT a photograph, NOT a glossy or
+       painterly digital painting, NOT concept art, NOT a 3D/CGI render, NOT
+       airbrushed, no photoreal textures.
+     "Semi-realistic webtoon" on its own is too weak — keep the explicit negatives.
+     OWS already prepends a baseline style lock to every per-cut "Copy Codex task" /
+     "Copy prompt"; your Style Lock here adds the story-specific reference on top and
+     must be honored on the cover too.
 
 2. **Character Bible**
    For each character, describe their VISUAL identity:
@@ -521,6 +537,16 @@ Clean images must contain:
 - No sound effect text
 - No narration captions
 - No lettering of any kind
+
+**Lock the style on every generation — do not drift to photoreal.** Reuse the
+**Style Lock** from structure.md's Visual Style Guide in EVERY image prompt (cuts
+and cover) so the look stays consistent and illustrated. The requested style is an
+illustrated comic/webtoon panel — clean black contour lines, flat/cel shading,
+simplified-but-realistic anatomy — and explicitly **NOT** photorealistic, **NOT** a
+painterly digital painting / concept art, and **NOT** a 3D render. If a generated
+image reads as a photo or polished concept art, it is off-style: regenerate it as
+illustrated panel art rather than accepting the drift. (The per-cut "Copy Codex
+task" / "Copy prompt" OWS exposes already carries this baseline style lock.)
 
 ${cleanImageWorkflowSection(provider)}
 
