@@ -25,6 +25,7 @@ interface Overlay {
   textStyle?: {
     mode?: "auto" | "manual";
     fontScale?: number;
+    fontWeight?: 400 | 700;
     lineHeightFactor?: number;
     speakerScale?: number;
   };
@@ -164,8 +165,8 @@ export function renderOverlays(
     const font = overlay.type === "sfx" ? displayFont : bodyFont;
     const hasSpeaker = overlay.type !== "sfx" && !!overlay.speaker;
     // Measure with the actual draw font so wrapping matches what is rendered.
-    const measure = (text: string, fontSize: number): number => {
-      ctx.font = `${fontSize}px ${font}`;
+    const measure = (text: string, fontSize: number, fontWeight: 400 | 700 = 400): number => {
+      ctx.font = `${fontWeight} ${fontSize}px ${font}`;
       return ctx.measureText(text).width;
     };
     const layout = layoutBubbleText(
@@ -184,7 +185,7 @@ export function renderOverlays(
     // Draw the speaker label on its own strip at the top of the bubble.
     if (hasSpeaker) {
       ctx.fillStyle = "#3a3a3a";
-      ctx.font = `bold ${layout.speakerFontSize}px ${font}`;
+      ctx.font = `700 ${layout.speakerFontSize}px ${font}`;
       ctx.fillText(overlay.speaker as string, cx, oy + speakerStrip / 2 + oh * 0.04, ow - 6);
     }
 
@@ -194,7 +195,7 @@ export function renderOverlays(
     const totalTextH = layout.lines.length * layout.lineHeight;
     let lineY = bodyTop + bodyH / 2 - totalTextH / 2 + layout.lineHeight / 2;
 
-    ctx.font = `${layout.fontSize}px ${font}`;
+    ctx.font = `${overlay.textStyle?.fontWeight ?? 400} ${layout.fontSize}px ${font}`;
     for (const line of layout.lines) {
       if (overlay.type === "sfx") {
         ctx.fillStyle = "#000";

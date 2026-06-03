@@ -18,6 +18,8 @@ export interface OverlayTextStyle {
   mode?: "auto" | "manual";
   /** Font size as a fraction of the rendered panel height. */
   fontScale?: number;
+  /** Body text weight: regular or bold. */
+  fontWeight?: 400 | 700;
   /** Line advance as a multiple of body font size. */
   lineHeightFactor?: number;
   /** Speaker-label size as a multiple of body font size. */
@@ -82,10 +84,17 @@ function normalizeTextStyle(raw: unknown): OverlayTextStyle | undefined {
   const r = raw as Record<string, unknown>;
   const mode = r.mode === "manual" ? "manual" : r.mode === "auto" ? "auto" : undefined;
   const fontScale = clampOptional(r.fontScale, 0.015, 0.12);
+  const fontWeight = r.fontWeight === 700 ? 700 : r.fontWeight === 400 ? 400 : undefined;
   const lineHeightFactor = clampOptional(r.lineHeightFactor, 0.9, 2);
   const speakerScale = clampOptional(r.speakerScale, 0.5, 1.5);
-  if (!mode && fontScale === undefined && lineHeightFactor === undefined && speakerScale === undefined) return undefined;
-  return { ...(mode ? { mode } : {}), ...(fontScale !== undefined ? { fontScale } : {}), ...(lineHeightFactor !== undefined ? { lineHeightFactor } : {}), ...(speakerScale !== undefined ? { speakerScale } : {}) };
+  if (!mode && fontScale === undefined && fontWeight === undefined && lineHeightFactor === undefined && speakerScale === undefined) return undefined;
+  return {
+    ...(mode ? { mode } : {}),
+    ...(fontScale !== undefined ? { fontScale } : {}),
+    ...(fontWeight !== undefined ? { fontWeight } : {}),
+    ...(lineHeightFactor !== undefined ? { lineHeightFactor } : {}),
+    ...(speakerScale !== undefined ? { speakerScale } : {}),
+  };
 }
 
 function normalizeBubbleStyle(raw: unknown): OverlayBubbleStyle | undefined {
@@ -113,6 +122,7 @@ export function bubbleLayoutOptionsForOverlay(
     hasSpeaker: overlay.type !== "sfx" && !!overlay.speaker,
     ...(textStyle?.lineHeightFactor !== undefined ? { lineHeightFactor: textStyle.lineHeightFactor } : {}),
     ...(textStyle?.speakerScale !== undefined ? { speakerScale: textStyle.speakerScale } : {}),
+    ...(textStyle?.fontWeight !== undefined ? { fontWeight: textStyle.fontWeight } : {}),
     ...(textStyle?.mode === "manual" && textStyle.fontScale !== undefined
       ? { fontSize: Math.max(1, renderHeight * textStyle.fontScale) }
       : {}),

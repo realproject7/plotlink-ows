@@ -35,6 +35,8 @@ export interface BubbleLayoutOptions {
   lineHeightFactor?: number;
   /** Speaker-label size as a multiple of body font size. Default 0.8. */
   speakerScale?: number;
+  /** Body text weight, for consistent bold/regular measurement and layout. */
+  fontWeight?: 400 | 700;
   /** Horizontal padding inside the box (each side). Default 6% of width. */
   paddingX?: number;
   /** Vertical padding inside the box (each side). Default 8% of height. */
@@ -44,7 +46,7 @@ export interface BubbleLayoutOptions {
 }
 
 /** Measure rendered width of `text` at `fontSize` (canvas measureText-backed). */
-export type MeasureWidth = (text: string, fontSize: number) => number;
+export type MeasureWidth = (text: string, fontSize: number, fontWeight?: 400 | 700) => number;
 
 /** Greedy word-wrap of `text` to lines no wider than `maxWidth` at `fontSize`. */
 export function wrapText(
@@ -100,9 +102,10 @@ export function layoutBubbleText(
     const speakerFont = opts.hasSpeaker ? bodyFont * speakerScale : 0;
     const speakerStrip = opts.hasSpeaker ? speakerFont * lineHeightFactor : 0;
     const bodyAvailH = Math.max(1, totalAvailH - speakerStrip);
-    const lines = wrapText(measure, text, availW, bodyFont);
+    const fontWeight = opts.fontWeight ?? 400;
+    const lines = wrapText((line, fontSize) => measure(line, fontSize, fontWeight), text, availW, bodyFont);
     const bodyH = lines.length * bodyFont * lineHeightFactor;
-    const widthOk = lines.every((l) => measure(l, bodyFont) <= availW + 0.5);
+    const widthOk = lines.every((l) => measure(l, bodyFont, fontWeight) <= availW + 0.5);
     return { lines, ok: bodyH <= bodyAvailH && widthOk };
   };
 

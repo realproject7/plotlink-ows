@@ -94,6 +94,12 @@ function overlapLabel(o: Overlay): string {
 }
 
 const MIN_SIZE = 0.05;
+const TAIL_PRESETS = [
+  { key: "down", label: "Down", anchor: { x: 0.5, y: 1.2 } },
+  { key: "up", label: "Up", anchor: { x: 0.5, y: -0.2 } },
+  { key: "left", label: "Left", anchor: { x: -0.2, y: 0.5 } },
+  { key: "right", label: "Right", anchor: { x: 1.2, y: 0.5 } },
+] as const;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -151,13 +157,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // Offscreen canvas to measure text exactly like the export canvas, so the
   // preview wraps/sizes bubble text identically to the final image (#310).
   const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const measureWidth = useCallback((fontFamily: string) => (text: string, fontSize: number): number => {
+  const measureWidth = useCallback((fontFamily: string) => (text: string, fontSize: number, fontWeight: 400 | 700 = 400): number => {
     if (!measureCanvasRef.current && typeof document !== "undefined") {
       measureCanvasRef.current = document.createElement("canvas");
     }
     const mctx = measureCanvasRef.current?.getContext("2d");
     if (!mctx) return text.length * fontSize * 0.5; // jsdom fallback
-    mctx.font = `${fontSize}px ${fontFamily}`;
+    mctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
     return mctx.measureText(text).width;
   }, []);
   // Gate the exact (canvas-measured) preview layout on the SAME font-readiness
@@ -244,12 +250,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
       bubbleLayoutOptionsForOverlay({ ...overlay, textStyle: undefined }, renderHeight, width, height),
     );
     updateOverlay(overlay.id, {
-      textStyle: {
-        mode: "manual",
-        fontScale: autoLayout.fontSize / Math.max(1, renderHeight),
-        lineHeightFactor: autoLayout.fontSize > 0 ? autoLayout.lineHeight / autoLayout.fontSize : 1.2,
-        speakerScale: autoLayout.fontSize > 0 && autoLayout.speakerFontSize > 0 ? autoLayout.speakerFontSize / autoLayout.fontSize : 0.8,
-      },
+        textStyle: {
+          mode: "manual",
+          fontScale: autoLayout.fontSize / Math.max(1, renderHeight),
+          fontWeight: overlay.textStyle?.fontWeight ?? 400,
+          lineHeightFactor: autoLayout.fontSize > 0 ? autoLayout.lineHeight / autoLayout.fontSize : 1.2,
+          speakerScale: autoLayout.fontSize > 0 && autoLayout.speakerFontSize > 0 ? autoLayout.speakerFontSize / autoLayout.fontSize : 0.8,
+        },
     });
   }, [imageBounds, displayFontFamily, bodyFontFamily, measureWidth, updateOverlay]);
 
@@ -736,7 +743,11 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                     return (
                       <div
                         className="absolute inset-0 flex items-center justify-center px-1 overflow-hidden pointer-events-none text-center break-words"
-                        style={{ fontFamily, fontSize: Math.max(9, Math.min(height * 0.05, 16)) }}
+                        style={{
+                          fontFamily,
+                          fontSize: Math.max(9, Math.min(height * 0.05, 16)),
+                          fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                        }}
                         data-testid={`overlay-text-${overlay.id}`}
                         data-fonts-ready="false"
                       >
@@ -763,7 +774,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                           {overlay.speaker}
                         </span>
                       )}
-                      <span className="text-[#1a1a1a]" style={{ fontSize: layout.fontSize, lineHeight: `${layout.lineHeight}px` }}>
+                      <span
+                        className="text-[#1a1a1a]"
+                        style={{ fontSize: layout.fontSize, lineHeight: `${layout.lineHeight}px`, fontWeight: overlay.textStyle?.fontWeight ?? 400 }}
+                      >
                         {layout.lines.map((line, i) => (
                           <span key={i} className="block">{line}</span>
                         ))}
@@ -883,6 +897,24 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                       />
                     </label>
                     <label className="block space-y-1">
+                      <span className="text-[10px] text-muted">Weight</span>
+                      <select
+                        value={String(selectedOverlay.textStyle.fontWeight ?? 400)}
+                        onChange={(e) => updateOverlay(selectedOverlay.id, {
+                          textStyle: {
+                            ...selectedOverlay.textStyle,
+                            mode: "manual",
+                            fontWeight: e.target.value === "700" ? 700 : 400,
+                          },
+                        })}
+                        className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                        data-testid="inspector-font-weight"
+                      >
+                        <option value="400">Regular</option>
+                        <option value="700">Bold</option>
+                      </select>
+                    </label>
+                    <label className="block space-y-1">
                       <span className="text-[10px] text-muted">Line height</span>
                       <input
                         type="number"
@@ -933,6 +965,19 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 return (
                   <div className="space-y-1">
                     <span className="text-[10px] font-medium text-muted">Tail anchor</span>
+                    <div className="flex flex-wrap gap-1" data-testid="inspector-tail-presets">
+                      {TAIL_PRESETS.map((preset) => (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => updateOverlay(selectedOverlay.id, { tailAnchor: preset.anchor })}
+                          className="px-1.5 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                          data-testid={`inspector-tail-${preset.key}`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="flex gap-2">
                       <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
                         x

@@ -14,6 +14,7 @@ interface Overlay {
   textStyle?: {
     mode?: "auto" | "manual";
     fontScale?: number;
+    fontWeight?: 400 | 700;
     lineHeightFactor?: number;
     speakerScale?: number;
   };
@@ -312,7 +313,7 @@ describe("WebP fallback detection", () => {
 
 // Captures fillText(text, x, y) so we can assert wrapped, multi-line body text.
 function textRecordingCtx() {
-  const fillTexts: Array<{ text: string; x: number; y: number }> = [];
+  const fillTexts: Array<{ text: string; x: number; y: number; font: string }> = [];
   const ctx = {
     fillStyle: "", strokeStyle: "", lineWidth: 0, font: "", textAlign: "", textBaseline: "",
     beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arcTo() {}, roundRect() {}, rect() {},
@@ -321,7 +322,7 @@ function textRecordingCtx() {
       const fs = parseFloat(/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "10");
       return { width: text.length * fs * 0.5 } as TextMetrics;
     },
-    fillText(text: string, x: number, y: number) { fillTexts.push({ text, x, y }); },
+    fillText(this: { font: string }, text: string, x: number, y: number) { fillTexts.push({ text, x, y, font: this.font }); },
     strokeText() {},
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, fillTexts };
@@ -376,7 +377,7 @@ describe("renderOverlays text wrapping (#310)", () => {
         width: 0.4,
         height: 0.25,
         text: longLine,
-        textStyle: { mode: "manual", fontScale: 0.06, lineHeightFactor: 1.4 },
+        textStyle: { mode: "manual", fontScale: 0.06, fontWeight: 700, lineHeightFactor: 1.4 },
         bubbleStyle: { paddingX: 0.14, paddingY: 0.12 },
       }],
       800,
@@ -387,6 +388,7 @@ describe("renderOverlays text wrapping (#310)", () => {
     const auto = textRecordingCtx();
     renderOverlays(auto.ctx, [{ id: "a", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.25, text: longLine }], 800, 600, "Body", "Display");
     expect(manual.fillTexts.length).toBeGreaterThan(auto.fillTexts.length);
+    expect(manual.fillTexts.some((f) => f.font.startsWith("700 "))).toBe(true);
   });
 
   it("uses manual corner radius when tracing a speech balloon", () => {

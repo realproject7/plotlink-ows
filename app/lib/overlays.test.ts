@@ -346,7 +346,19 @@ describe("normalizeOverlay (#309)", () => {
   });
 
   it("preserves an already-valid overlay (incl. id and tailAnchor)", () => {
-    const valid = { id: "ov-1", type: "speech", x: 0.1, y: 0.2, width: 0.3, height: 0.15, text: "Yo", speaker: "Min", tailAnchor: { x: 0.4, y: 1.1 } };
+    const valid = {
+      id: "ov-1",
+      type: "speech",
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.15,
+      text: "Yo",
+      speaker: "Min",
+      tailAnchor: { x: 0.4, y: 1.1 },
+      textStyle: { mode: "manual", fontScale: 0.04, fontWeight: 700, lineHeightFactor: 1.3, speakerScale: 0.85 },
+      bubbleStyle: { paddingX: 0.12, paddingY: 0.1, cornerRadius: 0.25 },
+    };
     const o = normalizeOverlay(valid);
     expect(o).toEqual(valid);
   });
