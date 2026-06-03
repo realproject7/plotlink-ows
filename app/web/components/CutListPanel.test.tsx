@@ -524,6 +524,50 @@ describe("CutListPanel", () => {
     });
   });
 
+  it("completes a 7-cut batch upload under the 5/min limit without manual waiting (#413)", async () => {
+    const cuts = Array.from({ length: 7 }, (_, i) =>
+      makeCut({ id: i + 1, finalImagePath: `assets/plot-01/cut-0${i + 1}-final.webp`, overlays: [] }),
+    );
+    const cutsData = { version: 1, plotFile: "plot-01", cuts };
+    let uploadCalls = 0;
+    const setUploadedIds: number[] = [];
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [] }) });
+      if (url.includes("/asset/")) return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob([new Uint8Array(10)], { type: "image/webp" })) });
+      if (url === "/api/publish/upload-plot-image") {
+        uploadCalls += 1;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cid: `Qm${uploadCalls}`, url: `https://ipfs.example.com/Qm${uploadCalls}` }) });
+      }
+      if (url.includes("set-uploaded")) {
+        setUploadedIds.push(Number(url.split("set-uploaded/")[1]));
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      }
+      if (url.includes("generate-markdown")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, warnings: [] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(cutsData) });
+    });
+
+    render(
+      <CutListPanel
+        storyName="story"
+        fileName="plot-01.md"
+        authFetch={authFetch}
+        // noop sleep so the proactive throttle's waits don't slow the test; the
+        // point is that all 7 cuts upload and the batch finishes (no rate-limit
+        // failure, no manual wait).
+        uploadRetry={{ sleep: () => Promise.resolve(), baseDelayMs: 0 }}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("upload-generate-btn")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("upload-generate-btn"));
+
+    await waitFor(() => {
+      expect(uploadCalls).toBe(7);
+      expect(setUploadedIds.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(authFetch.mock.calls.some((c: [string]) => c[0].includes("generate-markdown"))).toBe(true);
+    });
+  });
+
   it("shows a Sync clean images button that POSTs sync-clean-images then reloads", async () => {
     const cutsData = {
       version: 1, plotFile: "plot-01",

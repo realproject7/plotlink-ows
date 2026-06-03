@@ -3,6 +3,7 @@ import {
   isRateLimitError,
   backoffMs,
   withRateLimitRetry,
+  createUploadThrottle,
   RATE_LIMIT_BASE_DELAY_MS,
   RATE_LIMIT_MAX_RETRIES,
 } from "./upload-retry";
@@ -105,5 +106,80 @@ describe("withRateLimitRetry", () => {
     expect(result).toMatchObject({ ok: false, status: 400 });
     expect(attempt).toHaveBeenCalledTimes(1);
     expect(waits).toEqual([]);
+  });
+});
+
+describe("createUploadThrottle (#413)", () => {
+  // A controllable clock: time only advances when the (spied) sleep is awaited,
+  // mirroring how the throttle paces a tight batch loop.
+  function fakeClock(start = 1_000_000) {
+    let t = start;
+    const waits: number[] = [];
+    const sleep = vi.fn((ms: number) => { waits.push(ms); t += ms; return Promise.resolve(); });
+    const now = () => t;
+    const advance = (ms: number) => { t += ms; };
+    return { sleep, now, waits, advance };
+  }
+
+  it("lets the first `limit` uploads through without waiting", async () => {
+    const { sleep, now, waits } = fakeClock();
+    const throttle = createUploadThrottle({ limit: 5, windowMs: 60_000, sleep, now });
+
+    for (let i = 0; i < 5; i++) await throttle();
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(waits).toEqual([]);
+  });
+
+  it("waits out the window before the 6th upload, then drains the rest (7-cut batch)", async () => {
+    const { sleep, now, waits } = fakeClock(1_000_000);
+    const onWaiting = vi.fn();
+    const throttle = createUploadThrottle({ limit: 5, windowMs: 60_000, sleep, now, onWaiting });
+
+    // 7 uploads back-to-back in a tight loop (no real time elapses between them).
+    for (let i = 0; i < 7; i++) await throttle();
+
+    // The first 5 fire instantly; the 6th waits ~60s for that burst to age out,
+    // which clears the whole window, so the 7th then goes through immediately.
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([60_000]);
+    expect(onWaiting).toHaveBeenCalledTimes(1);
+    expect(onWaiting.mock.calls[0][0]).toMatchObject({ waitMs: 60_000 });
+  });
+
+  it("paces an 11-cut batch into bursts of 5 (two waits)", async () => {
+    const { sleep, now } = fakeClock(1_000_000);
+    const throttle = createUploadThrottle({ limit: 5, windowMs: 60_000, sleep, now });
+
+    for (let i = 0; i < 11; i++) await throttle();
+
+    // 5 + wait + 5 + wait + 1 = two proactive waits.
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not wait when uploads are already spaced beyond the window", async () => {
+    const { sleep, now, advance } = fakeClock();
+    const throttle = createUploadThrottle({ limit: 5, windowMs: 60_000, sleep, now });
+
+    for (let i = 0; i < 10; i++) {
+      await throttle();
+      advance(61_000); // each upload happens well after the previous window
+    }
+
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("only waits as long as needed for the oldest upload to age out", async () => {
+    const { sleep, now, advance, waits } = fakeClock(1_000_000);
+    const throttle = createUploadThrottle({ limit: 2, windowMs: 60_000, sleep, now });
+
+    await throttle();            // t=1_000_000
+    advance(20_000);             // t=1_020_000
+    await throttle();            // 2nd within window — fills the budget
+    // 3rd must wait until the FIRST (t=1_000_000) ages out: 60s - 20s already passed = 40s.
+    await throttle();
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(waits).toEqual([40_000]);
   });
 });
