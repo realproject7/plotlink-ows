@@ -11,9 +11,57 @@ import {
   isTextPanel,
   isStaleTailedExport,
   staleTailedCutIds,
+  cutNextAction,
   SHOT_TYPES,
 } from "./cuts";
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "./overlays";
+
+describe("cutNextAction (#371)", () => {
+  const base = { cleanImagePath: null, finalImagePath: null, exportedAt: null };
+
+  it("an image cut with no clean art → 'Add clean art for this cut', does not open editor", () => {
+    const a = cutNextAction({ ...base });
+    expect(a.key).toBe("add-art");
+    expect(a.label).toBe("Add clean art for this cut");
+    expect(a.opensEditor).toBe(false);
+  });
+
+  it("a clean image cut → 'Letter this cut', opens editor", () => {
+    const a = cutNextAction({ ...base, cleanImagePath: "assets/plot-01/cut-01-clean.webp" });
+    expect(a.key).toBe("letter");
+    expect(a.label).toBe("Letter this cut");
+    expect(a.opensEditor).toBe(true);
+  });
+
+  it("a text/interstitial panel (no clean image) → 'Letter this cut', opens editor", () => {
+    const a = cutNextAction({ ...base, kind: "text" });
+    expect(a.key).toBe("letter");
+    expect(a.opensEditor).toBe(true);
+  });
+
+  it("a cut with a final image → 'Review final panel', opens editor", () => {
+    const a = cutNextAction({ ...base, cleanImagePath: "clean.webp", finalImagePath: "final.webp" });
+    expect(a.key).toBe("review");
+    expect(a.label).toBe("Review final panel");
+    expect(a.opensEditor).toBe(true);
+  });
+
+  it("treats a cut exported (exportedAt set) but without a recorded final path as having a final", () => {
+    const a = cutNextAction({ ...base, cleanImagePath: "clean.webp", exportedAt: "2026-01-01" });
+    expect(a.key).toBe("review");
+  });
+
+  it("uses creator-facing labels with no markdown/schema jargon", () => {
+    const labels = [
+      cutNextAction({ ...base }).label,
+      cutNextAction({ ...base, cleanImagePath: "c.webp" }).label,
+      cutNextAction({ ...base, finalImagePath: "f.webp" }).label,
+    ];
+    for (const l of labels) {
+      expect(l).not.toMatch(/markdown|generate md|cuts\.json|schema|overlay/i);
+    }
+  });
+});
 
 describe("createDefaultCut", () => {
   it("returns correct defaults", () => {

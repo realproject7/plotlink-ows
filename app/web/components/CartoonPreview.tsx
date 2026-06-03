@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { AssetImage } from "./asset-image";
+import { cutNextAction } from "@app-lib/cuts";
 
 type AuthFetch = (url: string, opts?: RequestInit) => Promise<Response>;
 
@@ -35,6 +36,10 @@ interface CartoonPreviewProps {
   storyName: string;
   fileName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
+  // #371: deep-link from a cut's next-action CTA into the Edit tab for that exact
+  // cut. `opensEditor` is whether the lettering editor can open directly (clean
+  // image / text panel / final) vs. just focusing the row to add clean art.
+  onEditCut?: (cutId: number, opensEditor: boolean) => void;
 }
 
 function TextOverlay({ cut }: { cut: Cut }) {
@@ -61,7 +66,7 @@ function TextOverlay({ cut }: { cut: Cut }) {
   );
 }
 
-function CutCard({ cut, storyName, authFetch }: { cut: Cut; storyName: string; authFetch: AuthFetch }) {
+function CutCard({ cut, storyName, authFetch, onEditCut }: { cut: Cut; storyName: string; authFetch: AuthFetch; onEditCut?: (cutId: number, opensEditor: boolean) => void }) {
   const hasFinal = !!cut.finalImagePath;
   const hasClean = !!cut.cleanImagePath;
   const hasImage = hasFinal || hasClean;
@@ -156,11 +161,29 @@ function CutCard({ cut, storyName, authFetch }: { cut: Cut; storyName: string; a
       {hasFinal && (
         <TextOverlay cut={cut} />
       )}
+
+      {/* #371: direct next-action CTA — jumps to the Edit tab for THIS cut so the
+          writer never has to hunt for it in the cut list. Works for image cuts
+          and text/interstitial panels alike. */}
+      {onEditCut && (() => {
+        const action = cutNextAction(cut);
+        return (
+          <button
+            type="button"
+            data-testid={`cut-${cut.id}-cta`}
+            data-cut-action={action.key}
+            onClick={() => onEditCut(cut.id, action.opensEditor)}
+            className="w-full px-3 py-1.5 text-xs font-medium rounded bg-accent text-white hover:bg-accent-dim"
+          >
+            {action.label}
+          </button>
+        );
+      })()}
     </div>
   );
 }
 
-export function CartoonPreview({ storyName, fileName, authFetch }: CartoonPreviewProps) {
+export function CartoonPreview({ storyName, fileName, authFetch, onEditCut }: CartoonPreviewProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +259,7 @@ export function CartoonPreview({ storyName, fileName, authFetch }: CartoonPrevie
     <div className="h-full overflow-y-auto">
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         {cutsFile.cuts.map((cut) => (
-          <CutCard key={cut.id} cut={cut} storyName={storyName} authFetch={authFetch} />
+          <CutCard key={cut.id} cut={cut} storyName={storyName} authFetch={authFetch} onEditCut={onEditCut} />
         ))}
       </div>
     </div>

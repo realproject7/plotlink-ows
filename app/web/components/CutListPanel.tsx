@@ -73,6 +73,12 @@ interface CutListPanelProps {
   // upload, save overlays, generate-markdown (#343). Lets the parent PreviewPanel
   // refresh its own readiness/Episode-steps fetch so all status surfaces agree.
   onCutsChanged?: () => void;
+  // #371: a deep-link request from the Preview / Cut Inspector CTA. When it
+  // changes (by `seq`), focus that cut — open the lettering editor when
+  // `openEditor`, otherwise expand and scroll its row into view. `onFocusHandled`
+  // is called once applied so the parent can clear the request.
+  focusRequest?: { cutId: number; openEditor: boolean; seq: number } | null;
+  onFocusHandled?: () => void;
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded" | "text";
@@ -126,6 +132,7 @@ function CutRow({
   staleMessages,
   onRepairStale,
   repairing,
+  rowRef,
 }: {
   cut: Cut;
   storyName: string;
@@ -141,6 +148,7 @@ function CutRow({
   staleMessages: string[];
   onRepairStale: () => void;
   repairing: boolean;
+  rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -193,7 +201,11 @@ function CutRow({
   }, [authFetch, storyName, plotFile, cut.id, onUpdated]);
 
   return (
-    <div className={`border rounded ${expanded ? "border-accent/30" : "border-border"}`}>
+    <div
+      ref={rowRef}
+      data-cut-row={cut.id}
+      className={`border rounded ${expanded ? "border-accent/30" : "border-border"}`}
+    >
       <button
         onClick={onToggle}
         className="w-full px-3 py-2 text-left flex items-center gap-2 text-sm hover:bg-surface"
@@ -358,12 +370,14 @@ function CutRow({
   );
 }
 
-export function CutListPanel({ storyName, fileName, authFetch, language, uploadRetry, onCutsChanged }: CutListPanelProps) {
+export function CutListPanel({ storyName, fileName, authFetch, language, uploadRetry, onCutsChanged, focusRequest, onFocusHandled }: CutListPanelProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
   // Latest onCutsChanged in a ref so loadCuts can notify the parent without
   // taking the callback as a dependency (which would churn loadCuts/effects).
   const onCutsChangedRef = useRef(onCutsChanged);
   onCutsChangedRef.current = onCutsChanged;
+  const onFocusHandledRef = useRef(onFocusHandled);
+  onFocusHandledRef.current = onFocusHandled;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCut, setExpandedCut] = useState<number | null>(null);
@@ -383,8 +397,44 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // claims completion from unverified cut-plan fields while detection is pending
   // or after it failed.
   const [detectConfirmed, setDetectConfirmed] = useState(false);
+  // #371: cut whose row should be scrolled into view after a Preview→Edit deep
+  // link. Applied once its row has rendered (see the scroll effect below).
+  const [scrollTargetCutId, setScrollTargetCutId] = useState<number | null>(null);
+  // Live DOM refs for cut rows, keyed by cut id, used to scroll a focused cut
+  // into view. A ref map avoids re-rendering on registration.
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  // Guards against re-applying the same focus request twice within one mount.
+  const appliedFocusSeq = useRef<number | null>(null);
 
   const plotFile = fileName.replace(/\.md$/, "");
+
+  // Apply a Preview / Cut Inspector deep-link (#371): open the lettering editor
+  // for the cut, or expand + scroll its row when there is nothing to letter yet.
+  // The chosen expandedCut/editingCutId state persists until the rows render
+  // (cuts load asynchronously), so this does not need the cut plan loaded first.
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (appliedFocusSeq.current === focusRequest.seq) return;
+    appliedFocusSeq.current = focusRequest.seq;
+    if (focusRequest.openEditor) {
+      setEditingCutId(focusRequest.cutId);
+    } else {
+      setExpandedCut(focusRequest.cutId);
+      setScrollTargetCutId(focusRequest.cutId);
+    }
+    onFocusHandledRef.current?.();
+  }, [focusRequest]);
+
+  // Scroll a deep-linked, expanded cut into view once its row is on screen. Runs
+  // when the target is set and again after the cut plan loads (rows mount). Best
+  // effort: `scrollIntoView` is a no-op/undefined under jsdom.
+  useEffect(() => {
+    if (scrollTargetCutId == null) return;
+    const el = rowRefs.current.get(scrollTargetCutId);
+    if (!el) return;
+    el.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    setScrollTargetCutId(null);
+  }, [scrollTargetCutId, cutsFile]);
 
   const loadCuts = useCallback(async () => {
     try {
@@ -795,6 +845,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
             staleMessages={staleByCut.get(cut.id) ?? []}
             onRepairStale={repairStalePaths}
             repairing={repairing}
+            rowRef={(el) => { if (el) rowRefs.current.set(cut.id, el); else rowRefs.current.delete(cut.id); }}
           />
         ))}
       </div>

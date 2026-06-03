@@ -87,6 +87,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // "inspect" = cuts.json planning inspector. Kept distinct so planning prose
   // does not masquerade as publish content (#289).
   const [cartoonPreviewMode, setCartoonPreviewMode] = useState<"publish" | "inspect">("publish");
+  // #371: a deep-link request from the Cut Inspector's per-cut CTA into the Edit
+  // tab for that exact cut. `seq` makes repeated clicks (even on the same cut)
+  // re-trigger the focus/expand effect in CutListPanel; it is cleared once
+  // CutListPanel has applied it so re-entering the Edit tab manually is unaffected.
+  const [cutFocus, setCutFocus] = useState<{ cutId: number; openEditor: boolean; seq: number } | null>(null);
+  const handleEditCut = useCallback((cutId: number, openEditor: boolean) => {
+    setActiveTab("edit");
+    setCutFocus((prev) => ({ cutId, openEditor, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -854,7 +863,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               {cartoonPreviewMode === "publish" ? (
                 <CartoonPublishPreview content={fileData?.content ?? ""} stage={cartoonStage} />
               ) : (
-                <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} />
+                <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} onEditCut={handleEditCut} />
               )}
             </div>
           </div>
@@ -876,7 +885,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         )
       ) : isCartoonPlot ? (
         <div className="flex-1 min-h-[22rem] overflow-hidden" style={{ background: "var(--paper-bg)" }}>
-          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} />
+          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} focusRequest={cutFocus} onFocusHandled={() => setCutFocus(null)} />
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
