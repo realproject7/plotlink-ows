@@ -200,10 +200,11 @@ describe("CutListPanel", () => {
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
     const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    // Actionable Codex task content (the #267 deliverable):
+    // Actionable Codex task content (the #267 deliverable, updated for #403):
     expect(copied).toContain("assets/plot-01/cut-01-clean.webp");
-    expect(copied).toContain("SAVE IT AS AN ACTUAL FILE");
-    expect(copied).toContain("VERIFY the file exists");
+    expect(copied).toContain("Produce the actual image");
+    // A generated PNG is acceptable and routed to the Import from Codex picker.
+    expect(copied).toContain("Import from Codex");
     expect(copied).toContain("under 1MB");
     expect(copied).toContain("final lettering and upload happen later");
     // The pure visual prompt is still embedded (no scene detail lost):

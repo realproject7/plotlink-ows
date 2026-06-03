@@ -94,19 +94,22 @@ describe("buildCodexTaskPrompt", () => {
     expect(prompt).toContain("assets/plot-01/cut-03-clean.webp");
   });
 
-  it("tells the agent to create the actual file, not describe it", () => {
+  it("tells the agent to produce the actual image, not just a prompt", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("SAVE IT AS AN ACTUAL FILE");
+    expect(prompt).toContain("Produce the actual image");
     expect(prompt).toContain("do not just describe it or return a prompt");
   });
 
-  it("requires verifying the file exists before reporting success", () => {
+  it("accepts a generated PNG and routes it to the Import from Codex picker (#403)", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("VERIFY the file exists");
-    expect(prompt).toContain("Do not claim success unless the file is actually written");
+    // A PNG in the cache is an accepted outcome — the agent must NOT convert it.
+    expect(prompt).toContain("only produces a PNG");
+    expect(prompt).toContain("~/.codex/generated_images");
+    expect(prompt).toContain("do NOT convert or rename it yourself");
+    expect(prompt).toContain("Import from Codex");
   });
 
-  it("states the format and size limit", () => {
+  it("states the format and size limit for the direct-save path", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
     expect(prompt).toContain("WebP");
     expect(prompt).toContain("under 1MB");

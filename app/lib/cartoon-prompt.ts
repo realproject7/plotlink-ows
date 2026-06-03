@@ -40,24 +40,26 @@ export function cleanImageOutputPath(plotFile: string, cutId: number): string {
  * Build an actionable Codex *task* prompt for generating a cut's clean image.
  *
  * Unlike `buildCleanImagePrompt` (a pure visual description), this instructs the
- * agent to CREATE THE ACTUAL FILE at the exact target path and verify it before
- * reporting success — so Codex produces a real `cut-XX-clean.webp` asset rather
- * than returning a prompt or description. The visual prompt is embedded so no
- * scene detail is lost. Pure function — no side effects.
+ * agent to PRODUCE THE ACTUAL IMAGE and hand it off to the cut. A generated PNG in
+ * the image cache is an accepted outcome: the agent must NOT convert it (no
+ * agent-side image tools) — the writer imports it via the OWS "Import from Codex"
+ * button, which converts it. A tool that already emits WebP/JPEG <1MB can write the
+ * asset path directly. The visual prompt is embedded so no scene detail is lost.
+ * Pure function — no side effects.
  */
 export function buildCodexTaskPrompt(cut: Cut, plotFile: string): string {
   const outputPath = cleanImageOutputPath(plotFile, cut.id);
   return [
-    `Generate the clean image for cut ${cut.id} and SAVE IT AS AN ACTUAL FILE at: ${outputPath}`,
+    `Generate the clean image for cut ${cut.id}.`,
     "",
     "Image description:",
     buildCleanImagePrompt(cut),
     "",
-    "Requirements:",
-    `- Create the real image file at ${outputPath} — do not just describe it or return a prompt.`,
+    "How to hand it off:",
+    "- Produce the actual image — do not just describe it or return a prompt.",
+    `- If your image tool can write a WebP or JPEG under 1MB, save it at ${outputPath} and run "Sync clean images".`,
+    "- If it only produces a PNG (e.g. built-in image generation saves to ~/.codex/generated_images), that is fine — do NOT convert or rename it yourself. Leave it there and import it into this cut with the OWS \"Import from Codex\" button, which converts the PNG automatically.",
     "- Clean image only: no text, speech bubbles, captions, sound effects, signage, watermark, or signature.",
-    "- Format: WebP (or JPEG). Size: under 1MB.",
-    `- After saving, VERIFY the file exists at ${outputPath} before reporting success. Do not claim success unless the file is actually written.`,
     "- Do not letter or upload anything — final lettering and upload happen later in OWS.",
   ].join("\n");
 }
