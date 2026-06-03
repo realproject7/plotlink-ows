@@ -15,6 +15,7 @@ vi.mock("../lib/import-image", () => ({
 }));
 
 import { CutListPanel } from "./CutListPanel";
+import { CodexImportPicker, formatRelativeTime } from "./CodexImportPicker";
 import { listCodexCacheImages, fetchCodexCacheFile } from "../lib/codex-import";
 
 beforeAll(() => {
@@ -106,6 +107,92 @@ describe("Codex cache import picker (#403)", () => {
     await expandAndOpenPicker(authFetch);
     await waitFor(() => expect(screen.getByTestId("codex-picker-empty-1")).toBeInTheDocument());
     expect(authFetch.mock.calls.some((c) => String(c[0]).includes("/upload-clean/"))).toBe(false);
+  });
+});
+
+describe("Codex picker visual selection + filtering (#409)", () => {
+  function pickerAuthFetch(images: unknown[]) {
+    return vi.fn((url: string) => {
+      if (url === "/api/codex/images") return Promise.resolve(jsonRes({ images }));
+      if (url.startsWith("/api/codex/images/")) {
+        return Promise.resolve(blobRes(new Blob([new Uint8Array(10)], { type: "image/png" })));
+      }
+      return Promise.resolve(jsonRes({}));
+    });
+  }
+
+  function renderPicker(images: unknown[]) {
+    const authFetch = pickerAuthFetch(images);
+    const onImport = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CodexImportPicker authFetch={authFetch} cutId={1} onImport={onImport} onClose={vi.fn()} />,
+    );
+    return { authFetch, onImport };
+  }
+
+  it("formatRelativeTime gives readable, now-relative labels (and never a negative future)", () => {
+    const now = 10_000_000_000;
+    expect(formatRelativeTime(now - 10_000, now)).toBe("just now");
+    expect(formatRelativeTime(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(formatRelativeTime(now - 2 * 3_600_000, now)).toBe("2h ago");
+    expect(formatRelativeTime(now - 3 * 86_400_000, now)).toBe("3d ago");
+    expect(formatRelativeTime(now - 2 * 7 * 86_400_000, now)).toBe("2w ago");
+    // Clock skew (mtime in the future) degrades gracefully, never "-1m ago".
+    expect(formatRelativeTime(now + 60_000, now)).toBe("just now");
+  });
+
+  it("shows readable time + size metadata and demotes the noisy hash filename to a hover title", async () => {
+    renderPicker([
+      { token: "tA", name: "ig_alpha.png", size: 2_300_000, mtimeMs: Date.now() - 5 * 60_000 },
+    ]);
+    await waitFor(() => expect(screen.getByTestId("codex-image-tA")).toBeInTheDocument());
+    const row = screen.getByTestId("codex-image-tA");
+    // Readable metadata leads; the size is shown alongside the "x ago" cue.
+    expect(row.textContent).toMatch(/ago/);
+    expect(row.textContent).toMatch(/2\.2 MB/);
+    // The hash filename is still available, but as a hover title (reduced noise).
+    expect(screen.getByTitle("ig_alpha.png")).toBeInTheDocument();
+  });
+
+  it("filters the list by file name and reports the visible count", async () => {
+    renderPicker([
+      { token: "tA", name: "ig_alpha.png", size: 100, mtimeMs: 3 },
+      { token: "tB", name: "ig_beta.png", size: 100, mtimeMs: 2 },
+      { token: "tC", name: "ig_gamma.png", size: 100, mtimeMs: 1 },
+    ]);
+    await waitFor(() => expect(screen.getByTestId("codex-image-tA")).toBeInTheDocument());
+    expect(screen.getByTestId("codex-picker-count-1").textContent).toBe("3 images");
+
+    fireEvent.change(screen.getByTestId("codex-picker-search-1"), { target: { value: "beta" } });
+
+    await waitFor(() => expect(screen.queryByTestId("codex-image-tA")).not.toBeInTheDocument());
+    expect(screen.getByTestId("codex-image-tB")).toBeInTheDocument();
+    expect(screen.queryByTestId("codex-image-tC")).not.toBeInTheDocument();
+    expect(screen.getByTestId("codex-picker-count-1").textContent).toBe("1 of 3");
+  });
+
+  it("shows a no-match state (still read-only) when the filter excludes everything", async () => {
+    const { onImport } = renderPicker([
+      { token: "tA", name: "ig_alpha.png", size: 100, mtimeMs: 1 },
+    ]);
+    await waitFor(() => expect(screen.getByTestId("codex-image-tA")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("codex-picker-search-1"), { target: { value: "zzz-nope" } });
+
+    await waitFor(() => expect(screen.getByTestId("codex-picker-no-match-1")).toBeInTheDocument());
+    expect(screen.queryByTestId("codex-image-tA")).not.toBeInTheDocument();
+    // Filtering imports nothing — read-only until an explicit Import click.
+    expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("empty-state copy points at Codex without the old terminal jargon", async () => {
+    renderPicker([]);
+    await waitFor(() => expect(screen.getByTestId("codex-picker-empty-1")).toBeInTheDocument());
+    const empty = screen.getByTestId("codex-picker-empty-1");
+    expect(empty.textContent).toMatch(/Generate art in Codex/);
+    expect(empty.textContent).not.toMatch(/terminal/i);
+    // No filter box when there are no images to filter.
+    expect(screen.queryByTestId("codex-picker-search-1")).not.toBeInTheDocument();
   });
 });
 
