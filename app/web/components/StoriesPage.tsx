@@ -347,16 +347,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         return false;
       }
 
-      // Defense-in-depth (#359): a cartoon Genesis is the reader-facing opening,
-      // so block publish when it has no real H1 title even if the panel guard is
-      // bypassed. (Warnings are non-blocking and surfaced only in the panel.)
-      if (publishContentType === "cartoon" && fileName === "genesis.md"
-        && cartoonGenesisReadiness(fileData.content).blockers.length > 0) {
-        setPublishProgress(
-          "Add a “# Title” heading to genesis.md before publishing — the Story opening needs a real title readers see first.",
-        );
-        setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
-        return false;
+      // Defense-in-depth (#359, hardened in #400): a cartoon Genesis is the
+      // reader-facing opening, so block publish when it isn't a real story
+      // opening (missing H1, synopsis/outline shape, too short, or a single dense
+      // block) even if the panel guard is bypassed. Surface the specific blocker.
+      if (publishContentType === "cartoon" && fileName === "genesis.md") {
+        const genesisBlockers = cartoonGenesisReadiness(fileData.content).blockers;
+        if (genesisBlockers.length > 0) {
+          setPublishProgress(
+            `Genesis is the reader-facing Story opening — fix it before publishing: ${genesisBlockers[0]}`,
+          );
+          setTimeout(() => { setPublishingFile(null); setPublishProgress(""); }, 6000);
+          return false;
+        }
       }
 
       // For plot files, find the storylineId from the genesis publish status

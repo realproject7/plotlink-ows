@@ -671,9 +671,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const episodeTitleMissing = isCartoonPlot && !isPublished
     && !hasExplicitEpisodeTitle({ fileContent: fileData?.content ?? "", episodeTitle: cartoonEpisodeTitle });
 
-  // Cartoon Genesis prologue readiness (#359). Genesis is the reader-facing
-  // opening readers meet before plot-01, so block a missing H1 title and warn on
-  // a too-short / synopsis-shaped opening. Cartoon-only; fiction is unchanged.
+  // Cartoon Genesis prologue readiness (#359, hardened in #400). Genesis is the
+  // reader-facing opening readers meet before plot-01, so block a missing H1
+  // title AND a too-short / synopsis-shaped / single-dense-block opening that
+  // doesn't read as a real story opening. Cartoon-only; fiction is unchanged.
   const genesisReadiness = (isCartoonGenesis && !isPublished)
     ? cartoonGenesisReadiness(fileData?.content ?? "")
     : null;
@@ -738,10 +739,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     );
   };
 
-  // Cartoon Genesis prologue readiness panel (#359), shown before publish. Labels
-  // Genesis as the reader-facing Story opening / Prologue, blocks a missing title,
-  // warns on a thin/synopsis-shaped opening, and reminds the writer it should
-  // bridge into Episode 01. Fiction genesis never renders this (isCartoonGenesis).
+  // Cartoon Genesis prologue readiness panel (#359, hardened in #400), shown
+  // before publish. Labels Genesis as the reader-facing Story opening / Prologue,
+  // blocks a missing title and a thin/synopsis-shaped/single-dense-block opening,
+  // and reminds the writer it should bridge into Episode 01. Fiction genesis never
+  // renders this (isCartoonGenesis).
   const renderGenesisReadiness = () => {
     if (!genesisReadiness) return null;
     return (
@@ -752,7 +754,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       >
         <span className="text-[11px] font-medium text-foreground">Story opening (Prologue)</span>
         <span className="text-[10px] text-muted" data-testid="genesis-readiness-hint">
-          Readers meet this opening before Episode 01 — set up the premise and stakes, then bridge naturally into Episode 01.
+          Genesis is the first thing readers see. Write it as the story opening/prologue, not a synopsis — set up the premise and stakes, then bridge into Episode 01.
         </span>
         {genesisReadiness.blockers.map((b, i) => (
           <span key={`b-${i}`} className="text-[10px] text-error" data-testid="genesis-readiness-blocker">{b}</span>
