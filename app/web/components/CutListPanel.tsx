@@ -8,7 +8,7 @@ import { withRateLimitRetry, createUploadThrottle, type RetryDeps } from "../lib
 import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-image";
 import { CodexImportPicker } from "./CodexImportPicker";
 import { FinishEpisodePanel } from "./FinishEpisodePanel";
-import { cartoonChecklist } from "@app-lib/cartoon-readiness";
+import { cartoonChecklist, checkMarkdownReadiness } from "@app-lib/cartoon-readiness";
 
 interface Overlay {
   id: string;
@@ -421,6 +421,13 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   const [genWarnings, setGenWarnings] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  // Episode publish markdown + on-chain state, for the guided Finish panel (#414):
+  // distinguishes uploaded-but-not-prepared from a prepared/ready-to-publish or
+  // already-published episode (which cuts.json alone cannot tell apart).
+  const [episodeState, setEpisodeState] = useState<{ markdownReady: boolean; published: boolean }>({
+    markdownReady: false,
+    published: false,
+  });
   const [syncing, setSyncing] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -483,8 +490,28 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         setError(data.error || "Failed to load cuts");
         return;
       }
-      setCutsFile(await res.json());
+      const parsed = await res.json();
+      setCutsFile(parsed);
       setError(null);
+      // Read the episode's publish markdown + on-chain status so the Finish panel
+      // can show "Episode sequence prepared" / "Ready to publish" / "Published"
+      // distinctly, not just upload progress (#414). Best-effort — a missing file
+      // or error simply leaves those steps as not-yet-prepared.
+      try {
+        const fileRes = await authFetch(`/api/stories/${storyName}/${fileName}`);
+        if (fileRes.ok) {
+          const fd = await fileRes.json();
+          const content: string = typeof fd?.content === "string" ? fd.content : "";
+          const cuts = Array.isArray(parsed?.cuts) ? parsed.cuts : [];
+          const markdownReady = content.length > 0 && checkMarkdownReadiness(content, cuts).ready;
+          const published = fd?.status === "published" || fd?.status === "published-not-indexed";
+          setEpisodeState({ markdownReady, published });
+        } else {
+          setEpisodeState({ markdownReady: false, published: false });
+        }
+      } catch {
+        setEpisodeState({ markdownReady: false, published: false });
+      }
       // Tell the parent the cut plan changed so its readiness/Episode-steps view
       // refreshes in lockstep (e.g. after a lettering export, #343).
       onCutsChangedRef.current?.();
@@ -493,7 +520,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     } finally {
       setLoading(false);
     }
-  }, [authFetch, storyName, plotFile]);
+  }, [authFetch, storyName, plotFile, fileName]);
 
   // Server-confirmed detection of local clean files for cuts whose cleanImagePath
   // is still null. Best-effort: failures leave the detected set unchanged.
@@ -770,13 +797,15 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // must be re-exported before publish. Only tailed speech bubbles are affected.
   const staleTailIds = cutsFile.cuts.filter((c) => isStaleTailedExport(c)).map((c) => c.id);
 
-  // Guided "Finish episode" state (#414): writer-language step status + whether
-  // there's anything left to finish (an exported final to upload, or uploads done
-  // so the publish markdown can be (re)prepared).
-  const finishChecklist = cartoonChecklist({ cuts: cutsFile.cuts });
+  // Guided "Finish episode" state (#414). The checklist's publish step reflects the
+  // real on-chain status; markdownReady distinguishes uploaded-but-not-prepared from
+  // a prepared/ready-to-publish episode. canFinish = something the Finish action can
+  // still do: a final to upload, or uploads done but the sequence not yet prepared.
+  const finishChecklist = cartoonChecklist({ cuts: cutsFile.cuts, published: episodeState.published });
+  const uploadStepDone = finishChecklist.steps.find((s) => s.key === "upload")?.status === "done";
   const canFinish =
     cutsFile.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid) ||
-    cutsFile.cuts.some((ct) => ct.uploadedCid);
+    (uploadStepDone && !episodeState.markdownReady);
 
   return (
     <div className="h-full min-h-[22rem] flex flex-col overflow-hidden" data-testid="cut-list-panel">
@@ -895,6 +924,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         finishing={uploading}
         progressText={uploadProgress}
         canFinish={canFinish}
+        markdownReady={episodeState.markdownReady}
+        published={episodeState.published}
       />
 
       {/* Cut list */}

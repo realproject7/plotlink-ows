@@ -17,6 +17,17 @@ interface FinishEpisodePanelProps {
   progressText?: string;
   /** Whether there is anything left to finish (≥1 exported final not yet published). */
   canFinish: boolean;
+  /** The publish markdown is built and passes readiness — "Episode sequence prepared". */
+  markdownReady?: boolean;
+  /** The episode is published on-chain. */
+  published?: boolean;
+}
+
+interface DisplayStep {
+  key: string;
+  label: string;
+  status: StepStatus;
+  detail: string | null;
 }
 
 /**
@@ -42,17 +53,37 @@ export function FinishEpisodePanel({
   finishing,
   progressText,
   canFinish,
+  markdownReady = false,
+  published = false,
 }: FinishEpisodePanelProps) {
   if (!checklist || checklist.steps.length === 0) return null;
 
   const groups = groupCartoonIssues(issues);
-  const allDone = checklist.steps.every((s) => s.status === "done");
+
+  // The base checklist (plan → upload) models per-cut art/lettering/export/upload
+  // progress; it has no notion of the publish markdown being assembled. #414 needs
+  // the post-upload tail modelled explicitly, so replace its single "publish" step
+  // with two real states: "Episode sequence prepared" (markdown built + ready) and
+  // "Ready to publish" (which becomes "Published" once it's on-chain).
+  const uploadDone = checklist.steps.find((s) => s.key === "upload")?.status === "done";
+  const ready = uploadDone && markdownReady && !published; // ready to publish, not yet published
+
+  const assembleStatus: StepStatus = published || markdownReady ? "done" : uploadDone ? "current" : "todo";
+  const readyStatus: StepStatus = published ? "done" : ready ? "current" : "todo";
+
+  const steps: DisplayStep[] = [
+    ...checklist.steps.filter((s) => s.key !== "publish"),
+    { key: "assemble", label: "Episode sequence prepared", status: assembleStatus, detail: null },
+    { key: "ready", label: published ? "Published to PlotLink" : "Ready to publish", status: readyStatus, detail: null },
+  ];
 
   const buttonLabel = finishing
     ? progressText || "Finishing…"
-    : allDone
-      ? "Episode ready to publish"
-      : "Finish episode";
+    : published
+      ? "Published ✓"
+      : ready
+        ? "Episode ready to publish"
+        : "Finish episode";
 
   return (
     <div
@@ -70,7 +101,7 @@ export function FinishEpisodePanel({
 
       {/* Writer-language step status — the exact webtoon production sequence. */}
       <ol className="flex flex-wrap gap-1.5">
-        {checklist.steps.map((s) => (
+        {steps.map((s) => (
           <li
             key={s.key}
             data-testid={`finish-step-${s.key}`}

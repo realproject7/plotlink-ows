@@ -51,10 +51,12 @@ describe("FinishEpisodePanel (#414)", () => {
       <FinishEpisodePanel checklist={checklist} issues={[]} onFinish={onFinish} finishing={false} canFinish />,
     );
 
-    // Earlier steps are done; export is done; upload is the current step; publish todo.
+    // Earlier steps are done; export is done; upload is the current step; the
+    // prepared/ready tail is still to do.
     expect(screen.getByTestId("finish-step-export").getAttribute("data-status")).toBe("done");
     expect(screen.getByTestId("finish-step-upload").getAttribute("data-status")).toBe("current");
-    expect(screen.getByTestId("finish-step-publish").getAttribute("data-status")).toBe("todo");
+    expect(screen.getByTestId("finish-step-assemble").getAttribute("data-status")).toBe("todo");
+    expect(screen.getByTestId("finish-step-ready").getAttribute("data-status")).toBe("todo");
     // Writer-language labels, not file jargon.
     expect(screen.getByTestId("finish-step-upload").textContent).toMatch(/Upload final images/);
 
@@ -65,15 +67,56 @@ describe("FinishEpisodePanel (#414)", () => {
     expect(onFinish).toHaveBeenCalledTimes(1);
   });
 
-  it("READY: all steps done shows a ready-to-publish label", () => {
+  it("READY (unpublished): uploads done + markdown ready ⇒ prepared done, ready current, ready-to-publish label", () => {
+    const cuts = [exportedCut(1, { uploadedCid: "Qm1", uploadedUrl: "https://x/1" }),
+                  exportedCut(2, { uploadedCid: "Qm2", uploadedUrl: "https://x/2" })];
+    // Not yet published on-chain, but the sequence is prepared and passes readiness.
+    const checklist = cartoonChecklist({ cuts, published: false });
+    render(
+      <FinishEpisodePanel
+        checklist={checklist} issues={[]} onFinish={vi.fn()} finishing={false}
+        canFinish={false} markdownReady published={false}
+      />,
+    );
+    expect(screen.getByTestId("finish-step-upload").getAttribute("data-status")).toBe("done");
+    expect(screen.getByTestId("finish-step-assemble").getAttribute("data-status")).toBe("done");
+    expect(screen.getByTestId("finish-step-ready").getAttribute("data-status")).toBe("current");
+    expect(screen.getByTestId("finish-step-ready")).toHaveTextContent("Ready to publish");
+    expect(screen.getByTestId("finish-episode-btn")).toHaveTextContent("Episode ready to publish");
+  });
+
+  it("UPLOADED but NOT prepared: prepared step is the current action, Finish stays enabled", () => {
+    const cuts = [exportedCut(1, { uploadedCid: "Qm1", uploadedUrl: "https://x/1" }),
+                  exportedCut(2, { uploadedCid: "Qm2", uploadedUrl: "https://x/2" })];
+    const checklist = cartoonChecklist({ cuts, published: false });
+    render(
+      <FinishEpisodePanel
+        checklist={checklist} issues={[]} onFinish={vi.fn()} finishing={false}
+        canFinish markdownReady={false} published={false}
+      />,
+    );
+    // Uploads done, but the publish sequence isn't prepared yet → that's the next step.
+    expect(screen.getByTestId("finish-step-upload").getAttribute("data-status")).toBe("done");
+    expect(screen.getByTestId("finish-step-assemble").getAttribute("data-status")).toBe("current");
+    expect(screen.getByTestId("finish-step-ready").getAttribute("data-status")).toBe("todo");
+    expect(screen.getByTestId("finish-episode-btn")).toHaveTextContent("Finish episode");
+    expect(screen.getByTestId("finish-episode-btn")).not.toBeDisabled();
+  });
+
+  it("PUBLISHED: every step done, Published label, disabled", () => {
     const cuts = [exportedCut(1, { uploadedCid: "Qm1", uploadedUrl: "https://x/1" }),
                   exportedCut(2, { uploadedCid: "Qm2", uploadedUrl: "https://x/2" })];
     const checklist = cartoonChecklist({ cuts, published: true });
     render(
-      <FinishEpisodePanel checklist={checklist} issues={[]} onFinish={vi.fn()} finishing={false} canFinish={false} />,
+      <FinishEpisodePanel
+        checklist={checklist} issues={[]} onFinish={vi.fn()} finishing={false}
+        canFinish={false} markdownReady published
+      />,
     );
-    expect(screen.getByTestId("finish-step-publish").getAttribute("data-status")).toBe("done");
-    expect(screen.getByTestId("finish-episode-btn")).toHaveTextContent("Episode ready to publish");
+    expect(screen.getByTestId("finish-step-assemble").getAttribute("data-status")).toBe("done");
+    expect(screen.getByTestId("finish-step-ready").getAttribute("data-status")).toBe("done");
+    expect(screen.getByTestId("finish-step-ready")).toHaveTextContent("Published to PlotLink");
+    expect(screen.getByTestId("finish-episode-btn")).toHaveTextContent("Published ✓");
     expect(screen.getByTestId("finish-episode-btn")).toBeDisabled();
   });
 
