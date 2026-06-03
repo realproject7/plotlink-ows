@@ -11,8 +11,15 @@ afterEach(cleanup);
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 
-// Unpublished (draft) genesis — the pre-publish cover section is shown.
-const DRAFT_GENESIS = { file: "genesis.md", status: "draft", content: "# A story\n\nHook." };
+// Unpublished (draft) genesis — the pre-publish cover section is shown. Content
+// is a valid multi-paragraph story opening so the cartoon Genesis gate (#400)
+// leaves the publish button enabled for these cover-autodetect tests.
+const DRAFT_GENESIS = {
+  file: "genesis.md",
+  status: "draft",
+  content:
+    "# A Story\n\nThe harbor lights flicker out one by one as Dana ties off the last mooring line, her hands raw from a double shift she never agreed to take.\n\nShe has until dawn to find the manifest her brother hid before the inspectors arrive, or the whole crew loses the boat that has fed them for years.\n\nOut past the breakwater, an unfamiliar engine cuts its lights and waits. Whatever is coming, it starts tonight.",
+};
 
 const WEBP_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
 
