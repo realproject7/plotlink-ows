@@ -404,14 +404,24 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   const NUMBERED_GOOD_PLOT_PAGE =
     `<title>Episode 1 — The Couple Coupon — Coupon Crush — PlotLink</title>` +
     `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush"/>`;
+  const DASHED_STORYLINE_PAGE =
+    `<title>Coupon Crush — Season One — PlotLink</title>` +
+    `<meta property="og:title" content="Coupon Crush — Season One"/>`;
+  const PLOT_WITH_DASHED_STORYLINE_PAGE =
+    `<title>The Couple Coupon — Coupon Crush — Season One — PlotLink</title>` +
+    `<meta property="og:title" content="The Couple Coupon — Coupon Crush — Season One"/>`;
   const STORYLINE_PAGE = `<title>genesis — PlotLink</title><meta property="og:title" content="genesis"/>`;
 
-  function stubFetch(html: string, ok = true) {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok, status: ok ? 200 : 404, text: () => Promise.resolve(html) })));
+  function stubFetchSequence(...responses: Array<{ html: string; ok?: boolean }>) {
+    vi.stubGlobal("fetch", vi.fn((() => {
+      const next = responses.shift() ?? { html: "", ok: false };
+      const ok = next.ok ?? true;
+      return Promise.resolve({ ok, status: ok ? 200 : 404, text: () => Promise.resolve(next.html) });
+    }) as typeof fetch));
   }
 
   it("returns the plot title (leading og:title segment) from the plot page", async () => {
-    stubFetch(PLOT_PAGE);
+    stubFetchSequence({ html: PLOT_PAGE }, { html: STORYLINE_PAGE });
     const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
     const data = await res.json();
     expect(data).toMatchObject({ ok: true, fetched: true, plotTitle: "plot-01" });
@@ -421,7 +431,29 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   });
 
   it("preserves a numbered reader-facing title when the plot title itself contains an em dash (#394)", async () => {
-    stubFetch(NUMBERED_GOOD_PLOT_PAGE);
+    stubFetchSequence({ html: NUMBERED_GOOD_PLOT_PAGE }, { html: STORYLINE_PAGE });
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({
+      ok: true,
+      fetched: true,
+      plotTitle: "Episode 1 — The Couple Coupon",
+    });
+  });
+
+  it("strips the full storyline suffix when the storyline title itself contains an em dash (#396)", async () => {
+    stubFetchSequence({ html: PLOT_WITH_DASHED_STORYLINE_PAGE }, { html: DASHED_STORYLINE_PAGE });
+    const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
+    const data = await res.json();
+    expect(data).toMatchObject({
+      ok: true,
+      fetched: true,
+      plotTitle: "The Couple Coupon",
+    });
+  });
+
+  it("falls back to last-segment stripping if the storyline page read is unavailable", async () => {
+    stubFetchSequence({ html: NUMBERED_GOOD_PLOT_PAGE }, { html: "<html>404</html>", ok: false });
     const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
     const data = await res.json();
     expect(data).toMatchObject({
@@ -432,7 +464,7 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   });
 
   it("returns the storyline title from the storyline page (no plotIndex)", async () => {
-    stubFetch(STORYLINE_PAGE);
+    stubFetchSequence({ html: STORYLINE_PAGE });
     const res = await app.request("/api/publish/public-title?storylineId=59");
     const data = await res.json();
     expect(data).toMatchObject({ ok: true, fetched: true, storylineTitle: "genesis" });
@@ -440,7 +472,7 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   });
 
   it("reports fetched:false (inconclusive) on a non-200 page", async () => {
-    stubFetch("<html>404</html>", false);
+    stubFetchSequence({ html: "<html>404</html>", ok: false }, { html: STORYLINE_PAGE });
     const res = await app.request("/api/publish/public-title?storylineId=59&plotIndex=1");
     const data = await res.json();
     expect(data).toMatchObject({ ok: true, fetched: false });

@@ -128,15 +128,23 @@ publish.get("/public-title", async (c) => {
   const url = isPlot
     ? `${PLOTLINK_URL}/story/${storylineId}/${plotIndex}`
     : `${PLOTLINK_URL}/story/${storylineId}`;
+  const storylineUrl = `${PLOTLINK_URL}/story/${storylineId}`;
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) return c.json({ ok: true, fetched: false });
-    const og = extractOgTitle(await res.text());
-    if (!og) return c.json({ ok: true, fetched: false });
-    return isPlot
-      ? c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(og) })
-      : c.json({ ok: true, fetched: true, storylineTitle: og });
+    if (!isPlot) {
+      const res = await fetch(url);
+      if (!res.ok) return c.json({ ok: true, fetched: false });
+      const og = extractOgTitle(await res.text());
+      if (!og) return c.json({ ok: true, fetched: false });
+      return c.json({ ok: true, fetched: true, storylineTitle: og });
+    }
+
+    const [plotRes, storylineRes] = await Promise.all([fetch(url), fetch(storylineUrl)]);
+    if (!plotRes.ok) return c.json({ ok: true, fetched: false });
+    const plotOg = extractOgTitle(await plotRes.text());
+    if (!plotOg) return c.json({ ok: true, fetched: false });
+    const storylineOg = storylineRes.ok ? extractOgTitle(await storylineRes.text()) : null;
+    return c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(plotOg, storylineOg) });
   } catch {
     // Network/parse failure → inconclusive; never block on a flaky read.
     return c.json({ ok: true, fetched: false });
