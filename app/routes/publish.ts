@@ -11,6 +11,23 @@ import { readStoryMeta } from "./stories";
 import { sniffImageType, findStaleAssetPaths } from "../lib/clean-image-sync";
 import { isValidImageAsset } from "../lib/image-asset-validate";
 import { extractOgTitle, leadingTitleSegment } from "../lib/public-title";
+import { canonicalizeGenre, GENRES } from "../../lib/genres";
+
+/**
+ * Resolve a request's genre to a canonical PlotLink value (#412). Returns the
+ * canonical string for a valid/aliased genre, `undefined` for an absent/blank
+ * genre (no metadata change), or an `{ error }` for a non-empty genre that can't
+ * be mapped — so the route fails locally with a clear message instead of letting
+ * PlotLink reject it and leave the public story UNCATEGORIZED.
+ */
+function resolveGenre(input: string | undefined): { genre?: string } | { error: string } {
+  if (!input || !input.trim()) return { genre: undefined };
+  const canonical = canonicalizeGenre(input);
+  if (!canonical) {
+    return { error: `Invalid genre "${input}". Use one of: ${GENRES.join(", ")}.` };
+  }
+  return { genre: canonical };
+}
 
 /**
  * Validate that an uploaded image's actual magic bytes match its claimed
@@ -177,6 +194,15 @@ publish.post("/file", async (c) => {
     return c.json({ error: "title and content required" }, 400);
   }
 
+  // Canonicalize the genre up-front (#412) so it's the canonical PlotLink value in
+  // the content metadata, and a non-mappable genre fails here with a clear message
+  // instead of after the on-chain publish.
+  const genreResult = resolveGenre(body.genre);
+  if ("error" in genreResult) {
+    return c.json({ error: genreResult.error }, 400);
+  }
+  const canonicalGenre = genreResult.genre;
+
   // Enforce character limits
   const isGenesis = body.fileName === "genesis.md";
   const isPlot = /^plot-\d+\.md$/.test(body.fileName);
@@ -259,7 +285,7 @@ publish.post("/file", async (c) => {
           body.storylineId,
           body.title,
           body.content,
-          body.genre,
+          canonicalGenre,
           async (progress) => {
             await stream.writeSSE({ data: JSON.stringify(progress) });
           },
@@ -271,7 +297,7 @@ publish.post("/file", async (c) => {
           wallet.name,
           body.title,
           body.content,
-          body.genre,
+          canonicalGenre,
           async (progress) => {
             await stream.writeSSE({ data: JSON.stringify(progress) });
           },
@@ -435,13 +461,21 @@ publish.post("/update-storyline", async (c) => {
       return c.json({ error: "storylineId required" }, 400);
     }
 
+    // Canonicalize the genre before the signed on-chain metadata update so a
+    // natural label (e.g. "Sci-Fi") becomes "Science Fiction" rather than being
+    // rejected by PlotLink and leaving the public story UNCATEGORIZED (#412).
+    const genreResult = resolveGenre(body.genre);
+    if ("error" in genreResult) {
+      return c.json({ error: genreResult.error }, 400);
+    }
+
     await updateStoryline(
       wallet.name,
       address as `0x${string}`,
       body.storylineId,
       {
         coverCid: body.coverCid,
-        genre: body.genre,
+        genre: genreResult.genre,
         language: body.language,
         isNsfw: body.isNsfw,
       },

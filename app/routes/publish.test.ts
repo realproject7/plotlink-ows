@@ -32,7 +32,7 @@ vi.mock("../../lib/ows/wallet", () => ({
 }));
 
 import { publishRoutes } from "./publish";
-import { getEthBalance, getCreationFee, estimatePublishCost } from "../lib/publish";
+import { getEthBalance, getCreationFee, estimatePublishCost, updateStoryline } from "../lib/publish";
 import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
 import { createCutsFile, writeCutsFile } from "../lib/cuts";
 import { writeStoryMeta } from "./stories";
@@ -494,5 +494,59 @@ describe("GET /api/publish/public-title — indexed public-title read (#379)", (
   it("rejects a missing/invalid storylineId", async () => {
     const res = await app.request("/api/publish/public-title");
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/publish/update-storyline — canonical genre mapping (#412)", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    app = makeApp();
+    vi.mocked(listAgentWallets).mockReturnValue([
+      { name: "plotlink-writer", address: "0xabc" } as never,
+    ]);
+    vi.mocked(getBaseAddress).mockReturnValue("0xabc" as never);
+    vi.mocked(updateStoryline).mockResolvedValue(undefined as never);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function update(body: Record<string, unknown>) {
+    const res = await app.request("/api/publish/update-storyline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { res, data: await res.json() };
+  }
+
+  it("maps the Sci-Fi alias to the canonical Science Fiction before updating", async () => {
+    const { res } = await update({ storylineId: 62, genre: "Sci-Fi" });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(updateStoryline)).toHaveBeenCalledTimes(1);
+    const sentUpdates = vi.mocked(updateStoryline).mock.calls[0][3];
+    expect(sentUpdates.genre).toBe("Science Fiction");
+  });
+
+  it("passes a valid canonical genre through unchanged", async () => {
+    const { res } = await update({ storylineId: 62, genre: "Science Fiction" });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(updateStoryline).mock.calls[0][3].genre).toBe("Science Fiction");
+  });
+
+  it("rejects a non-mappable genre with a clear 400, before signing/updating", async () => {
+    const { res, data } = await update({ storylineId: 62, genre: "Definitely Not A Genre" });
+    expect(res.status).toBe(400);
+    expect(data.error).toMatch(/Invalid genre/);
+    expect(data.error).toContain("Science Fiction");
+    expect(vi.mocked(updateStoryline)).not.toHaveBeenCalled();
+  });
+
+  it("treats a blank/absent genre as no genre change (no error)", async () => {
+    const { res } = await update({ storylineId: 62, coverCid: "QmCover" });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(updateStoryline).mock.calls[0][3].genre).toBeUndefined();
   });
 });
