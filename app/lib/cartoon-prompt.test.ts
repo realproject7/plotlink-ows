@@ -59,6 +59,14 @@ describe("buildCleanImagePrompt", () => {
     expect(prompt).toContain(NO_TEXT_CONSTRAINT);
   });
 
+  it("adds a webtoon style lock and anti-photoreal guardrail", () => {
+    const prompt = buildCleanImagePrompt(makeCut());
+    expect(prompt).toContain("illustrated Korean vertical webtoon panel");
+    expect(prompt).toContain("clean black contour lines");
+    expect(prompt).toContain("Avoid photorealistic photo");
+    expect(prompt).toContain("hyperreal skin texture");
+  });
+
   it("does NOT include dialogue, narration, or sfx text in the prompt", () => {
     const prompt = buildCleanImagePrompt(
       makeCut({
@@ -94,22 +102,25 @@ describe("buildCodexTaskPrompt", () => {
     expect(prompt).toContain("assets/plot-01/cut-03-clean.webp");
   });
 
-  it("tells the agent to create the actual file, not describe it", () => {
+  it("tells the agent to create real image output, not describe it", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("SAVE IT AS AN ACTUAL FILE");
+    expect(prompt).toContain("Create real image output");
     expect(prompt).toContain("do not just describe it or return a prompt");
   });
 
-  it("requires verifying the file exists before reporting success", () => {
+  it("accepts Codex PNG cache output and directs the writer to import it", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
-    expect(prompt).toContain("VERIFY the file exists");
-    expect(prompt).toContain("Do not claim success unless the file is actually written");
+    expect(prompt).toContain("~/.codex/generated_images");
+    expect(prompt).toContain("that is acceptable");
+    expect(prompt).toContain("Import from Codex");
+    expect(prompt).toContain("continue generating the remaining requested cuts");
   });
 
-  it("states the format and size limit", () => {
+  it("still names the direct-save path but does not require terminal-side conversion", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
     expect(prompt).toContain("WebP");
-    expect(prompt).toContain("under 1MB");
+    expect(prompt).toContain("save it at assets/plot-01/cut-01-clean.webp");
+    expect(prompt).toContain("Do not convert it in the terminal");
   });
 
   it("keeps the clean-image-only / no-text constraints", () => {
@@ -121,6 +132,12 @@ describe("buildCodexTaskPrompt", () => {
   it("reminds that lettering/upload happen later", () => {
     const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
     expect(prompt).toContain("final lettering and upload happen later");
+  });
+
+  it("keeps the anti-photoreal webtoon style lock in the task prompt", () => {
+    const prompt = buildCodexTaskPrompt(makeCut(), "plot-01");
+    expect(prompt).toContain("Keep the webtoon style lock");
+    expect(prompt).toContain("avoid photorealistic");
   });
 
   it("embeds the pure visual prompt (no scene detail lost)", () => {

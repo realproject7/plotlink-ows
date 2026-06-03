@@ -177,7 +177,7 @@ describe("CutListPanel", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("clean-image-handoff-1")).toBeInTheDocument();
-      expect(screen.getByText(/Generate externally, then upload or import the clean image/)).toBeInTheDocument();
+      expect(screen.getByText(/Generate with Codex, then use Import from Codex/)).toBeInTheDocument();
       expect(screen.getByTestId("copy-prompt-1")).toBeInTheDocument();
       // existing upload control still renders
       expect(screen.getByText("Upload clean image")).toBeInTheDocument();
@@ -202,10 +202,12 @@ describe("CutListPanel", () => {
     const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     // Actionable Codex task content (the #267 deliverable):
     expect(copied).toContain("assets/plot-01/cut-01-clean.webp");
-    expect(copied).toContain("SAVE IT AS AN ACTUAL FILE");
-    expect(copied).toContain("VERIFY the file exists");
-    expect(copied).toContain("under 1MB");
+    expect(copied).toContain("Create real image output");
+    expect(copied).toContain("~/.codex/generated_images");
+    expect(copied).toContain("Import from Codex");
+    expect(copied).toContain("continue generating the remaining requested cuts");
     expect(copied).toContain("final lettering and upload happen later");
+    expect(copied).toContain("avoid photorealistic");
     // The pure visual prompt is still embedded (no scene detail lost):
     expect(copied).toContain("Wide shot. Rainy alley");
     expect(copied).toContain("Characters: Mira.");

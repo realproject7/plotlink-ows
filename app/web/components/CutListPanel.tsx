@@ -326,7 +326,7 @@ function CutRow({
             )}
             {!cut.cleanImagePath && (
               <p className="text-xs text-muted" data-testid={`clean-image-handoff-${cut.id}`}>
-                Generate externally, then upload or import the clean image (PNG is converted to WebP automatically)
+                Generate with Codex, then use Import from Codex for cached PNGs, or upload a clean image manually.
               </p>
             )}
             {status === "missing" && (
@@ -336,9 +336,10 @@ function CutRow({
               >
                 <p className="text-[11px] font-medium text-foreground">Ask Codex to generate clean image</p>
                 <p className="text-[10px] text-muted">
-                  Paste this task into the Codex terminal to create{" "}
-                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>,
-                  then use &ldquo;Sync clean images&rdquo; (or it is auto-detected).
+                  Paste this task into the Codex terminal. If Codex creates a cached PNG, use
+                  &ldquo;Import from Codex&rdquo; on this cut; if it creates{" "}
+                  <span className="font-mono">assets/{plotFile}/cut-{String(cut.id).padStart(2, "0")}-clean.webp</span>{" "}
+                  directly, use &ldquo;Sync clean images&rdquo;.
                 </p>
                 <button
                   onClick={() => {

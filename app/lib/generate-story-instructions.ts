@@ -62,13 +62,12 @@ Each chapter is a self-contained prose section:
  * The clean-image-first rules (no dialogue/SFX/bubbles/watermark/signature baked
  * into art) are shared; only the "who creates the file" contract differs:
  *
- * - Codex: creating the real `assets/plot-NN/cut-XX-clean.webp` file is the
- *   PRIMARY instruction, but it is gated behind a capability/checkpoint guardrail
- *   (#307) so the session never sits in an indefinite `Working` state: Codex
- *   makes one bounded attempt, and if image generation is unavailable it reports
- *   the blocker and falls back to the manual prompt + import path instead of
- *   hanging. Critically, Codex is never told it cannot create image files (#274)
- *   — only to verify-and-report rather than stall.
+ * - Codex: creating real clean image output is the PRIMARY instruction. A direct
+ *   WebP/JPEG at `assets/plot-NN/cut-XX-clean.webp` is ideal, but a PNG produced
+ *   in `~/.codex/generated_images` is also an expected handoff because OWS can
+ *   import it via "Import from Codex" and convert/compress it through the normal
+ *   upload path (#403). The workflow is gated behind a capability/checkpoint
+ *   guardrail (#307) so the session never sits in an indefinite `Working` state.
  * - Claude / legacy (absent provider): Claude does not generate image files in the
  *   terminal, so the manual prompt + import handoff stays primary (unchanged
  *   behavior).
@@ -120,38 +119,34 @@ This guardrail applies to BOTH the cover and every clean cut image. Creating the
 files is still your primary job when generation works (below); the rule is only
 that you verify-and-report instead of stalling.
 
-### Create the clean image file directly — your primary job
+### Generate clean image output — your primary job
 
 When image generation is available (confirm it per the guardrail above), for each
-cut you CREATE THE REAL CLEAN-IMAGE FILE — you do not just return a prompt or
-description. Follow this file contract exactly:
+cut you CREATE REAL CLEAN-IMAGE OUTPUT — you do not just return a prompt or
+description. Follow this contract exactly:
 
 1. Generate the clean image for the requested cut from its shot type + description
    + characters (the OWS UI's per-cut "Copy prompt" gives you the exact visual
-   prompt text if you need it). Generate directly in WebP or JPEG so no conversion
-   is needed.
-2. **Finalize it INTO the OWS asset path — a generation cache does NOT count.**
-   Image-generation tools usually save into a CACHE such as
-   \`~/.codex/generated_images/…\`, NOT your story folder. An image that exists only
-   in that cache is NOT a finished asset. Copy or move the generated file to
+   prompt text if you need it). Keep the style as an illustrated Korean vertical
+   webtoon: clean contour lines, semi-realistic stylized characters, flat/cel
+   shading, readable panels. Avoid photorealistic, 3D, painterly concept-art, or
+   hyperreal output.
+2. **Use either the OWS asset path OR the Codex cache-import path.** If you can
+   save a compliant WebP/JPEG directly, save it to
    \`assets/plot-NN/cut-XX-clean.webp\` — use the episode's \`plot-NN\` folder and the
-   cut's zero-padded id (\`cut-01\`, \`cut-02\`, …). A plain file copy/move (\`cp\`/\`mv\`)
-   is fine: that is NOT an image tool, so it is allowed — the Asset Tooling ban is
-   only on using \`magick\`/\`sharp\`/Playwright to resize/convert/composite/measure.
+   cut's zero-padded id (\`cut-01\`, \`cut-02\`, …). If the image-generation tool
+   instead saves a PNG into \`~/.codex/generated_images/…\`, that is an EXPECTED and
+   acceptable output. Do NOT convert it in the terminal. Report the cache file and
+   continue generating the remaining requested cuts; the writer will finalize it
+   with the OWS per-cut **Import from Codex** picker, which converts/compresses it
+   through the existing upload path.
 3. The image must contain NO text, captions, speech bubbles, SFX lettering,
    readable signage, watermark, or signature.
-4. **Validate at the OWS path before reporting success.** VERIFY the file actually exists at \`assets/plot-NN/cut-XX-clean.webp\`
-   — e.g. \`find assets/plot-NN -name 'cut-XX-clean.*'\`, check \`file\` reports it as
-   WebP or JPEG, and that it is under 1MB. (Plain existence/type/size checks like
-   \`find\`/\`file\` are allowed — they don't manipulate the image.) An image still
-   sitting only in \`~/.codex/generated_images/…\` has NOT been finalized.
-5. Do NOT claim the image was generated unless the file actually exists at the OWS
-   path; then run the OWS "Sync clean images" action (or let OWS auto-detect it) to
-   record \`cleanImagePath\` — never hand-write the path for a file that is not
-   really there. If you generated an image but could NOT place it at the OWS path
-   (wrong format, copy failed, etc.), do not claim success: report the exact
-   \`~/.codex/generated_images/…\` source path so the writer can import it (see the
-   recovery line below).
+4. **Report the real output before reporting success.** If you wrote the OWS asset
+   path, verify it exists with simple checks such as \`find\`/\`file\`. If the output
+   is in \`~/.codex/generated_images/…\`, report the exact cache image path/name and
+   the cut/cover it belongs to. Never hand-write \`cleanImagePath\`; OWS records it
+   after Sync clean images or Import from Codex.
 
 **Only exception:** Include text in an image when it is part of the physical scene
 (a sign on a building, text on a screen, a letter being read) AND the writer has
@@ -164,8 +159,8 @@ the manual handoff for each cut:
 1. PREPARE THE EXACT CLEAN-IMAGE PROMPT (shot type + description + characters +
    the no-text constraint). This is the same prompt the OWS UI exposes per cut.
 2. Tell the writer to generate it externally (any provider/tool) and then
-   upload/import the resulting WebP/JPEG into OWS using the per-cut "Copy prompt" +
-   "Upload clean image" controls.
+   upload/import the resulting image into OWS using the per-cut "Copy prompt" +
+   "Upload clean image" or "Import from Codex" controls.
 3. **Do NOT claim that \`assets/plot-NN/cut-XX-clean.webp\` was created unless the
    file actually exists.** Never report an image as generated when you only
    produced a prompt.
@@ -200,29 +195,29 @@ If some assets are blocked, use instead:
 
   CARTOON ASSETS PARTIAL — X/N clean cut images saved, Y blocked: <reasons>. Ready for lettering on the saved cuts in OWS.
 
-**Recovery for stranded images (#362).** If you generated any image that ended up
-ONLY in \`~/.codex/generated_images/…\` and you could not finalize it into the OWS
-asset path, the writer must be told exactly where it is. For each such file, list
-its real source path and the cut/cover it belongs to, e.g.:
+**Codex cache import handoff (#403).** If you generated any image that ended up
+in \`~/.codex/generated_images/…\`, the writer must be told exactly where it is.
+For each such file, list its real source path and the cut/cover it belongs to,
+e.g.:
 
-  IMPORT NEEDED — cut 3: ~/.codex/generated_images/<file>.png → import via the OWS per-cut "Upload clean image" control.
+  IMPORT NEEDED — cut 3: ~/.codex/generated_images/<file>.png → import via the OWS per-cut "Import from Codex" control.
   IMPORT NEEDED — cover: ~/.codex/generated_images/<file>.png → import via the genesis panel's "Import generated image" control.
 
 Never silently leave generated images in the cache — a writer cannot find them.
 
-### Post-run checklist — files live in the STORY FOLDER, not the cache (#362)
+### Post-run checklist — every generated image is accounted for (#403)
 
-Before you post the completion line, confirm in the story folder itself (not in
-\`~/.codex/generated_images/\`):
+Before you post the completion line, confirm:
 
 - \`structure.md\`, \`genesis.md\`, and every \`plot-NN.cuts.json\` exist.
-- Each cut you reported as saved has a real \`assets/plot-NN/cut-XX-clean.webp\`
-  (WebP/JPEG, < 1MB) at that path — verify with \`find\`/\`file\`, not from memory.
+- Each cut you reported as saved directly has a real
+  \`assets/plot-NN/cut-XX-clean.webp\` at that path — verify with \`find\`/\`file\`,
+  not from memory.
+- Each cut you reported as cache-import-needed has an \`IMPORT NEEDED\` line with
+  the exact \`~/.codex/generated_images/…\` source path.
 - The cover, if generated, is at \`assets/cover.webp\`.
-- Any image you could NOT finalize is named in an \`IMPORT NEEDED\` line above.
-
-If a file is only in the generation cache, it does not count as saved — either
-finalize it into the asset path or report it as \`IMPORT NEEDED\`.
+- Do not stop after the first cached PNG. Keep generating every requested cut and
+  cover, then give one complete handoff list.
 
 After that line, the lettering/export/publish steps are the writer's job in OWS —
 hand off and stop.`;
@@ -260,12 +255,12 @@ has explicitly requested it.`;
 /** Provider-branched step 2 of the Episode Workflow checklist. */
 function episodeWorkflowImageStep(provider: AgentProvider): string {
   if (provider === "codex") {
-    return `2. **Generate** — Write the planning files first. Create the real clean-image file for each cut
-   and FINALIZE it into \`assets/plot-NN/cut-XX-clean.webp\` (a file left in the
-   generation cache does not count); verify it exists there. Checkpoint per file
-   and make one bounded attempt; if image generation is unavailable, report the
-   blocker and fall back to preparing the prompt for the writer to import — never
-   sit in an indefinite \`Working\` state.`;
+    return `2. **Generate** — Write the planning files first. Create real clean-image output for each cut.
+   If Codex writes a compliant WebP/JPEG directly, save it to \`assets/plot-NN/cut-XX-clean.webp\`;
+   if it writes a PNG to \`~/.codex/generated_images\`, keep going and report that cache file so the
+   writer can use Import from Codex. Checkpoint per file and make one bounded attempt; if image
+   generation is unavailable, report the blocker and fall back to preparing the prompt for the writer
+   to import — never sit in an indefinite \`Working\` state.`;
   }
   return `2. **Prompt & import** — Prepare the clean-image prompt for each cut; the writer
    generates it externally (or a configured image tool, if any) and uploads/
@@ -488,7 +483,7 @@ guessing at unavailable tooling is exactly what stalls a cartoon episode.
 
 | Step | Who | How (no shell image tools) |
 |------|-----|----------------------------|
-| Generate clean cut images | You (Codex) | Generate at the target size/format, then finalize the file INTO \`assets/plot-NN/cut-XX-clean.webp\` (WebP/JPEG, < 1MB) — a file left in the generation cache is NOT saved. A plain \`cp\`/\`mv\` is fine; do NOT post-process with magick/sharp. |
+| Generate clean cut images | You (Codex) | Generate real clean image output. If Codex can save a compliant WebP/JPEG directly, place it at \`assets/plot-NN/cut-XX-clean.webp\`; if it produces a PNG in \`~/.codex/generated_images\`, keep going and report the cache file so the writer can use **Import from Codex**. Do NOT post-process with magick/sharp. |
 | Generate the cover | You (Codex) | Save \`assets/cover.webp\` (~600x900, WebP, < 1MB). OWS auto-detects it for genesis publish — no manual selection needed. |
 | Discover / record clean images | OWS | Run the "Sync clean images" action (or let OWS auto-detect); OWS records \`cleanImagePath\`. Never hand-write paths or stat files yourself. |
 | Letter & export final images | The writer, in the OWS lettering editor | Speech bubbles, captions, and SFX are placed in the OWS editor and exported to \`assets/plot-NN/cut-XX-final.webp\`. You do NOT composite or letter text — not with magick, not with sharp, not at all. |

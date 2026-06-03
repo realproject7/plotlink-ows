@@ -62,14 +62,14 @@ describe("generateStoryInstructions", () => {
     expect(out).toBe(generateStoryInstructions("cartoon", "claude"));
   });
 
-  it("Codex cartoon output leads with the create-the-file contract, not a can't-create-files warning", () => {
+  it("Codex cartoon output leads with real image output, not a can't-create-files warning", () => {
     const out = generateStoryInstructions("cartoon", "codex");
-    // PRIMARY instruction: create the real file at the canonical path and verify it
-    expect(out).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    // PRIMARY instruction: create real image output, either direct OWS asset or cache-import handoff.
+    expect(out).toContain("CREATE REAL CLEAN-IMAGE OUTPUT");
     expect(out).toContain("cut-XX-clean.webp");
-    expect(out).toContain("under 1MB");
-    expect(out).toContain("VERIFY the file actually exists");
-    expect(out).toContain("Do NOT claim the image was generated unless the file actually exists");
+    expect(out).toContain("~/.codex/generated_images");
+    expect(out).toContain("Import from Codex");
+    expect(out).toContain("Do not stop after the first cached PNG");
     expect(out).toContain("Sync clean images");
     // Acceptance (#274): Codex must NOT be told it cannot/does not create image files
     expect(out).not.toContain("You cannot create image files yourself");
@@ -80,21 +80,21 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("Upload clean image");
   });
 
-  it("Codex and Claude cartoon outputs differ; the create-file contract is primary only for Codex", () => {
+  it("Codex and Claude cartoon outputs differ; the real-output contract is primary only for Codex", () => {
     const codex = generateStoryInstructions("cartoon", "codex");
     const claude = generateStoryInstructions("cartoon", "claude");
     expect(codex).not.toBe(claude);
     // The shared clean-image-first rules are present in both
     expect(codex).toContain("Do NOT bake dialogue");
     expect(claude).toContain("Do NOT bake dialogue");
-    // The Codex create-file primary heading appears only in the Codex variant
-    expect(codex).toContain("Create the clean image file directly — your primary job");
-    expect(claude).not.toContain("Create the clean image file directly — your primary job");
+    // The Codex real-output primary heading appears only in the Codex variant
+    expect(codex).toContain("Generate clean image output — your primary job");
+    expect(claude).not.toContain("Generate clean image output — your primary job");
     // The Claude can't-create-files handoff is primary only in the Claude variant
     expect(claude).toContain("You cannot create image files yourself");
     expect(codex).not.toContain("You cannot create image files yourself");
     // Episode workflow step 2 reflects the provider's primary path
-    expect(codex).toContain("Create the real clean-image file for each cut");
+    expect(codex).toContain("Create real clean-image output for each cut");
     expect(claude).toContain("**Prompt & import**");
   });
 
@@ -164,7 +164,7 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("identify");
     expect(out).toContain("sharp");
     expect(out).toContain("Playwright");
-    expect(out).toContain("do NOT post-process");
+    expect(out).toContain("Do NOT post-process");
   });
 
   it("cartoon output routes export/lettering/upload through supported OWS flows", () => {
@@ -188,9 +188,10 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain('"title": "Episode 1 — First Rain"');
   });
 
-  // #362: Codex cartoon imagegen artifacts must be finalized into the OWS story
-  // folder — planning files first, generated images copied OUT of the codex cache
-  // into the asset paths, validated, with a recovery path for stranded images.
+  // #362/#403: Codex cartoon imagegen artifacts may be saved directly into the
+  // OWS story folder, or handed off from the Codex cache through Import from
+  // Codex. Planning files still come first, and every generated image must be
+  // accounted for before the agent stops.
   it("Codex cartoon output tells the agent to write planning files before generating images (#362)", () => {
     const out = generateStoryInstructions("cartoon", "codex");
     expect(out).toContain("Write the planning files FIRST");
@@ -201,32 +202,38 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("Image generation is the LAST step");
   });
 
-  it("Codex cartoon output requires finalizing generated images out of the codex cache into the OWS asset path (#362)", () => {
+  it("Codex cartoon output accepts cache PNGs and directs Import from Codex (#403)", () => {
     const out = generateStoryInstructions("cartoon", "codex");
     // Names the actual cache the pilot's images were stranded in.
     expect(out).toContain("~/.codex/generated_images");
-    // A cache file is not a finished asset; it must be copied/moved to the path.
-    expect(out).toContain("a generation cache");
+    // A cache file is an expected handoff, not a terminal-side conversion failure.
+    expect(out).toContain("that is an EXPECTED and");
+    expect(out).toContain("Import from Codex");
     expect(out).toContain("assets/plot-NN/cut-XX-clean.webp");
-    // A plain file copy is explicitly allowed (distinct from the magick/sharp ban).
-    expect(out).toMatch(/`cp`\/`mv`/);
-    // Validation at the OWS path before claiming success.
-    expect(out).toContain("Validate at the OWS path before reporting success");
-    expect(out).toMatch(/find assets\/plot-NN/);
+    expect(out).toContain("Do NOT convert it in the terminal");
+    expect(out).toContain("Do not stop after the first cached PNG");
   });
 
-  it("Codex cartoon output gives a recovery path + post-run checklist for stranded images (#362)", () => {
+  it("Codex cartoon output gives a cache handoff path + post-run checklist (#403)", () => {
     const out = generateStoryInstructions("cartoon", "codex");
     expect(out).toContain("IMPORT NEEDED");
-    expect(out).toContain("Upload clean image");
+    expect(out).toContain("Import from Codex");
     expect(out).toContain("Import generated image");
     expect(out).toContain("Post-run checklist");
-    expect(out).toContain("does not count as saved");
+    expect(out).toContain("every generated image is accounted for");
   });
 
-  it("the codex-cache finalize guidance is Codex-only, not in the Claude handoff (#362)", () => {
+  it("Codex cartoon output includes an anti-photoreal webtoon style lock (#404)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("illustrated Korean vertical");
+    expect(out).toContain("Avoid photorealistic");
+    expect(out).toContain("painterly concept-art");
+  });
+
+  it("the Codex cache-output policy is Codex-only, not in the Claude handoff (#403)", () => {
     const claude = generateStoryInstructions("cartoon", "claude");
-    expect(claude).not.toContain("~/.codex/generated_images");
+    expect(claude).not.toContain("CREATE REAL CLEAN-IMAGE OUTPUT");
+    expect(claude).not.toContain("Do not stop after the first cached PNG");
     expect(claude).not.toContain("Write the planning files FIRST");
   });
 
@@ -384,11 +391,12 @@ describe("generateStoryInstructions", () => {
     expect(flat).toContain("do NOT hang on the cover");
   });
 
-  it("the #307 guardrail preserves the #274 create-file primacy (Codex is not told it cannot create files)", () => {
+  it("the #307 guardrail preserves #274 real-output primacy (Codex is not told it cannot create files)", () => {
     const out = generateStoryInstructions("cartoon", "codex");
-    // Guardrail is a precondition, not a demotion: create-file is still primary.
-    expect(out).toContain("Create the clean image file directly — your primary job");
-    expect(out).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    // Guardrail is a precondition, not a demotion: real image output is still primary.
+    expect(out).toContain("Generate clean image output — your primary job");
+    expect(out).toContain("CREATE REAL CLEAN-IMAGE OUTPUT");
+    expect(out).toContain("Import from Codex");
     // #274 invariant intact — never categorically denied the capability.
     expect(out).not.toContain("You cannot create image files yourself");
     expect(out).not.toContain("do **not** generate image files");
@@ -435,11 +443,12 @@ describe("writeStoryInstructions", () => {
     expect(content).toContain("Character Bible");
   });
 
-  it("creates a Codex cartoon CLAUDE.md with the codex marker and create-file contract", () => {
+  it("creates a Codex cartoon CLAUDE.md with the codex marker and real-output contract", () => {
     writeStoryInstructions(tmpDir, "cartoon", "codex");
     const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(content.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon:codex -->");
-    expect(content).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    expect(content).toContain("CREATE REAL CLEAN-IMAGE OUTPUT");
+    expect(content).toContain("Import from Codex");
     expect(content).not.toContain("You cannot create image files yourself");
   });
 
@@ -451,7 +460,8 @@ describe("writeStoryInstructions", () => {
     writeStoryInstructions(tmpDir, "cartoon", "codex");
     const after = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(after.split("\n")[0]).toBe("<!-- plotlink-ows:story-instructions:cartoon:codex -->");
-    expect(after).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
+    expect(after).toContain("CREATE REAL CLEAN-IMAGE OUTPUT");
+    expect(after).toContain("Import from Codex");
     expect(after).not.toContain("You cannot create image files yourself");
   });
 
