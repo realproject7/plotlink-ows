@@ -54,8 +54,6 @@ app.use("/api/agent/*", requireAuth);
 app.route("/api/agent", agentRoutes);
 app.use("/api/codex/*", requireAuth);
 app.route("/api/codex", codexImagesRoutes);
-app.use("/api/codex/*", requireAuth);
-app.route("/api/codex", codexImagesRoutes);
 
 // App version (read once at startup)
 const appVersion = (() => {
