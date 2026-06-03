@@ -11,6 +11,9 @@ const GOOD_PLOT_PAGE = `<head><title>The Couple Coupon — Coupon Crush — Plot
   `<meta property="og:title" content="The Couple Coupon — Coupon Crush"/></head>`;
 const NUMBERED_GOOD_PLOT_PAGE = `<head><title>Episode 1 — The Couple Coupon — Coupon Crush — PlotLink</title>` +
   `<meta property="og:title" content="Episode 1 — The Couple Coupon — Coupon Crush"/></head>`;
+const STORYLINE_WITH_DASH = "Coupon Crush — Season One";
+const PLOT_WITH_DASHED_STORYLINE_PAGE = `<head><title>The Couple Coupon — ${STORYLINE_WITH_DASH} — PlotLink</title>` +
+  `<meta property="og:title" content="The Couple Coupon — ${STORYLINE_WITH_DASH}"/></head>`;
 
 describe("extractOgTitle (#379)", () => {
   it("reads og:title from a plot page (real shape)", () => {
@@ -36,6 +39,9 @@ describe("leadingTitleSegment (#379)", () => {
     expect(leadingTitleSegment(extractOgTitle(PLOT_PAGE))).toBe("plot-01");
     expect(leadingTitleSegment(extractOgTitle(GOOD_PLOT_PAGE))).toBe("The Couple Coupon");
     expect(leadingTitleSegment(extractOgTitle(NUMBERED_GOOD_PLOT_PAGE))).toBe("Episode 1 — The Couple Coupon");
+  });
+  it("strips the exact storyline suffix when the storyline title itself contains an em dash (#396)", () => {
+    expect(leadingTitleSegment(extractOgTitle(PLOT_WITH_DASHED_STORYLINE_PAGE), STORYLINE_WITH_DASH)).toBe("The Couple Coupon");
   });
   it("returns the whole value when there is no separator", () => {
     expect(leadingTitleSegment("genesis")).toBe("genesis");

@@ -49,8 +49,16 @@ export function extractOgTitle(html: string): string | null {
  * " — " (e.g. "Episode 1 — The Couple Coupon — Coupon Crush"). Returns the
  * whole value when there is no separator. Null for empty/missing input.
  */
-export function leadingTitleSegment(title: string | null): string | null {
+export function leadingTitleSegment(title: string | null, storylineTitle?: string | null): string | null {
   if (!title) return null;
+  const story = storylineTitle?.trim();
+  if (story) {
+    const suffix = `${TITLE_SEP}${story}`;
+    if (title.endsWith(suffix)) {
+      const seg = title.slice(0, -suffix.length).trim();
+      if (seg) return seg;
+    }
+  }
   const idx = title.lastIndexOf(TITLE_SEP);
   const seg = (idx === -1 ? title : title.slice(0, idx)).trim();
   return seg || null;

@@ -128,15 +128,31 @@ publish.get("/public-title", async (c) => {
   const url = isPlot
     ? `${PLOTLINK_URL}/story/${storylineId}/${plotIndex}`
     : `${PLOTLINK_URL}/story/${storylineId}`;
+  const storylineUrl = `${PLOTLINK_URL}/story/${storylineId}`;
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) return c.json({ ok: true, fetched: false });
-    const og = extractOgTitle(await res.text());
-    if (!og) return c.json({ ok: true, fetched: false });
-    return isPlot
-      ? c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(og) })
-      : c.json({ ok: true, fetched: true, storylineTitle: og });
+    if (!isPlot) {
+      const res = await fetch(url);
+      if (!res.ok) return c.json({ ok: true, fetched: false });
+      const og = extractOgTitle(await res.text());
+      if (!og) return c.json({ ok: true, fetched: false });
+      return c.json({ ok: true, fetched: true, storylineTitle: og });
+    }
+
+    const plotRes = await fetch(url);
+    if (!plotRes.ok) return c.json({ ok: true, fetched: false });
+    const plotOg = extractOgTitle(await plotRes.text());
+    if (!plotOg) return c.json({ ok: true, fetched: false });
+    let storylineOg: string | null = null;
+    try {
+      const storylineRes = await fetch(storylineUrl);
+      storylineOg = storylineRes.ok ? extractOgTitle(await storylineRes.text()) : null;
+    } catch {
+      // Best-effort read only. If the storyline page fetch rejects, keep the
+      // successful plot-page title and fall back to last-segment stripping.
+      storylineOg = null;
+    }
+    return c.json({ ok: true, fetched: true, plotTitle: leadingTitleSegment(plotOg, storylineOg) });
   } catch {
     // Network/parse failure → inconclusive; never block on a flaky read.
     return c.json({ ok: true, fetched: false });
