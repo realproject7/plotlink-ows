@@ -9,6 +9,7 @@ import {
   signTransaction as owsSignTx,
   signMessage as owsSignMsg,
 } from "@open-wallet-standard/core";
+import { canonicalizeGenre } from "../../lib/genres";
 
 // Contract addresses (Base mainnet)
 const STORY_FACTORY = "0x9D2AE1E99D0A6300bfcCF41A82260374e38744Cf" as const;
@@ -511,6 +512,18 @@ export async function updateStoryline(
   const PLOTLINK_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plotlink.xyz";
   const account = createOwsAccount(walletName, walletAddress);
 
+  // Defense-in-depth (#412): even if a caller bypassed the route's canonicalization,
+  // map the genre to a canonical PlotLink value before signing — a non-empty genre
+  // that can't be mapped is rejected here rather than leaving the story uncategorized.
+  const normalizedUpdates = { ...updates };
+  if (updates.genre !== undefined) {
+    const canonical = canonicalizeGenre(updates.genre);
+    if (updates.genre.trim() && !canonical) {
+      throw new Error(`Invalid genre "${updates.genre}". Use a canonical PlotLink genre.`);
+    }
+    normalizedUpdates.genre = canonical ?? undefined;
+  }
+
   const timestamp = Date.now();
   const message = `PlotLink: Update storyline #${storylineId}\nTimestamp: ${timestamp}`;
   const signature = await account.signMessage({ message });
@@ -522,7 +535,7 @@ export async function updateStoryline(
       storylineId,
       signature,
       message,
-      ...updates,
+      ...normalizedUpdates,
     }),
   });
 

@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { GENRES, LANGUAGES } from "../../../lib/genres";
+import { GENRES, LANGUAGES, canonicalizeGenre } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
@@ -270,7 +270,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         const match = data.content.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
         if (match) {
           const detected = match[1].replace(/\*+/g, "").trim();
-          const found = GENRES.find((g) => g.toLowerCase() === detected.toLowerCase());
+          // Canonicalize so a natural label like "Sci-Fi" in structure.md
+          // preselects "Science Fiction" instead of being silently dropped (#412).
+          const found = canonicalizeGenre(detected);
           if (found) setSelectedGenre(found);
         }
         const langMatch = data.content.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
@@ -576,7 +578,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           return;
         }
         if (data.genre) {
-          const found = GENRES.find((g) => g.toLowerCase() === data.genre.toLowerCase());
+          const found = canonicalizeGenre(data.genre);
           if (found) setEditGenre(found);
         }
         if (data.language) {
