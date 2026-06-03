@@ -64,12 +64,13 @@ describe("generateStoryInstructions", () => {
 
   it("Codex cartoon output leads with the create-the-file contract, not a can't-create-files warning", () => {
     const out = generateStoryInstructions("cartoon", "codex");
-    // PRIMARY instruction: create the real file at the canonical path and verify it
+    // PRIMARY instruction: create the real image and get it onto the cut
     expect(out).toContain("CREATE THE REAL CLEAN-IMAGE FILE");
     expect(out).toContain("cut-XX-clean.webp");
     expect(out).toContain("under 1MB");
-    expect(out).toContain("VERIFY the file actually exists");
-    expect(out).toContain("Do NOT claim the image was generated unless the file actually exists");
+    // A cut is only "saved" once the real asset exists at the OWS path.
+    expect(out).toContain("Validate at the OWS path before reporting success");
+    expect(out).toContain("counts as SAVED only");
     expect(out).toContain("Sync clean images");
     // Acceptance (#274): Codex must NOT be told it cannot/does not create image files
     expect(out).not.toContain("You cannot create image files yourself");
@@ -228,6 +229,26 @@ describe("generateStoryInstructions", () => {
     const claude = generateStoryInstructions("cartoon", "claude");
     expect(claude).not.toContain("~/.codex/generated_images");
     expect(claude).not.toContain("Write the planning files FIRST");
+  });
+
+  // #403: a Codex-generated PNG in the cache is an EXPECTED, acceptable outcome —
+  // the writer imports it via the new "Import from Codex" picker, and Codex must NOT
+  // be told to produce/convert a WebP/JPEG directly (the real-pilot stall).
+  it("Codex cartoon output treats a generated PNG as acceptable and routes it to Import from Codex (#403)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    // The new one-click import picker is named as the handoff for a generated PNG.
+    expect(out).toContain("Import from Codex");
+    // A cache PNG is framed as expected, not a failure.
+    expect(out).toMatch(/EXPECTED, acceptable result/);
+    // The cp-PNG-to-.webp pitfall is called out so Codex doesn't fake a clean asset.
+    expect(out).toContain("a PNG saved under a `.webp`");
+    // The old "produce WebP/JPEG directly so no conversion is needed" demand is gone.
+    expect(out).not.toContain("Generate directly in WebP or JPEG so no conversion");
+  });
+
+  it("does not tell Codex to convert the generated image itself (#403)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toMatch(/do NOT (try to )?convert it/i);
   });
 
   // #348: cartoon genesis must be described as a reader-facing prologue/opening
