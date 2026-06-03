@@ -57,6 +57,7 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("cartoon-planning-callout")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("cartoon-planning-callout").className).toMatch(/max-w-\[32rem\]/);
     // The alarming missing-block error list should NOT be shown during planning.
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
     const prepBtn = screen.getByTestId("generate-md-preview-btn");
@@ -116,6 +117,7 @@ describe("cartoon planning-stage callout in PreviewPanel", () => {
     await waitFor(() => expect(screen.getByTestId("cartoon-awaiting-upload")).toBeInTheDocument());
     // Creator-facing copy, not internal "markdown skeleton" jargon (#320, re1).
     const awaiting = screen.getByTestId("cartoon-awaiting-upload");
+    expect(awaiting.className).toMatch(/max-w-\[32rem\]/);
     expect(awaiting).toHaveTextContent(/episode prepared for publish/i);
     expect(awaiting.textContent).not.toMatch(/markdown skeleton/i);
     // The disabled-publish reason now names the remaining-upload blocker.

@@ -47,6 +47,7 @@ describe("cartoon grouped publish-readiness messaging (#360)", () => {
     render(<PreviewPanel storyName="coupon-crush" fileName="plot-01.md" authFetch={makeFetch()} onPublish={vi.fn()} publishingFile={null} walletAddress="test-wallet-address" contentType="cartoon" />);
 
     const container = await screen.findByTestId("cartoon-publish-issues");
+    expect(container).toHaveTextContent("Finish these workflow steps");
     // A grouped heading (workflow step), not a flat error dump.
     const group = await screen.findByTestId("cartoon-issue-group-images");
     expect(group).toBeInTheDocument();

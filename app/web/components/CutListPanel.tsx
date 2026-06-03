@@ -712,8 +712,22 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
       </div>
       {/* Plain-language workflow + text-panel explainer (#360) so a non-technical
           writer understands the order of operations and what a text panel is. */}
-      <div className="px-3 py-1.5 border-b border-border text-[10px] text-muted flex-shrink-0" data-testid="cartoon-workflow-help">
-        Build your webtoon top-to-bottom: letter each art panel’s bubbles &amp; captions, then export, upload, and prepare the episode for publishing. Use <span className="text-accent">Add narration/text panel</span> to drop a narration or title card between art panels — it’s a solid card exported as a final image, no drawing needed.
+      <div
+        className="px-3 py-2 border-b border-border bg-surface/40 flex-shrink-0"
+        data-testid="cartoon-workflow-help"
+      >
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
+          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">1. Letter</span>
+          <span aria-hidden>→</span>
+          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">2. Export</span>
+          <span aria-hidden>→</span>
+          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">3. Upload</span>
+          <span aria-hidden>→</span>
+          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">4. Prepare episode for publish</span>
+        </div>
+        <div className="mt-1 text-[10px] text-muted">
+          Use <span className="text-accent">Add narration/text panel</span> for a narration or title card. It becomes a solid card exported as a final image.
+        </div>
       </div>
       {/* Stale bubble-renderer warning (#381): a final image lettered before the
           current seamless-tail renderer may show the old separate-tail seam.
