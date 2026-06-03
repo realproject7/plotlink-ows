@@ -29,8 +29,14 @@ export interface BubbleLayoutOptions {
   maxFontSize: number;
   /** Smallest body font (used even if text still overflows). */
   minFontSize: number;
+  /** Fixed body font size; when present, skip auto-fit and use this size. */
+  fontSize?: number;
   /** Line advance as a multiple of font size. Default 1.2. */
   lineHeightFactor?: number;
+  /** Speaker-label size as a multiple of body font size. Default 0.8. */
+  speakerScale?: number;
+  /** Body text weight, for consistent bold/regular measurement and layout. */
+  fontWeight?: 400 | 700;
   /** Horizontal padding inside the box (each side). Default 6% of width. */
   paddingX?: number;
   /** Vertical padding inside the box (each side). Default 8% of height. */
@@ -40,7 +46,7 @@ export interface BubbleLayoutOptions {
 }
 
 /** Measure rendered width of `text` at `fontSize` (canvas measureText-backed). */
-export type MeasureWidth = (text: string, fontSize: number) => number;
+export type MeasureWidth = (text: string, fontSize: number, fontWeight?: 400 | 700) => number;
 
 /** Greedy word-wrap of `text` to lines no wider than `maxWidth` at `fontSize`. */
 export function wrapText(
@@ -83,6 +89,7 @@ export function layoutBubbleText(
   opts: BubbleLayoutOptions,
 ): BubbleTextLayout {
   const lineHeightFactor = opts.lineHeightFactor ?? 1.2;
+  const speakerScale = opts.speakerScale ?? 0.8;
   const padX = opts.paddingX ?? Math.max(2, boxWidth * 0.06);
   const padY = opts.paddingY ?? Math.max(2, boxHeight * 0.08);
   const availW = Math.max(1, boxWidth - 2 * padX);
@@ -92,14 +99,27 @@ export function layoutBubbleText(
   const minFont = Math.max(1, Math.min(opts.minFontSize, maxFont));
 
   const fit = (bodyFont: number): { lines: string[]; ok: boolean } => {
-    const speakerFont = opts.hasSpeaker ? bodyFont * 0.8 : 0;
+    const speakerFont = opts.hasSpeaker ? bodyFont * speakerScale : 0;
     const speakerStrip = opts.hasSpeaker ? speakerFont * lineHeightFactor : 0;
     const bodyAvailH = Math.max(1, totalAvailH - speakerStrip);
-    const lines = wrapText(measure, text, availW, bodyFont);
+    const fontWeight = opts.fontWeight ?? 400;
+    const lines = wrapText((line, fontSize) => measure(line, fontSize, fontWeight), text, availW, bodyFont);
     const bodyH = lines.length * bodyFont * lineHeightFactor;
-    const widthOk = lines.every((l) => measure(l, bodyFont) <= availW + 0.5);
+    const widthOk = lines.every((l) => measure(l, bodyFont, fontWeight) <= availW + 0.5);
     return { lines, ok: bodyH <= bodyAvailH && widthOk };
   };
+
+  if (typeof opts.fontSize === "number" && Number.isFinite(opts.fontSize) && opts.fontSize > 0) {
+    const bodyFont = Math.max(1, opts.fontSize);
+    const { lines, ok } = fit(bodyFont);
+    return {
+      lines,
+      fontSize: bodyFont,
+      lineHeight: bodyFont * lineHeightFactor,
+      speakerFontSize: opts.hasSpeaker ? bodyFont * speakerScale : 0,
+      overflow: !ok,
+    };
+  }
 
   // Descend from max to min font (0.5px steps) and take the first that fits.
   for (let f = maxFont; f >= minFont; f -= 0.5) {
@@ -109,7 +129,7 @@ export function layoutBubbleText(
         lines,
         fontSize: f,
         lineHeight: f * lineHeightFactor,
-        speakerFontSize: opts.hasSpeaker ? f * 0.8 : 0,
+        speakerFontSize: opts.hasSpeaker ? f * speakerScale : 0,
         overflow: false,
       };
     }
@@ -121,7 +141,7 @@ export function layoutBubbleText(
     lines,
     fontSize: minFont,
     lineHeight: minFont * lineHeightFactor,
-    speakerFontSize: opts.hasSpeaker ? minFont * 0.8 : 0,
+    speakerFontSize: opts.hasSpeaker ? minFont * speakerScale : 0,
     overflow: true,
   };
 }

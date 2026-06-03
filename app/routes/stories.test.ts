@@ -484,6 +484,8 @@ describe("POST /upload-clean/:cutId route", () => {
         text: "Hello there",
         speaker: "Mira",
         tailAnchor: { x: 0.4, y: 1.35 },
+        textStyle: { mode: "manual", fontScale: 0.04, fontWeight: 700, lineHeightFactor: 1.3, speakerScale: 0.85 },
+        bubbleStyle: { paddingX: 0.12, paddingY: 0.1, cornerRadius: 0.25 },
       },
     ];
 
@@ -502,10 +504,14 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(overlay.speaker).toBe("Mira");
     expect(overlay.text).toBe("Hello there");
     expect(overlay.tailAnchor).toEqual({ x: 0.4, y: 1.35 });
+    expect(overlay.textStyle).toEqual({ mode: "manual", fontScale: 0.04, fontWeight: 700, lineHeightFactor: 1.3, speakerScale: 0.85 });
+    expect(overlay.bubbleStyle).toEqual({ paddingX: 0.12, paddingY: 0.1, cornerRadius: 0.25 });
 
     // And on disk (the file the editor reopens from).
     const onDisk = readCutsFile(storyDir, "plot-01")!;
     expect(onDisk.cuts[0].overlays[0].tailAnchor).toEqual({ x: 0.4, y: 1.35 });
+    expect(onDisk.cuts[0].overlays[0].textStyle).toEqual({ mode: "manual", fontScale: 0.04, fontWeight: 700, lineHeightFactor: 1.3, speakerScale: 0.85 });
+    expect(onDisk.cuts[0].overlays[0].bubbleStyle).toEqual({ paddingX: 0.12, paddingY: 0.1, cornerRadius: 0.25 });
   });
 
   it("detects Korean language from structure.md title without .story.json language", async () => {

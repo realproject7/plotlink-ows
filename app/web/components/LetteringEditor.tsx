@@ -6,25 +6,22 @@ import {
   getFontFamily,
   type FontEntry,
 } from "@app-lib/fonts";
-import { speechTailPoints, balloonPathD, normalizeOverlays, detectOverlappingOverlays, isOverlayOutOfBounds } from "@app-lib/overlays";
-import { layoutBubbleText, defaultBubbleFontRange } from "@app-lib/bubble-text";
+import {
+  speechTailPoints,
+  balloonPathD,
+  normalizeOverlays,
+  detectOverlappingOverlays,
+  isOverlayOutOfBounds,
+  createOverlay,
+  bubbleLayoutOptionsForOverlay,
+  balloonRadiusForOverlay,
+  type Overlay,
+  type OverlayType,
+} from "@app-lib/overlays";
+import { layoutBubbleText } from "@app-lib/bubble-text";
 import { cutLetteringChecklist, cutScriptLines, isExportStale, overlaysSignature, type ScriptLine } from "@app-lib/lettering-status";
 import { textPanelDimensions } from "@app-lib/cuts";
 import { useAuthedAsset } from "./asset-image";
-
-type OverlayType = "speech" | "narration" | "sfx";
-
-interface Overlay {
-  id: string;
-  type: OverlayType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  speaker?: string;
-  tailAnchor?: { x: number; y: number };
-}
 
 function toPixel(norm: number, size: number): number {
   return norm * size;
@@ -33,21 +30,6 @@ function toPixel(norm: number, size: number): number {
 function toNorm(pixel: number, size: number): number {
   if (size === 0) return 0;
   return pixel / size;
-}
-
-let counter = 0;
-function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
-  counter++;
-  return {
-    id: `overlay-${Date.now()}-${counter}`,
-    type,
-    x,
-    y,
-    width: type === "sfx" ? 0.15 : 0.25,
-    height: type === "sfx" ? 0.08 : 0.12,
-    text: "",
-    ...(type === "speech" ? { speaker: "", tailAnchor: { x: 0.5, y: 1.2 } } : {}),
-  };
 }
 
 function loadFont(font: FontEntry) {
@@ -112,6 +94,12 @@ function overlapLabel(o: Overlay): string {
 }
 
 const MIN_SIZE = 0.05;
+const TAIL_PRESETS = [
+  { key: "down", label: "Down", anchor: { x: 0.5, y: 1.2 } },
+  { key: "up", label: "Up", anchor: { x: 0.5, y: -0.2 } },
+  { key: "left", label: "Left", anchor: { x: -0.2, y: 0.5 } },
+  { key: "right", label: "Right", anchor: { x: 1.2, y: 0.5 } },
+] as const;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -169,13 +157,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // Offscreen canvas to measure text exactly like the export canvas, so the
   // preview wraps/sizes bubble text identically to the final image (#310).
   const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const measureWidth = useCallback((fontFamily: string) => (text: string, fontSize: number): number => {
+  const measureWidth = useCallback((fontFamily: string) => (text: string, fontSize: number, fontWeight: 400 | 700 = 400): number => {
     if (!measureCanvasRef.current && typeof document !== "undefined") {
       measureCanvasRef.current = document.createElement("canvas");
     }
     const mctx = measureCanvasRef.current?.getContext("2d");
     if (!mctx) return text.length * fontSize * 0.5; // jsdom fallback
-    mctx.font = `${fontSize}px ${fontFamily}`;
+    mctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
     return mctx.measureText(text).width;
   }, []);
   // Gate the exact (canvas-measured) preview layout on the SAME font-readiness
@@ -248,6 +236,29 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   const updateOverlay = useCallback((id: string, changes: Partial<Overlay>) => {
     setOverlays((prev) => prev.map((o) => o.id === id ? { ...o, ...changes } : o));
   }, []);
+
+  const enableManualTypography = useCallback((overlay: Overlay) => {
+    const renderHeight = imageBounds.height || 300;
+    const width = imageBounds.width > 0 ? toPixel(overlay.width, imageBounds.width) : 200;
+    const height = imageBounds.height > 0 ? toPixel(overlay.height, imageBounds.height) : 100;
+    const fontFamily = overlay.type === "sfx" ? displayFontFamily : bodyFontFamily;
+    const autoLayout = layoutBubbleText(
+      measureWidth(fontFamily),
+      overlay.text,
+      width,
+      height,
+      bubbleLayoutOptionsForOverlay({ ...overlay, textStyle: undefined }, renderHeight, width, height),
+    );
+    updateOverlay(overlay.id, {
+        textStyle: {
+          mode: "manual",
+          fontScale: autoLayout.fontSize / Math.max(1, renderHeight),
+          fontWeight: overlay.textStyle?.fontWeight ?? 400,
+          lineHeightFactor: autoLayout.fontSize > 0 ? autoLayout.lineHeight / autoLayout.fontSize : 1.2,
+          speakerScale: autoLayout.fontSize > 0 && autoLayout.speakerFontSize > 0 ? autoLayout.speakerFontSize / autoLayout.fontSize : 0.8,
+        },
+    });
+  }, [imageBounds, displayFontFamily, bodyFontFamily, measureWidth, updateOverlay]);
 
   const deleteOverlay = useCallback((id: string) => {
     setOverlays((prev) => prev.filter((o) => o.id !== id));
@@ -435,7 +446,6 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   // once fonts are ready (same gate as the exact preview layout).
   const overlayWarnings = useMemo(() => {
     const out: Record<string, { outOfBounds: boolean; overflow: boolean }> = {};
-    const { minFontSize, maxFontSize } = defaultBubbleFontRange(imageBounds.height || 300);
     for (const o of overlays) {
       const outOfBounds = isOverlayOutOfBounds(o);
       let overflow = false;
@@ -443,11 +453,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         const fontFamily = o.type === "sfx" ? displayFontFamily : bodyFontFamily;
         const w = toPixel(o.width, imageBounds.width);
         const h = toPixel(o.height, imageBounds.height);
-        const layout = layoutBubbleText(measureWidth(fontFamily), o.text, w, h, {
-          minFontSize,
-          maxFontSize,
-          hasSpeaker: o.type !== "sfx" && !!o.speaker,
-        });
+        const layout = layoutBubbleText(
+          measureWidth(fontFamily),
+          o.text,
+          w,
+          h,
+          bubbleLayoutOptionsForOverlay(o, imageBounds.height || 300, w, h),
+        );
         overflow = layout.overflow;
       }
       if (outOfBounds || overflow) out[o.id] = { outOfBounds, overflow };
@@ -661,7 +673,8 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 const oy = imageBounds.y + toPixel(overlay.y, imageBounds.height);
                 const ow = toPixel(overlay.width, imageBounds.width);
                 const oh = toPixel(overlay.height, imageBounds.height);
-                const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor) : null;
+                const radius = balloonRadiusForOverlay(overlay, ow, oh);
+                const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius) : null;
                 // Strong, clean near-black outline scaled to the preview size so
                 // the bubble reads as a webtoon balloon (matching the export's
                 // proportional stroke), not a faint UI box (#363).
@@ -671,7 +684,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                   <path
                     key={overlay.id}
                     data-testid={`balloon-${overlay.id}`}
-                    d={balloonPathD(ox, oy, ow, oh, tail)}
+                    d={balloonPathD(ox, oy, ow, oh, tail, radius)}
                     className={`fill-white/95 ${selected ? "stroke-accent" : "stroke-[#1a1a1a]"}`}
                     strokeWidth={selected ? strokeW + 0.5 : strokeW}
                     strokeLinejoin="round"
@@ -730,7 +743,11 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                     return (
                       <div
                         className="absolute inset-0 flex items-center justify-center px-1 overflow-hidden pointer-events-none text-center break-words"
-                        style={{ fontFamily, fontSize: Math.max(9, Math.min(height * 0.05, 16)) }}
+                        style={{
+                          fontFamily,
+                          fontSize: Math.max(9, Math.min(height * 0.05, 16)),
+                          fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                        }}
                         data-testid={`overlay-text-${overlay.id}`}
                         data-fonts-ready="false"
                       >
@@ -738,12 +755,13 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                       </div>
                     );
                   }
-                  const { minFontSize, maxFontSize } = defaultBubbleFontRange(imageBounds.height);
-                  const layout = layoutBubbleText(measureWidth(fontFamily), overlay.text, width, height, {
-                    minFontSize,
-                    maxFontSize,
-                    hasSpeaker,
-                  });
+                  const layout = layoutBubbleText(
+                    measureWidth(fontFamily),
+                    overlay.text,
+                    width,
+                    height,
+                    bubbleLayoutOptionsForOverlay(overlay, imageBounds.height, width, height),
+                  );
                   return (
                     <div
                       className="absolute inset-0 flex flex-col items-center justify-center px-1 overflow-hidden pointer-events-none text-center"
@@ -756,7 +774,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                           {overlay.speaker}
                         </span>
                       )}
-                      <span className="text-[#1a1a1a]" style={{ fontSize: layout.fontSize, lineHeight: `${layout.lineHeight}px` }}>
+                      <span
+                        className="text-[#1a1a1a]"
+                        style={{ fontSize: layout.fontSize, lineHeight: `${layout.lineHeight}px`, fontWeight: overlay.textStyle?.fontWeight ?? 400 }}
+                      >
                         {layout.lines.map((line, i) => (
                           <span key={i} className="block">{line}</span>
                         ))}
@@ -831,11 +852,132 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                 />
               </label>
 
+              <div className="space-y-1.5 rounded border border-border/70 p-2" data-testid="inspector-typography">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium text-muted">Typography</span>
+                  {selectedOverlay.textStyle?.mode === "manual" ? (
+                    <button
+                      type="button"
+                      onClick={() => updateOverlay(selectedOverlay.id, { textStyle: undefined })}
+                      className="px-1.5 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                      data-testid="inspector-text-auto"
+                    >
+                      Auto-fit
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => enableManualTypography(selectedOverlay)}
+                      className="px-1.5 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                      data-testid="inspector-text-manual"
+                    >
+                      Manual
+                    </button>
+                  )}
+                </div>
+                {selectedOverlay.textStyle?.mode === "manual" ? (
+                  <div className="space-y-1.5">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] text-muted">Font size (% panel height)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="1.5"
+                        max="12"
+                        value={(((selectedOverlay.textStyle.fontScale ?? 0.032) * 100)).toFixed(1)}
+                        onChange={(e) => updateOverlay(selectedOverlay.id, {
+                          textStyle: {
+                            ...selectedOverlay.textStyle,
+                            mode: "manual",
+                            fontScale: Math.max(0.015, Math.min(0.12, (parseFloat(e.target.value) || 3.2) / 100)),
+                          },
+                        })}
+                        className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                        data-testid="inspector-font-scale"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] text-muted">Weight</span>
+                      <select
+                        value={String(selectedOverlay.textStyle.fontWeight ?? 400)}
+                        onChange={(e) => updateOverlay(selectedOverlay.id, {
+                          textStyle: {
+                            ...selectedOverlay.textStyle,
+                            mode: "manual",
+                            fontWeight: e.target.value === "700" ? 700 : 400,
+                          },
+                        })}
+                        className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                        data-testid="inspector-font-weight"
+                      >
+                        <option value="400">Regular</option>
+                        <option value="700">Bold</option>
+                      </select>
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] text-muted">Line height</span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.9"
+                        max="2"
+                        value={(selectedOverlay.textStyle.lineHeightFactor ?? 1.2).toFixed(2)}
+                        onChange={(e) => updateOverlay(selectedOverlay.id, {
+                          textStyle: {
+                            ...selectedOverlay.textStyle,
+                            mode: "manual",
+                            lineHeightFactor: Math.max(0.9, Math.min(2, parseFloat(e.target.value) || 1.2)),
+                          },
+                        })}
+                        className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                        data-testid="inspector-line-height"
+                      />
+                    </label>
+                    {selectedOverlay.type !== "sfx" && (
+                      <label className="block space-y-1">
+                        <span className="text-[10px] text-muted">Speaker scale</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0.5"
+                          max="1.5"
+                          value={(selectedOverlay.textStyle.speakerScale ?? 0.8).toFixed(2)}
+                          onChange={(e) => updateOverlay(selectedOverlay.id, {
+                            textStyle: {
+                              ...selectedOverlay.textStyle,
+                              mode: "manual",
+                              speakerScale: Math.max(0.5, Math.min(1.5, parseFloat(e.target.value) || 0.8)),
+                            },
+                          })}
+                          className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                          data-testid="inspector-speaker-scale"
+                        />
+                      </label>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-muted">Auto-fit stays on by default and resizes text to the box.</p>
+                )}
+              </div>
+
               {selectedOverlay.type === "speech" && (() => {
                 const tail = selectedOverlay.tailAnchor || { x: 0.5, y: 1.2 };
                 return (
                   <div className="space-y-1">
                     <span className="text-[10px] font-medium text-muted">Tail anchor</span>
+                    <div className="flex flex-wrap gap-1" data-testid="inspector-tail-presets">
+                      {TAIL_PRESETS.map((preset) => (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => updateOverlay(selectedOverlay.id, { tailAnchor: preset.anchor })}
+                          className="px-1.5 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                          data-testid={`inspector-tail-${preset.key}`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="flex gap-2">
                       <label className="flex items-center gap-1 text-[10px] font-mono text-muted">
                         x
@@ -863,6 +1005,66 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                   </div>
                 );
               })()}
+
+              {selectedOverlay.type !== "sfx" && (
+                <div className="space-y-1.5 rounded border border-border/70 p-2" data-testid="inspector-bubble-style">
+                  <span className="text-[10px] font-medium text-muted">Bubble controls</span>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">Padding X (% width)</span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="25"
+                      value={(((selectedOverlay.bubbleStyle?.paddingX ?? 0.06) * 100)).toFixed(0)}
+                      onChange={(e) => updateOverlay(selectedOverlay.id, {
+                        bubbleStyle: {
+                          ...selectedOverlay.bubbleStyle,
+                          paddingX: Math.max(0, Math.min(0.25, (parseFloat(e.target.value) || 6) / 100)),
+                        },
+                      })}
+                      className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                      data-testid="inspector-padding-x"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">Padding Y (% height)</span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="25"
+                      value={(((selectedOverlay.bubbleStyle?.paddingY ?? 0.08) * 100)).toFixed(0)}
+                      onChange={(e) => updateOverlay(selectedOverlay.id, {
+                        bubbleStyle: {
+                          ...selectedOverlay.bubbleStyle,
+                          paddingY: Math.max(0, Math.min(0.25, (parseFloat(e.target.value) || 8) / 100)),
+                        },
+                      })}
+                      className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                      data-testid="inspector-padding-y"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">Corner roundness (% short side)</span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="49"
+                      value={(((selectedOverlay.bubbleStyle?.cornerRadius ?? 0.4) * 100)).toFixed(0)}
+                      onChange={(e) => updateOverlay(selectedOverlay.id, {
+                        bubbleStyle: {
+                          ...selectedOverlay.bubbleStyle,
+                          cornerRadius: Math.max(0, Math.min(0.49, (parseFloat(e.target.value) || 40) / 100)),
+                        },
+                      })}
+                      className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                      data-testid="inspector-corner-radius"
+                    />
+                  </label>
+                </div>
+              )}
 
               <div className="text-[10px] text-muted" data-testid="inspector-font">
                 Font: {selectedOverlay.type === "sfx" ? displayFont.family : bodyFont.family}

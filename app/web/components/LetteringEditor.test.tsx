@@ -29,6 +29,18 @@ interface Overlay {
   text: string;
   speaker?: string;
   tailAnchor?: { x: number; y: number };
+  textStyle?: {
+    mode?: "auto" | "manual";
+    fontScale?: number;
+    fontWeight?: 400 | 700;
+    lineHeightFactor?: number;
+    speakerScale?: number;
+  };
+  bubbleStyle?: {
+    paddingX?: number;
+    paddingY?: number;
+    cornerRadius?: number;
+  };
 }
 
 afterEach(cleanup);
@@ -431,6 +443,80 @@ describe("LetteringEditor", () => {
     );
   });
 
+  it("saves manual typography and bubble controls through the inspector", async () => {
+    const onSave = vi.fn();
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [{ id: "manual", type: "speech", x: 0.1, y: 0.1, width: 0.25, height: 0.12, text: "Hello", speaker: "Mira" }] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+
+    fireEvent.click(screen.getByTestId("overlay-manual"));
+    fireEvent.click(screen.getByTestId("inspector-text-manual"));
+    fireEvent.change(screen.getByTestId("inspector-font-scale"), { target: { value: "4.5" } });
+    fireEvent.change(screen.getByTestId("inspector-line-height"), { target: { value: "1.35" } });
+    fireEvent.change(screen.getByTestId("inspector-speaker-scale"), { target: { value: "0.9" } });
+    fireEvent.change(screen.getByTestId("inspector-padding-x"), { target: { value: "12" } });
+    fireEvent.change(screen.getByTestId("inspector-padding-y"), { target: { value: "10" } });
+    fireEvent.change(screen.getByTestId("inspector-corner-radius"), { target: { value: "25" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(onSave).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        id: "manual",
+        textStyle: expect.objectContaining({
+          mode: "manual",
+          fontScale: 0.045,
+          fontWeight: 400,
+          lineHeightFactor: 1.35,
+          speakerScale: 0.9,
+        }),
+        bubbleStyle: expect.objectContaining({
+          paddingX: 0.12,
+          paddingY: 0.1,
+          cornerRadius: 0.25,
+        }),
+      }),
+    ]));
+  });
+
+  it("applies the manual bold text style in the preview", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({
+          overlays: [{
+            id: "bold",
+            type: "speech",
+            x: 0.1,
+            y: 0.1,
+            width: 0.25,
+            height: 0.12,
+            text: "Bold line",
+            speaker: "Mira",
+            textStyle: { mode: "manual", fontScale: 0.04, fontWeight: 700 },
+          }],
+        })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await simulateImageLoad();
+    await waitFor(() =>
+      expect(screen.getByTestId("overlay-text-bold")).toHaveAttribute("data-fonts-ready", "true"),
+    );
+    const body = screen.getByTestId("overlay-text-bold").querySelector(".text-\\[\\#1a1a1a\\]") as HTMLElement | null;
+    expect(body?.style.fontWeight).toBe("700");
+  });
+
   it("shows tail anchor controls for speech overlay without tailAnchor field", async () => {
     const overlay: Overlay = {
       id: "test-no-tail",
@@ -463,6 +549,37 @@ describe("LetteringEditor", () => {
     expect(tailY).toBeInTheDocument();
     expect(parseFloat(tailX.value)).toBe(0.5);
     expect(parseFloat(tailY.value)).toBe(1.2);
+  });
+
+  it("offers preset tail directions beyond raw numeric inputs", async () => {
+    const overlay: Overlay = {
+      id: "tail-preset",
+      type: "speech",
+      x: 0.1,
+      y: 0.1,
+      width: 0.25,
+      height: 0.12,
+      text: "Hello",
+      speaker: "Mira",
+    };
+
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ overlays: [overlay] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await simulateImageLoad();
+    fireEvent.click(screen.getByTestId("overlay-tail-preset"));
+    fireEvent.click(screen.getByTestId("inspector-tail-left"));
+
+    expect((screen.getByTestId("inspector-tail-x") as HTMLInputElement).value).toBe("-0.2");
+    expect((screen.getByTestId("inspector-tail-y") as HTMLInputElement).value).toBe("0.5");
   });
 
   it("uses Korean font when language is Korean", async () => {
