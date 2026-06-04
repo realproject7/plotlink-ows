@@ -61,7 +61,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
-  const [storyLanguages, setStoryLanguages] = useState<Record<string, string>>({});
+  // `undefined` ⇒ language couldn't be determined for the story → the publish
+  // panel shows "Needs metadata" rather than defaulting to English (#424).
+  const [storyLanguages, setStoryLanguages] = useState<Record<string, string | undefined>>({});
+  // Publish metadata from .story.json (#424) so the publish controls seed real
+  // values. `undefined` ⇒ not set in .story.json → client shows "Needs metadata".
+  const [storyGenres, setStoryGenres] = useState<Record<string, string | undefined>>({});
+  const [storyNsfw, setStoryNsfw] = useState<Record<string, boolean | undefined>>({});
   // Provider recorded on each persisted story (read-only, from /api/stories).
   // Absent ⇒ legacy story with no provider (defaults to Claude at launch).
   const [storyProviders, setStoryProviders] = useState<Record<string, "claude" | "codex" | undefined>>({});
@@ -569,18 +575,26 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string; agentProvider?: "claude" | "codex" }[]) => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string; genre?: string; isNsfw?: boolean; agentProvider?: "claude" | "codex" }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
-      const lang: Record<string, string> = {};
+      const lang: Record<string, string | undefined> = {};
+      const genre: Record<string, string | undefined> = {};
+      const nsfw: Record<string, boolean | undefined> = {};
       const prov: Record<string, "claude" | "codex" | undefined> = {};
       for (const s of stories) {
         ct[s.name] = s.contentType || "fiction";
-        lang[s.name] = s.language || "English";
+        // Preserve absence (vs. defaulting to English/Romance) so the publish
+        // panel can tell "set to X" from "not set yet" and show Needs metadata (#424).
+        lang[s.name] = s.language;
+        genre[s.name] = s.genre;
+        nsfw[s.name] = s.isNsfw;
         prov[s.name] = s.agentProvider;
       }
       setStoryContentTypes(ct);
       setStoryLanguages(lang);
+      setStoryGenres(genre);
+      setStoryNsfw(nsfw);
       setStoryProviders(prov);
     };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
@@ -708,7 +722,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           publishingFile={publishingFile}
           walletAddress={walletAddress}
           contentType={resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current) || "fiction"}
-          language={selectedStory ? (storyLanguages[selectedStory] || "English") : "English"}
+          language={selectedStory ? storyLanguages[selectedStory] : undefined}
+          genre={selectedStory ? storyGenres[selectedStory] : undefined}
+          isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">

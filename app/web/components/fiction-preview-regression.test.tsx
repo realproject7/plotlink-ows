@@ -98,6 +98,8 @@ describe("fiction PreviewPanel regression", () => {
         authFetch={authFetch}
         onPublish={onPublish}
         contentType="fiction"
+        genre="Fantasy"
+        language="English"
       />,
     );
 

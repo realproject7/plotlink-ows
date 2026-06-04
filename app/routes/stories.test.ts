@@ -87,6 +87,39 @@ describe("story metadata (.story.json)", () => {
     expect(meta.language).toBeUndefined();
   });
 
+  // #424: publish metadata (genre / is-NSFW / title / description) read from
+  // .story.json so the publish controls seed real values, not Romance/English.
+  it("reads genre, isNsfw, title, description from .story.json", () => {
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({
+      contentType: "cartoon", language: "Korean", genre: "Science Fiction",
+      isNsfw: true, title: "신의 세포", description: "A cell awakens.",
+    }));
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.genre).toBe("Science Fiction");
+    expect(meta.isNsfw).toBe(true);
+    expect(meta.title).toBe("신의 세포");
+    expect(meta.description).toBe("A cell awakens.");
+  });
+
+  it("accepts snake_case is_nsfw and normalizes to isNsfw on read", () => {
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "cartoon", is_nsfw: true }));
+    expect(readStoryMeta(tmpDir).isNsfw).toBe(true);
+  });
+
+  it("leaves genre/isNsfw undefined when absent (⇒ client shows Needs metadata)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.genre).toBeUndefined();
+    expect(meta.isNsfw).toBeUndefined();
+  });
+
+  it("round-trips genre/isNsfw through writeStoryMeta", () => {
+    writeStoryMeta(tmpDir, { contentType: "cartoon", genre: "Romance", isNsfw: false });
+    const meta = readStoryMeta(tmpDir);
+    expect(meta.genre).toBe("Romance");
+    expect(meta.isNsfw).toBe(false);
+  });
+
   it("persists agentMode bypass in .story.json", () => {
     writeStoryMeta(tmpDir, { contentType: "cartoon", agentMode: "bypass" });
     const meta = readStoryMeta(tmpDir);
@@ -201,6 +234,53 @@ describe("GET /api/stories — agentProvider exposure (read-only)", () => {
     // Preserved via the route's `...existing` spread — repair must not wipe these.
     expect(meta.language).toBe("Korean");
     expect(meta.agentMode).toBe("bypass");
+  });
+
+  // #424: the publish controls read these off the story detail/list response.
+  it("GET /:name surfaces genre/isNsfw/language from .story.json (god-cell)", async () => {
+    seedStory("god-cell", { contentType: "cartoon", language: "Korean", genre: "Science Fiction", isNsfw: false });
+    const res = await app.request("/api/stories/god-cell");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.language).toBe("Korean");
+    expect(body.genre).toBe("Science Fiction");
+    expect(body.isNsfw).toBe(false);
+  });
+
+  it("omits genre/isNsfw when .story.json has none (⇒ Needs metadata on the client)", async () => {
+    seedStory("bare", { contentType: "cartoon" });
+    const res = await app.request("/api/stories/bare");
+    const body = await res.json();
+    expect(body.genre).toBeUndefined();
+    expect(body.isNsfw).toBeUndefined();
+  });
+
+  it("POST /:name/publish-metadata persists genre/language/isNsfw without touching contentType", async () => {
+    const storyDir = seedStory("persist-me", { contentType: "cartoon", language: "Korean", agentMode: "bypass" });
+    const res = await app.request("/api/stories/persist-me/publish-metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ genre: "Science Fiction", language: "Korean", isNsfw: true }),
+    });
+    expect(res.status).toBe(200);
+    const meta = readStoryMeta(storyDir);
+    expect(meta.genre).toBe("Science Fiction");
+    expect(meta.isNsfw).toBe(true);
+    // contentType + unrelated fields preserved; CLAUDE.md not rewritten.
+    expect(meta.contentType).toBe("cartoon");
+    expect(meta.agentMode).toBe("bypass");
+  });
+
+  it("publish-metadata leaves omitted fields untouched (single-control edit)", async () => {
+    const storyDir = seedStory("partial", { contentType: "cartoon", genre: "Romance", isNsfw: true });
+    await app.request("/api/stories/partial/publish-metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ genre: "Horror" }),
+    });
+    const meta = readStoryMeta(storyDir);
+    expect(meta.genre).toBe("Horror");
+    expect(meta.isNsfw).toBe(true); // not clobbered by the genre-only edit
   });
 });
 
@@ -809,7 +889,7 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(404);
   });
 
-  it("defaults language to English when no CJK in title", async () => {
+  it("omits language (⇒ Needs metadata) when undetermined — no blind English default (#424)", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });
     fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\nContent");
@@ -818,7 +898,9 @@ describe("POST /upload-clean/:cutId route", () => {
     const res = await app.request("/api/stories/english-story");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.language).toBe("English");
+    // No .story.json language, no structure hint, Latin-script title ⇒ unknown.
+    // The client must show "Needs metadata", not silently publish English.
+    expect(body.language).toBeUndefined();
   });
 
   it("sync-clean-images does NOT record a .png file (png no longer accepted)", async () => {

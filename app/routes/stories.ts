@@ -41,7 +41,14 @@ interface StoryInfo {
   plotCount: number;
   publishedCount: number;
   contentType: "fiction" | "cartoon";
-  language: string;
+  // Publish metadata from .story.json, surfaced so the publish controls seed
+  // from the real story values (#424). Absent ⇒ could not be determined (no
+  // .story.json value, no structure.md hint, no script detection), so the client
+  // shows an explicit "Needs metadata" state instead of a misleading default
+  // (English/Romance). `genre` is the raw stored label; the client canonicalizes.
+  language?: string;
+  genre?: string;
+  isNsfw?: boolean;
   // Optional. Absent ⇒ no provider recorded (legacy story ⇒ defaults to Claude
   // at launch). Surfaced read-only so the client can offer a scoped repair.
   agentProvider?: AgentProvider;
@@ -66,7 +73,14 @@ export type AgentProvider = "claude" | "codex";
 
 interface StoryMeta {
   contentType: "fiction" | "cartoon";
+  // Publish metadata authored in .story.json. Surfaced so the publish controls
+  // initialize from the story's real values instead of falling back to the
+  // first-in-list defaults (Romance / English) — see #424.
+  title?: string;
+  description?: string;
   language?: string;
+  genre?: string;
+  isNsfw?: boolean;
   agentMode?: "normal" | "bypass";
   // Optional. Absent ⇒ Claude (no migration). "claude" | "codex".
   agentProvider?: AgentProvider;
@@ -78,9 +92,18 @@ function readStoryMeta(storyDir: string): StoryMeta {
     if (fs.existsSync(metaFile)) {
       const raw = JSON.parse(fs.readFileSync(metaFile, "utf-8"));
       if (raw.contentType === "fiction" || raw.contentType === "cartoon") {
+        // Accept both camelCase `isNsfw` and snake_case `is_nsfw` on read; we
+        // always persist canonical `isNsfw` (see writeStoryMeta).
+        const isNsfw = typeof raw.isNsfw === "boolean" ? raw.isNsfw
+          : typeof raw.is_nsfw === "boolean" ? raw.is_nsfw
+          : undefined;
         return {
           contentType: raw.contentType,
+          ...(typeof raw.title === "string" ? { title: raw.title } : {}),
+          ...(typeof raw.description === "string" ? { description: raw.description } : {}),
           ...(typeof raw.language === "string" ? { language: raw.language } : {}),
+          ...(typeof raw.genre === "string" ? { genre: raw.genre } : {}),
+          ...(isNsfw !== undefined ? { isNsfw } : {}),
           ...(raw.agentMode === "bypass" || raw.agentMode === "normal" ? { agentMode: raw.agentMode } : {}),
           ...(raw.agentProvider === "claude" || raw.agentProvider === "codex" ? { agentProvider: raw.agentProvider } : {}),
         };
@@ -145,24 +168,34 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     }
   } catch { /* best effort */ }
 
-  let language = storyMeta.language || "English";
-  if (!storyMeta.language) {
+  // Resolve language best-effort from explicit metadata → structure.md hint →
+  // script detection. Do NOT blind-default to English (#424): when nothing
+  // determines it, leave it undefined so the client shows "Needs metadata"
+  // rather than silently publishing the wrong language.
+  let language: string | undefined = storyMeta.language;
+  if (!language) {
     const fromMetadata = structContent ? parseLanguageMetadata(structContent) : null;
     const fromScript = title ? detectLanguageFromScript(title) : null;
-    if (fromMetadata) language = fromMetadata;
-    else if (fromScript) language = fromScript;
+    language = fromMetadata ?? fromScript ?? undefined;
   }
 
   return {
     name,
-    title,
+    // Prefer the explicit .story.json title when present (#424); fall back to
+    // the H1 parsed from structure.md / genesis.md.
+    title: storyMeta.title ?? title,
     files,
     hasStructure,
     hasGenesis,
     plotCount,
     publishedCount,
     contentType: storyMeta.contentType,
-    language,
+    // Surfaced from .story.json/detection so the publish controls seed real
+    // values (#424); omitted when undetermined so the client shows "Needs
+    // metadata" instead of a misleading English default.
+    ...(language ? { language } : {}),
+    ...(storyMeta.genre ? { genre: storyMeta.genre } : {}),
+    ...(storyMeta.isNsfw !== undefined ? { isNsfw: storyMeta.isNsfw } : {}),
     // Read-only passthrough. Absent when the story has no provider recorded
     // (legacy), so a legacy cartoon shows no provider and the client can offer
     // the explicit repair affordance. Never written/migrated here.
@@ -287,6 +320,42 @@ stories.post("/:name/metadata", async (c) => {
   // Provider-aware so a legacy-cartoon repair (agentProvider → codex) rewrites
   // CLAUDE.md with the Codex file-creation contract; absent ⇒ Claude/manual.
   writeStoryInstructions(storyDir, meta.contentType, meta.agentProvider);
+
+  return c.json({ ok: true });
+});
+
+/**
+ * POST /api/stories/:name/publish-metadata — persist publish controls back to
+ * .story.json (#424).
+ *
+ * Lets a writer's genre/language/is-NSFW selections in the publish panel stick
+ * across refresh, keeping the controls in sync with story metadata. Unlike the
+ * /metadata route this does NOT change contentType or rewrite CLAUDE.md — it
+ * only updates publish fields, so fiction/agent behavior is untouched. Each
+ * field is optional; omitted fields are left as-is (so a single control edit
+ * never clobbers the others).
+ */
+stories.post("/:name/publish-metadata", async (c) => {
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const body = await c.req.json<{ title?: string; description?: string; language?: string; genre?: string; isNsfw?: boolean }>();
+
+  const existing = readStoryMeta(storyDir);
+  const meta: StoryMeta = {
+    ...existing,
+    ...(typeof body.title === "string" ? { title: body.title } : {}),
+    ...(typeof body.description === "string" ? { description: body.description } : {}),
+    ...(typeof body.language === "string" ? { language: body.language } : {}),
+    ...(typeof body.genre === "string" ? { genre: body.genre } : {}),
+    ...(typeof body.isNsfw === "boolean" ? { isNsfw: body.isNsfw } : {}),
+  };
+  writeStoryMeta(storyDir, meta);
 
   return c.json({ ok: true });
 });

@@ -75,6 +75,8 @@ describe("fiction regression", () => {
     const story = body.stories.find((s: { name: string }) => s.name === "plain-fiction");
     expect(story).toBeTruthy();
     expect(story.contentType).toBe("fiction");
-    expect(story.language).toBe("English");
+    // #424: language is omitted when undetermined (no .story.json/structure/
+    // script hint) so the client shows "Needs metadata" instead of defaulting.
+    expect(story.language).toBeUndefined();
   });
 });
