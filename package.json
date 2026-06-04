@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "1.2.87",
+  "version": "1.2.88",
   "packageManager": "npm@10.9.8",
   "engines": {
     "node": "20.x",
@@ -31,7 +31,22 @@
     "!**/.turbo/**",
     "!**/.vite/**",
     "!**/.cache/**",
-    "!**/*.tsbuildinfo"
+    "!**/*.tsbuildinfo",
+    "!**/coverage/**",
+    "!**/.nyc_output/**",
+    "!**/__fixtures__/**",
+    "!**/fixtures/**",
+    "!**/*.fixture.*",
+    "!**/*.snap",
+    "!**/screenshot-*",
+    "!**/screenshots/**",
+    "!**/e2e-verify.*",
+    "!**/tmp/**",
+    "!**/temp/**",
+    "!**/*.log",
+    "!**/*.tmp",
+    "!**/*.bak",
+    "!**/*.swp"
   ],
   "workspaces": [
     "packages/*"
