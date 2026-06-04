@@ -2,16 +2,20 @@ import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vite
 import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
 import { TerminalPanel, isCartoonLaunchBlocked } from "./TerminalPanel";
 import type { AgentReadiness } from "@app-lib/agent-readiness";
+import { FRESH_SPAWN_SIGNAL } from "@app-lib/terminal-protocol";
 
 // --- Stub the heavy terminal/runtime deps so the panel mounts in jsdom. ---
+// Records term.write/reset so the #453 fresh-spawn-dedup test can assert behavior.
+const termSpy = vi.hoisted(() => ({ writes: [] as unknown[], resets: 0 }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
     loadAddon() {}
     open() {}
-    write() {}
+    write(data: unknown) { termSpy.writes.push(data); }
     clear() {}
+    reset() { termSpy.resets++; }
     dispose() {}
     onData() {}
   },
@@ -38,6 +42,10 @@ function readiness(
 
 // WebSocket spy: records every construction so tests can assert (no) spawn.
 let wsConstructed: string[];
+// Captures each WebSocket instance + the IndexedDB scrollback deletes for the
+// #453 fresh-spawn-dedup test.
+let wsInstances: Array<{ readyState: number; onopen: (() => void) | null; onmessage: ((e: { data: unknown }) => void) | null }>;
+const idbDeletes = vi.hoisted(() => ({ keys: [] as unknown[] }));
 
 beforeAll(() => {
   global.ResizeObserver = class {
@@ -64,7 +72,7 @@ beforeAll(() => {
                 });
                 return r;
               },
-              delete: () => {},
+              delete: (key: unknown) => { idbDeletes.keys.push(key); },
             }),
             oncomplete: null,
             onerror: null,
@@ -87,16 +95,21 @@ beforeAll(() => {
 
 beforeEach(() => {
   wsConstructed = [];
+  wsInstances = [];
+  termSpy.writes = [];
+  termSpy.resets = 0;
+  idbDeletes.keys = [];
   global.WebSocket = class {
     static OPEN = 1;
     readyState = 0;
     binaryType = "";
     onopen: (() => void) | null = null;
-    onmessage: (() => void) | null = null;
+    onmessage: ((e: { data: unknown }) => void) | null = null;
     onclose: (() => void) | null = null;
     onerror: (() => void) | null = null;
     constructor(url: string) {
       wsConstructed.push(url);
+      wsInstances.push(this as never);
     }
     send() {}
     close() {}
@@ -331,5 +344,46 @@ describe("TerminalPanel rename moves the terminal into the final folder (#377)",
       ).toBe(true);
     });
     expect(wsConstructed.length).toBeGreaterThan(before);
+  });
+});
+
+describe("TerminalPanel fresh-spawn scrollback dedup (#453)", () => {
+  function renderPanel(storyName: string) {
+    const renameRef = { current: null } as { current: ((o: string, n: string) => Promise<boolean>) | null };
+    return render(
+      <TerminalPanel token="t" storyName={storyName} authFetch={noopFetch} renameRef={renameRef} />,
+    );
+  }
+
+  it("drops the restored scrollback when the server signals a fresh spawn, then writes later frames", async () => {
+    renderPanel("god-cell");
+    await waitFor(() => expect(wsInstances.length).toBeGreaterThan(0));
+    const ws = wsInstances[wsInstances.length - 1];
+    act(() => { ws.readyState = 1; ws.onopen?.(); });
+
+    // First frame is the fresh-spawn control → reset the terminal + drop the
+    // persisted scrollback, and do NOT write the signal itself.
+    act(() => { ws.onmessage?.({ data: FRESH_SPAWN_SIGNAL }); });
+    expect(termSpy.resets).toBe(1);
+    // deleteScrollback resolves through the async IndexedDB stub.
+    await waitFor(() => expect(idbDeletes.keys).toContain("god-cell"));
+    expect(termSpy.writes).not.toContain(FRESH_SPAWN_SIGNAL);
+
+    // Subsequent PTY frames are written normally.
+    act(() => { ws.onmessage?.({ data: "agent banner output" }); });
+    expect(termSpy.writes).toContain("agent banner output");
+  });
+
+  it("keeps a live reconnect (no signal) — writes the first frame, no reset, no scrollback drop", async () => {
+    renderPanel("tidewright");
+    await waitFor(() => expect(wsInstances.length).toBeGreaterThan(0));
+    const ws = wsInstances[wsInstances.length - 1];
+    act(() => { ws.readyState = 1; ws.onopen?.(); });
+
+    // A live reconnect's first frame is ordinary PTY output — kept as-is.
+    act(() => { ws.onmessage?.({ data: "live pty output" }); });
+    expect(termSpy.resets).toBe(0);
+    expect(termSpy.writes).toContain("live pty output");
+    expect(idbDeletes.keys).not.toContain("tidewright");
   });
 });
