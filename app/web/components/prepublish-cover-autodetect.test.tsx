@@ -57,6 +57,7 @@ async function renderDraft(authFetch: ReturnType<typeof makeAuthFetch>, onPublis
       publishingFile={null}
       walletAddress={WALLET}
       contentType="cartoon"
+      genre="Adventure"
     />,
   );
   await screen.findByTestId("prepublish-cover");

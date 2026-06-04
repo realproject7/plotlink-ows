@@ -62,7 +62,13 @@ interface PreviewPanelProps {
   publishingFile?: string | null;
   walletAddress?: string | null;
   contentType?: "fiction" | "cartoon";
+  // Publish metadata resolved from .story.json (#424) so the controls seed the
+  // story's real values instead of the first-in-list defaults (Romance/English).
+  // `language` is the server-resolved language; `genre` is the raw stored label
+  // (canonicalized here). Absent ⇒ not set → controls show "Needs metadata".
   language?: string;
+  genre?: string;
+  isNsfw?: boolean;
 }
 
 interface FileData {
@@ -79,7 +85,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -101,7 +107,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [dirty, setDirty] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
-  const [selectedGenre, setSelectedGenre] = useState(GENRES[0]);
+  // "" ⇒ unset ⇒ "Needs metadata" (no misleading Romance default). Seeded from
+  // .story.json props / structure.md in the seeding effect below (#424).
+  const [selectedGenre, setSelectedGenre] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [isNsfw, setIsNsfw] = useState(false);
   const [cartoonIssues, setCartoonIssues] = useState<string[]>([]);
@@ -255,35 +263,57 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     return () => { cancelled = true; };
   }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content, fileData?.status, cutsRefreshKey]);
 
-  // Auto-detect genre from structure.md when story changes
+  // Load structure.md once per story — used to resolve the public title before
+  // publish (#358) and as a metadata fallback when .story.json lacks genre/
+  // language (#424).
   useEffect(() => {
-    if (!storyName) return;
+    if (!storyName) { setStructureContent(null); return; }
     let cancelled = false;
     authFetch(`/api/stories/${storyName}/structure.md`)
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (cancelled) return;
-        // Keep the structure.md content so the publish panel can resolve + show
-        // the public story title before publish (#358).
-        setStructureContent(data?.content ?? null);
-        if (!data?.content) return;
-        const match = data.content.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
-        if (match) {
-          const detected = match[1].replace(/\*+/g, "").trim();
-          // Canonicalize so a natural label like "Sci-Fi" in structure.md
-          // preselects "Science Fiction" instead of being silently dropped (#412).
-          const found = canonicalizeGenre(detected);
-          if (found) setSelectedGenre(found);
-        }
-        const langMatch = data.content.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
-        if (langMatch) {
-          const detected = langMatch[1].replace(/\*+/g, "").trim();
-          const found = LANGUAGES.find((l) => l.toLowerCase() === detected.toLowerCase());
-          if (found) setSelectedLanguage(found);
-        }
-      })
+      .then((data) => { if (!cancelled) setStructureContent(data?.content ?? null); })
       .catch(() => {});
     return () => { cancelled = true; };
+  }, [storyName, authFetch]);
+
+  // Seed the publish metadata controls from the story's real values (#424).
+  // Priority: explicit .story.json metadata (props) → structure.md hints → an
+  // explicit "Needs metadata" genre (empty) instead of a misleading Romance/
+  // English default. Persisted edits round-trip through these same props, so
+  // re-seeding settles on the saved value and never clobbers a selection.
+  useEffect(() => {
+    if (!storyName) return;
+    // Genre: canonical .story.json label, else structure.md genre, else unset.
+    const metaGenre = canonicalizeGenre(genreMeta);
+    let genreVal = metaGenre ?? "";
+    if (!metaGenre && structureContent) {
+      const match = structureContent.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
+      // Canonicalize so a natural label like "Sci-Fi" preselects "Science
+      // Fiction" instead of being silently dropped (#412).
+      if (match) genreVal = canonicalizeGenre(match[1].replace(/\*+/g, "").trim()) ?? "";
+    }
+    setSelectedGenre(genreVal);
+    // Language: the server-resolved story language (explicit .story.json or
+    // script-detected), else structure.md, else the first option.
+    let langVal = (language && LANGUAGES.find((l) => l.toLowerCase() === language.toLowerCase())) || "";
+    if (!langVal && structureContent) {
+      const langMatch = structureContent.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
+      if (langMatch) langVal = LANGUAGES.find((l) => l.toLowerCase() === langMatch[1].replace(/\*+/g, "").trim().toLowerCase()) || "";
+    }
+    setSelectedLanguage(langVal || LANGUAGES[0]);
+    setIsNsfw(nsfwMeta ?? false);
+  }, [storyName, genreMeta, language, nsfwMeta, structureContent]);
+
+  // Persist a publish-control edit back to .story.json so it sticks across
+  // refresh and the controls stay in sync with story metadata (#424). Best
+  // effort: a failure still leaves the selection applied to this publish.
+  const persistPublishMeta = useCallback((patch: { genre?: string; language?: string; isNsfw?: boolean }) => {
+    if (!storyName) return;
+    authFetch(`/api/stories/${storyName}/publish-metadata`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => { /* best-effort */ });
   }, [storyName, authFetch]);
 
   const handleSave = useCallback(async () => {
@@ -1359,16 +1389,26 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <>
                   <select
                     value={selectedGenre}
-                    onChange={(e) => setSelectedGenre(e.target.value)}
-                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                    data-testid="publish-genre-select"
+                    onChange={(e) => {
+                      setSelectedGenre(e.target.value);
+                      if (e.target.value) persistPublishMeta({ genre: e.target.value });
+                    }}
+                    className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedGenre ? "border-border" : "border-amber-500"}`}
                   >
+                    {/* Explicit unset state — no silent Romance default (#424). */}
+                    {!selectedGenre && <option value="" disabled>Needs metadata — select genre</option>}
                     {GENRES.map((g) => (
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
                   <select
                     value={selectedLanguage}
-                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    data-testid="publish-language-select"
+                    onChange={(e) => {
+                      setSelectedLanguage(e.target.value);
+                      persistPublishMeta({ language: e.target.value });
+                    }}
                     className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
                   >
                     {LANGUAGES.map((l) => (
@@ -1412,11 +1452,16 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
                 }}
-                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isCartoonPlot && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isGenesis && !selectedGenre) || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
               </button>
+              {isGenesis && !selectedGenre && (
+                <span className="text-amber-600 text-xs" data-testid="genre-needs-metadata">
+                  Needs metadata — choose a genre before publishing
+                </span>
+              )}
               {overLimit && (
                 <span className="text-error text-xs">Reduce content to publish</span>
               )}
@@ -1471,7 +1516,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                   <input
                     type="checkbox"
                     checked={isNsfw}
-                    onChange={(e) => setIsNsfw(e.target.checked)}
+                    onChange={(e) => {
+                      setIsNsfw(e.target.checked);
+                      persistPublishMeta({ isNsfw: e.target.checked });
+                    }}
                     className="rounded border-border"
                   />
                   This story contains adult content (18+)

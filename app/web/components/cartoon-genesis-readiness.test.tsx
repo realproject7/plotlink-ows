@@ -38,7 +38,9 @@ function makeFetch(opts: { genesis: string; structure?: string }) {
 
 function renderGenesis(authFetch: ReturnType<typeof makeFetch>, contentType = "cartoon") {
   render(
-    <PreviewPanel storyName="coupon-crush" fileName="genesis.md" authFetch={authFetch} onPublish={vi.fn()} publishingFile={null} walletAddress="test-wallet-address" contentType={contentType} />,
+    // genre seeds the publish metadata so the readiness/title gates are what's
+    // under test here, not the #424 "Needs metadata" genre gate.
+    <PreviewPanel storyName="coupon-crush" fileName="genesis.md" authFetch={authFetch} onPublish={vi.fn()} publishingFile={null} walletAddress="test-wallet-address" contentType={contentType} genre="Adventure" />,
   );
 }
 
