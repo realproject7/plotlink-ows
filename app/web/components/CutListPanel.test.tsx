@@ -68,7 +68,7 @@ describe("CutListPanel", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("No image")).toBeInTheDocument();
+      expect(screen.getByText("Needs image")).toBeInTheDocument();
       expect(screen.getByText("1 missing")).toBeInTheDocument();
     });
   });
@@ -82,7 +82,7 @@ describe("CutListPanel", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Clean ready")).toBeInTheDocument();
+      expect(screen.getByText("Ready for lettering")).toBeInTheDocument();
       expect(screen.getByText("1 clean")).toBeInTheDocument();
     });
   });
@@ -100,7 +100,7 @@ describe("CutListPanel", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Lettered")).toBeInTheDocument();
+      expect(screen.getByText("Exported")).toBeInTheDocument();
       expect(screen.getByText("1 lettered")).toBeInTheDocument();
     });
   });
@@ -248,9 +248,8 @@ describe("CutListPanel", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => expect(screen.getByText("Has image")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Has image"));
-
-    const img = await screen.findByAltText("Cut 1 clean");
+    // The artwork preview now lives in the always-visible card head (#440).
+    const img = await screen.findByAltText("Cut 1 artwork");
     expect(img).toHaveAttribute("src", MOCK_BLOB_URL);
     expect(img.getAttribute("src")).not.toContain("/api/stories/");
     expect(authFetch).toHaveBeenCalledWith("/api/stories/story/asset/plot-01/cut-01-clean.webp");
@@ -853,8 +852,9 @@ describe("CutListPanel", () => {
       });
       render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
       await waitFor(() => expect(screen.getByText("Has recorded path")).toBeInTheDocument());
-      // Stale recorded path surfaces as "Image missing" in the row header (#302).
-      await waitFor(() => expect(screen.getByText("Image missing")).toBeInTheDocument());
+      // Stale recorded path reads as "Needs image" on the card (#440); the precise
+      // repair stays under Open details. The done banner must not show.
+      await waitFor(() => expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs image"));
       expect(screen.queryByTestId("clean-assets-ready")).not.toBeInTheDocument();
     });
   });
@@ -974,14 +974,61 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(screen.getByTestId("asset-diag-summary")).toHaveTextContent("1 needs conversion");
     expect(screen.queryByTestId("asset-diag-issues")).not.toBeInTheDocument();
 
-    // Per-cut: a "Needs conversion" badge, and expanding offers "Convert image".
-    const badge = screen.getByTestId("cut-status-needs-conversion-1");
-    expect(badge).toHaveTextContent("Needs conversion");
-    fireEvent.click(badge.closest("button")!);
+    // Per-cut card: a "Needs conversion" status + a primary "Convert image"
+    // action (#440 card head), never "Image missing".
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs conversion");
+    expect(screen.getByTestId("card-convert-1")).toBeInTheDocument();
+    // Opening details exposes the per-cut convert box; a PNG cut must NOT show the
+    // red "Clear stale path" repair box.
+    fireEvent.click(screen.getByTestId("cut-details-1"));
     expect(screen.getByTestId("needs-conversion-1")).toBeInTheDocument();
     expect(screen.getByTestId("convert-cut-1")).toBeInTheDocument();
-    // A PNG cut must NOT show the red "Clear stale path" repair box.
     expect(screen.queryByTestId("stale-asset-1")).not.toBeInTheDocument();
+  });
+
+  // #440: the production-board redesign — episode header + progress summary, one
+  // card per cut with a creator-facing status + primary action, technical
+  // controls collapsed by default.
+  it("renders an episode header, progress summary, per-cut card statuses, and collapses technical controls", async () => {
+    const fn = vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          diagnostics: [
+            { cutId: 1, kind: "image", state: "needs-conversion", issue: "Cut 1: … Unsupported extension .png", convertiblePng: "assets/genesis/cut-01-clean.png" },
+            { cutId: 2, kind: "image", state: "clean-ready", issue: null, convertiblePng: null },
+            { cutId: 3, kind: "image", state: "planned", issue: null, convertiblePng: null },
+          ],
+          summary: { planned: 1, needsConversion: 1, missing: 0, cleanReady: 1, finalReady: 0, uploaded: 0 },
+        }) });
+      }
+      if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "genesis", title: "열네 개의 점", cuts: [
+        makeCut({ id: 1, shotType: "wide", cleanImagePath: "assets/genesis/cut-01-clean.png", description: "A cold CERN room" }),
+        makeCut({ id: 2, shotType: "medium", cleanImagePath: "assets/genesis/cut-02-clean.webp", description: "Sarah at a desk" }),
+        makeCut({ id: 3, shotType: "close-up", description: "A single dot" }),
+      ] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+
+    // Episode header + creator-facing progress summary.
+    const header = await screen.findByTestId("cut-board-header");
+    expect(header).toHaveTextContent("Genesis / Episode 1");
+    expect(header).toHaveTextContent("열네 개의 점");
+    await waitFor(() => expect(screen.getByTestId("cut-board-summary")).toHaveTextContent("3 cuts · 2 artwork found · 1 converted · 0 lettered · 0 uploaded"));
+
+    // Per-cut cards with creator-facing status + the right primary action.
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs conversion");
+    expect(screen.getByTestId("card-convert-1")).toBeInTheDocument();
+    expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent("Ready for lettering");
+    expect(screen.getByTestId("card-letter-2")).toBeInTheDocument();
+    expect(screen.getByTestId("cut-card-status-3")).toHaveTextContent("Needs image");
+
+    // Technical controls live under a collapsed-by-default Details disclosure.
+    const advanced = screen.getByTestId("cut-advanced");
+    expect(advanced.tagName.toLowerCase()).toBe("details");
+    expect(advanced).not.toHaveAttribute("open");
+    expect(within(advanced).getByTestId("sync-clean-btn")).toBeInTheDocument();
   });
 
   it("clears the stale diagnostics banner on a file switch whose diagnostics request fails (@re1)", async () => {

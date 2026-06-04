@@ -56,8 +56,9 @@ describe("CutListPanel stale asset path surfacing (#302)", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => expect(screen.getByText("Stale cut")).toBeInTheDocument());
-    // Collapsed header surfaces the missing state instead of "Clean ready".
-    expect(screen.getByText("Image missing")).toBeInTheDocument();
+    // The card surfaces the missing state as "Needs image" (#440), never "Ready
+    // for lettering"; the precise repair stays under Open details.
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs image");
 
     fireEvent.click(screen.getByText("Stale cut"));
     await waitFor(() => expect(screen.getByTestId("stale-asset-1")).toBeInTheDocument());
@@ -87,6 +88,24 @@ describe("CutListPanel stale asset path surfacing (#302)", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  // #440 RE1: a cut whose recorded FINAL image is stale must not read as the
+  // finished "Exported" state on the always-visible card — it needs re-review,
+  // and the repair must stay reachable in Open details.
+  it("a stale finalImagePath reads as 'Needs review', not 'Exported', with the repair under details", async () => {
+    const cutsData = { version: 1, plotFile: "plot-01", cuts: [makeCut({ finalImagePath: "assets/plot-01/cut-01-final.webp", exportedAt: "t" })] };
+    const stale = [{ cutId: 1, field: "finalImagePath", path: "assets/plot-01/cut-01-final.webp", message: "Cut 1 final image path is recorded but the file is missing" }];
+    const authFetch = mockAuthFetch(cutsData, stale);
+
+    render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
+    await waitFor(() => expect(screen.getByText("Stale cut")).toBeInTheDocument());
+    // Must NOT claim the cut is production-ready.
+    await waitFor(() => expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs review"));
+    expect(screen.getByTestId("cut-card-status-1")).not.toHaveTextContent("Exported");
+    // The precise repair stays available under Open details.
+    fireEvent.click(screen.getByText("Stale cut"));
+    await waitFor(() => expect(screen.getByTestId("repair-stale-1")).toBeInTheDocument());
   });
 
   it("does not show a stale error when no stale paths are reported", async () => {
