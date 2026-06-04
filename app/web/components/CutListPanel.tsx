@@ -118,11 +118,21 @@ interface BoardStatus { key: BoardStatusKey; label: string; tone: BoardTone }
  * letter/review → needs image.
  */
 function boardStatus(cut: Cut, needsConversion: boolean, hasStale: boolean): BoardStatus {
+  // Uploaded content lives on IPFS, so a missing LOCAL file is not a defect.
   if (cut.uploadedCid || cut.uploadedUrl) return { key: "uploaded", label: "Uploaded", tone: "green" };
-  if (cut.finalImagePath) return { key: "exported", label: "Exported", tone: "green" };
+  // PNG clean art is an actionable conversion step (#441).
   if (needsConversion) return { key: "convert", label: "Needs conversion", tone: "amber" };
+  // A recorded asset path that's broken on disk (#302) must NOT read as a
+  // finished "Exported"/clean cut (#440 RE1): a recorded final needs
+  // re-review/re-export; otherwise the clean art is gone → needs image. The
+  // precise repair lives in the card's Open details.
+  if (hasStale) {
+    return cut.finalImagePath
+      ? { key: "review", label: "Needs review", tone: "amber" }
+      : { key: "needs-image", label: "Needs image", tone: "muted" };
+  }
+  if (cut.finalImagePath) return { key: "exported", label: "Exported", tone: "green" };
   if (isTextPanel(cut)) return { key: "text", label: "Ready for captions", tone: "accent" };
-  if (hasStale) return { key: "needs-image", label: "Needs image", tone: "muted" };
   if (cut.cleanImagePath) {
     return (cut.overlays?.length ?? 0) > 0
       ? { key: "review", label: "Needs review", tone: "amber" }
