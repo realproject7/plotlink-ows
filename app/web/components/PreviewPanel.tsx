@@ -779,7 +779,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     hasGenesis,
     isPublished,
     cutCount: episodeCutCount,
-    uploadedCount: genesisCutProgress?.uploaded ?? 0,
+    // Pass the Genesis production progress so the footer advances by real stage
+    // (clean → letter → export → upload), not just "is anything uploaded" (#451).
+    cutProgress: isCartoonGenesis ? genesisCutProgress : null,
   });
 
   // Resolve + validate the public publish title shown before publish (#358).
@@ -1354,8 +1356,17 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 readiness UI instead of treating Genesis as text-only. */}
             {isCartoonGenesis && genesisCutProgress && (
               <div className="text-xs text-muted" data-testid="genesis-cuts-summary">
+                {/* Distinguish clean art / lettering / final-export / upload so the
+                    state never collapses to just "uploaded" (#451). */}
                 Episode 1 (Genesis) cuts: {genesisCutProgress.total} planned
-                {genesisCutProgress.total > 0 && <> · {genesisCutProgress.uploaded} with uploaded images</>}
+                {genesisCutProgress.total > 0 && (
+                  <>
+                    {" "}· {genesisCutProgress.withClean} clean
+                    {" "}· {genesisCutProgress.withText} lettered
+                    {" "}· {genesisCutProgress.exported} exported
+                    {" "}· {genesisCutProgress.uploaded} uploaded
+                  </>
+                )}
               </div>
             )}
             {/* State-aware guidance for a not-yet-produced Genesis or a future-

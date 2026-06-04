@@ -657,8 +657,13 @@ export interface PreviewFooterContext {
    * cuts.json. null when the file isn't an episode or its cuts are unknown.
    */
   cutCount: number | null;
-  /** Of those cuts, how many have an uploaded final image. */
-  uploadedCount: number;
+  /**
+   * Full production progress for a GENESIS episode, so the footer's next-step
+   * line tracks the real stage — clean art → lettering → export → upload (#451)
+   * — instead of saying "generate clean images" whenever nothing is uploaded.
+   * Null for plots (their stage guidance is the CartoonStepGuide) or when unknown.
+   */
+  cutProgress?: CartoonCutProgress | null;
 }
 
 const FICTION_OUTLINE_GUIDANCE = "This is your story outline — not publishable. Ask AI to write the genesis next.";
@@ -669,7 +674,7 @@ const FICTION_OUTLINE_GUIDANCE = "This is your story outline — not publishable
  * structure.md keeps its original outline line and no other file is annotated.
  */
 export function previewFooterGuidance(ctx: PreviewFooterContext): string | null {
-  const { fileName, contentType, hasGenesis, isPublished, cutCount, uploadedCount } = ctx;
+  const { fileName, contentType, hasGenesis, isPublished, cutCount, cutProgress } = ctx;
   const isStructure = fileName === "structure.md";
   const isGenesis = fileName === "genesis.md";
   const isPlot = /^plot-\d+\.md$/.test(fileName);
@@ -689,8 +694,24 @@ export function previewFooterGuidance(ctx: PreviewFooterContext): string | null 
         ? "Genesis is your Episode 1 opening. Plan its cuts, then generate clean images for them."
         : "This episode hasn't been started — expand its cut plan before preparing it for publish.";
     }
-    if (isGenesis && uploadedCount === 0) {
-      return "Genesis has a cut plan but no uploaded images yet — generate clean images for its cuts next.";
+    // Genesis: track the real production stage so the line advances past
+    // "generate clean images" once the clean art exists (#451). Clean art →
+    // lettering → export → upload → publish, worded so each is distinct.
+    if (isGenesis && cutProgress) {
+      const p = cutProgress;
+      if (p.withClean < p.needClean) {
+        return "Genesis has a cut plan — generate the clean images for its cuts next.";
+      }
+      if (p.withText < p.needClean) {
+        return "Genesis clean art is ready — review the cuts and add speech bubbles & captions next.";
+      }
+      if (p.exported < p.total) {
+        return "Genesis lettering is underway — export the final images next.";
+      }
+      if (p.uploaded < p.total) {
+        return "Genesis final images are exported — upload them next, then prepare to publish.";
+      }
+      // Every cut uploaded → the publish controls speak.
     }
   }
 
