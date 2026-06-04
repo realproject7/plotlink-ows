@@ -61,6 +61,7 @@ function Chip({ label, value, tone = "muted" }: { label: string; value: string; 
 export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKey = 0 }: StoryProgressPanelProps) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,11 +108,25 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
         </div>
       </div>
 
-      {/* Single product-level next step. */}
+      {/* Single product-level next step + a copy-paste prompt for the agent (#423). */}
       {progress.nextAction && (
-        <div className="px-4 py-2 border-b border-accent/30 bg-accent/5 text-xs" data-testid="progress-next-action">
-          <span className="font-medium text-foreground">Next: </span>
-          <span className="text-muted">{progress.nextAction}</span>
+        <div className="px-4 py-2 border-b border-accent/30 bg-accent/5 text-xs space-y-1.5" data-testid="progress-next-action">
+          <div>
+            <span className="font-medium text-foreground">Next: </span>
+            <span className="text-muted">{progress.nextAction}</span>
+          </div>
+          {progress.nextPrompt && (
+            <div className="flex items-start gap-1.5" data-testid="progress-next-prompt">
+              <code className="flex-1 rounded border border-border bg-surface px-1.5 py-1 text-[10px] text-foreground break-words">{progress.nextPrompt}</code>
+              <button
+                onClick={() => { if (progress.nextPrompt) navigator.clipboard?.writeText(progress.nextPrompt).then(() => { setCopied(true); }).catch(() => {}); }}
+                data-testid="copy-next-prompt"
+                className="rounded border border-border px-2 py-1 text-[10px] text-muted hover:border-accent hover:text-accent transition-colors flex-shrink-0"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -99,51 +99,46 @@ function makeAuthFetch(opts?: { readiness?: unknown; readinessFails?: boolean })
         : [];
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ stories }) });
     }
-    // metadata POST or anything else
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    // Guided New Story create (#423): server returns the named story slug.
+    if (url === "/api/stories/create") {
+      const b = body as { title?: string; contentType?: string } | undefined;
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ name: "my-tale", title: b?.title, contentType: b?.contentType }) });
+    }
+    // story detail (handleSelectStory), metadata POST, or anything else
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, files: [] }) });
   });
   return { fn, calls, appear: () => { storiesAppeared = true; } };
 }
 
-function metadataBodyFor(calls: FetchCall[]): Record<string, unknown> | undefined {
-  const call = calls.find((c) => c.url.includes("/metadata"));
-  return call?.body as Record<string, unknown> | undefined;
-}
-
-describe("StoriesPage new-story provider selection", () => {
-  async function createStory(opts: { provider?: "claude" | "codex"; contentTypeLabel: string }) {
-    const { fn, calls, appear } = makeAuthFetch();
-    render(<StoriesPage token="t" authFetch={fn} />);
-
-    // Open the new-story modal.
-    fireEvent.click(screen.getByTestId("mock-new-story"));
-
-    // Provider control defaults to Claude.
-    const select = screen.getByTestId("agent-provider-select") as HTMLSelectElement;
-    expect(select.value).toBe("claude");
-    if (opts.provider) {
-      fireEvent.change(select, { target: { value: opts.provider } });
-    }
-
-    // Pick a content type → registers the pending session in the maps.
-    fireEvent.click(screen.getByText(opts.contentTypeLabel));
-
-    // Now make a story "appear" and let the 3s poll run.
-    appear();
-    await waitFor(
-      () => { expect(metadataBodyFor(calls)).toBeDefined(); },
-      { timeout: 5000 },
-    );
-    return metadataBodyFor(calls)!;
+describe("StoriesPage new-story provider selection (guided create #423)", () => {
+  function createBodyFor(calls: FetchCall[]): Record<string, unknown> | undefined {
+    return calls.find((c) => c.url === "/api/stories/create")?.body as Record<string, unknown> | undefined;
   }
 
-  it("persists agentProvider 'codex' when Codex is selected (cartoon)", async () => {
-    const body = await createStory({ provider: "codex", contentTypeLabel: "Cartoon" });
-    expect(body).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
+  // Guided flow: open modal → enter a title → pick a content type → the app POSTs
+  // /api/stories/create with the chosen metadata (no agent-driven rename).
+  async function createStory(opts: { provider?: "claude" | "codex"; contentTypeLabel: "Fiction" | "Cartoon"; title?: string }) {
+    const { fn, calls } = makeAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+
+    const select = screen.getByTestId("agent-provider-select") as HTMLSelectElement;
+    expect(select.value).toBe("claude");
+    if (opts.provider) fireEvent.change(select, { target: { value: opts.provider } });
+
+    fireEvent.change(screen.getByTestId("new-story-title"), { target: { value: opts.title ?? "My Tale" } });
+    fireEvent.click(screen.getByTestId(opts.contentTypeLabel === "Cartoon" ? "create-cartoon" : "create-fiction"));
+
+    await waitFor(() => { expect(createBodyFor(calls)).toBeDefined(); }, { timeout: 5000 });
+    return createBodyFor(calls)!;
+  }
+
+  it("creates a cartoon with the entered title + agentProvider codex", async () => {
+    const body = await createStory({ provider: "codex", contentTypeLabel: "Cartoon", title: "신의 세포" });
+    expect(body).toMatchObject({ contentType: "cartoon", agentProvider: "codex", title: "신의 세포" });
   }, 10000);
 
   it("forces agentProvider 'codex' for cartoon even when the dropdown shows Claude", async () => {
-    // No provider override → dropdown stays on its Claude default.
     const body = await createStory({ contentTypeLabel: "Cartoon" });
     expect(body).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
   }, 10000);
@@ -158,6 +153,15 @@ describe("StoriesPage new-story provider selection", () => {
     ).toBeInTheDocument();
   });
 
+  it("requires a title before the create buttons are enabled", () => {
+    render(<StoriesPage token="t" authFetch={makeAuthFetch().fn} />);
+    fireEvent.click(screen.getByTestId("mock-new-story"));
+    expect(screen.getByTestId("new-story-title-required")).toBeInTheDocument();
+    expect(screen.getByTestId("create-fiction")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("new-story-title"), { target: { value: "Dusk" } });
+    expect(screen.getByTestId("create-fiction")).not.toBeDisabled();
+  });
+
   it("defaults agentProvider to 'claude' when the provider control is untouched (fiction)", async () => {
     const body = await createStory({ contentTypeLabel: "Fiction" });
     expect(body).toMatchObject({ contentType: "fiction", agentProvider: "claude" });
@@ -168,54 +172,21 @@ describe("StoriesPage new-story provider selection", () => {
     expect(body).toMatchObject({ contentType: "fiction", agentProvider: "codex" });
   }, 10000);
 
-  // Regression for PR #260: the provider must be threaded into the TerminalPanel
-  // `agentProviders` state map for the brand-new (_new_) session, so the FIRST
-  // WS spawn appends provider=codex. Cartoon is always codex.
-  it("threads provider=codex into agentProviders for a new cartoon _new_ session", async () => {
-    const { fn } = makeAuthFetch();
-    render(<StoriesPage token="t" authFetch={fn} />);
-    fireEvent.click(screen.getByTestId("mock-new-story"));
-    fireEvent.click(screen.getByText("Cartoon"));
+  it("threads provider=codex into agentProviders for the created cartoon story", async () => {
+    await createStory({ contentTypeLabel: "Cartoon" });
     await waitFor(() => {
       const providers = childProps.agentProviders ?? {};
-      const entries = Object.entries(providers);
-      expect(entries.length).toBeGreaterThan(0);
-      // The pending session key is a _new_<ts> id, mapped to codex.
-      expect(entries.some(([k, v]) => k.startsWith("_new_") && v === "codex")).toBe(true);
+      expect(providers["my-tale"]).toBe("codex");
       expect(Object.values(providers)).not.toContain("claude");
     });
-  });
-
-  // #295: when the agent's folder appears and the _new_ session is renamed, the
-  // rename call must forward the cartoon story's metadata (incl. agentProvider:
-  // codex) so the server persists it atomically — the fresh-cartoon repair-banner fix.
-  it("forwards contentType:cartoon + agentProvider:codex to the rename on confirm", async () => {
-    const { fn, appear } = makeAuthFetch();
-    render(<StoriesPage token="t" authFetch={fn} />);
-    fireEvent.click(screen.getByTestId("mock-new-story"));
-    fireEvent.click(screen.getByText("Cartoon"));
-
-    appear(); // agent's folder ("my-tale") now shows in /api/stories → triggers rename
-    await waitFor(
-      () => { expect(childProps.renameCalls.length).toBeGreaterThan(0); },
-      { timeout: 5000 },
-    );
-    const call = childProps.renameCalls.find((c) => c.newName === "my-tale");
-    expect(call).toBeDefined();
-    expect(call!.oldName.startsWith("_new_")).toBe(true);
-    expect(call!.meta).toMatchObject({ contentType: "cartoon", agentProvider: "codex" });
   }, 10000);
 
-  it("threads provider=claude into agentProviders for a default fiction _new_ session", async () => {
-    const { fn } = makeAuthFetch();
-    render(<StoriesPage token="t" authFetch={fn} />);
-    fireEvent.click(screen.getByTestId("mock-new-story"));
-    fireEvent.click(screen.getByText("Fiction"));
+  it("threads provider=claude into agentProviders for the created fiction story", async () => {
+    await createStory({ contentTypeLabel: "Fiction" });
     await waitFor(() => {
-      const providers = childProps.agentProviders ?? {};
-      expect(Object.entries(providers).some(([k, v]) => k.startsWith("_new_") && v === "claude")).toBe(true);
+      expect((childProps.agentProviders ?? {})["my-tale"]).toBe("claude");
     });
-  });
+  }, 10000);
 
   it("toggles provider helper text when switching to Codex", () => {
     render(<StoriesPage token="t" authFetch={makeAuthFetch().fn} />);
@@ -378,6 +349,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch();
     render(<StoriesPage token="t" authFetch={fn} />);
     fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.change(screen.getByTestId("new-story-title"), { target: { value: "A Tale" } });
     await waitFor(() => {
       expect(screen.getByTestId("cartoon-codex-note")).toBeInTheDocument();
     });
@@ -409,6 +381,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const { fn } = makeAuthFetch({ readinessFails: true });
     render(<StoriesPage token="t" authFetch={fn} />);
     fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.change(screen.getByTestId("new-story-title"), { target: { value: "A Tale" } });
     // Note is always present; warning never shows when readiness is null.
     await waitFor(() => {
       expect(screen.getByTestId("cartoon-codex-note")).toBeInTheDocument();
@@ -427,6 +400,7 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     });
     render(<StoriesPage token="t" authFetch={fn} />);
     fireEvent.click(screen.getByTestId("mock-new-story"));
+    fireEvent.change(screen.getByTestId("new-story-title"), { target: { value: "A Tale" } });
     await waitFor(() => {
       expect(screen.getByTestId("cartoon-codex-warning")).toBeInTheDocument();
     });

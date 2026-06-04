@@ -361,6 +361,54 @@ stories.post("/:name/publish-metadata", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Derive a filesystem-safe slug from a title (#423). Non-Latin titles (e.g.
+ * Korean) reduce to empty → fall back to "story"; the real title is kept in
+ * .story.json and is what the UI displays. */
+function slugifyTitle(title: string): string {
+  const base = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return base || "story";
+}
+
+/**
+ * POST /api/stories/create — guided New Story setup (#423).
+ *
+ * Creates the story folder + .story.json + CLAUDE.md from the user's chosen
+ * title/metadata UP FRONT, so a normal user no longer has to prompt the agent to
+ * rename an "Untitled" project. The (possibly non-Latin) title is stored in
+ * .story.json and shown in the UI; the folder slug is an ASCII fallback. Cartoon
+ * always uses Codex (the clean-image step needs image generation).
+ */
+stories.post("/create", async (c) => {
+  const body = await c.req.json<{ title?: string; description?: string; language?: string; genre?: string; contentType?: string; agentMode?: string; agentProvider?: string }>();
+  const title = (body.title ?? "").trim();
+  if (!title) return c.json({ error: "Title is required" }, 400);
+
+  const contentType = body.contentType === "cartoon" ? "cartoon" : "fiction";
+  const agentProvider: AgentProvider = contentType === "cartoon" ? "codex" : (body.agentProvider === "codex" ? "codex" : "claude");
+  const agentMode = body.agentMode === "bypass" ? "bypass" : "normal";
+
+  if (!fs.existsSync(STORIES_DIR)) fs.mkdirSync(STORIES_DIR, { recursive: true });
+  const base = slugifyTitle(title);
+  let slug = base;
+  for (let i = 2; fs.existsSync(path.join(STORIES_DIR, slug)); i++) slug = `${base}-${i}`;
+  const storyDir = path.join(STORIES_DIR, slug);
+  fs.mkdirSync(storyDir, { recursive: true });
+
+  const meta: StoryMeta = {
+    contentType,
+    title,
+    ...(typeof body.description === "string" && body.description.trim() ? { description: body.description.trim() } : {}),
+    ...(typeof body.language === "string" && body.language ? { language: body.language } : {}),
+    ...(typeof body.genre === "string" && body.genre ? { genre: body.genre } : {}),
+    agentMode,
+    agentProvider,
+  };
+  writeStoryMeta(storyDir, meta);
+  writeStoryInstructions(storyDir, contentType, agentProvider);
+
+  return c.json({ name: slug, title, contentType });
+});
+
 /** GET /api/stories/:name/cuts/:plotFile — read cuts.json for a plot */
 stories.get("/:name/cuts/:plotFile", (c) => {
   const name = safeName(c.req.param("name"));
