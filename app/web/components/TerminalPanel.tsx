@@ -326,11 +326,16 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     sessions.set(name, session);
     setSessionList((prev) => [...prev, name]);
 
-    // Restore scrollback from IndexedDB
+    // Restore scrollback from IndexedDB, masking any auth secrets first so an OLD
+    // transcript can't re-display previously-persisted tokens/passphrases (#454).
+    // If redaction changed it, re-save the masked copy so the raw value is gone
+    // from storage and never re-persisted later.
     try {
       const saved = await loadScrollback(name);
       if (saved) {
-        term.write(saved);
+        const redacted = redactTerminalSecrets(saved);
+        term.write(redacted);
+        if (redacted !== saved) saveScrollback(name, redacted).catch(() => {});
       }
     } catch { /* ignore */ }
 
