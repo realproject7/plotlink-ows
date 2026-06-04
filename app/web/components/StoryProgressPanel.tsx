@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import type { StoryProgress, EpisodeState } from "@app-lib/story-progress";
+import { useEffect, useState, type ReactNode } from "react";
+import type { StoryProgress, EpisodeProgress, EpisodeState } from "@app-lib/story-progress";
+import type { CartoonChecklistStep } from "@app-lib/cartoon-readiness";
 import { WorkflowCoachView } from "./WorkflowCoach";
 
 interface StoryProgressPanelProps {
@@ -11,58 +12,23 @@ interface StoryProgressPanelProps {
   refreshKey?: number;
 }
 
-const STATE_ICON: Record<EpisodeState, string> = {
-  published: "✓",
-  ready: "●",
-  "in-progress": "◐",
-  planning: "○",
-  placeholder: "○",
-  blocked: "✕",
-  draft: "○",
-};
-
-const STATE_TONE: Record<EpisodeState, string> = {
-  published: "text-green-700",
-  ready: "text-green-700",
-  "in-progress": "text-accent",
-  planning: "text-accent",
-  placeholder: "text-muted",
-  blocked: "text-error",
-  draft: "text-muted",
-};
-
-const STATE_LABEL: Record<EpisodeState, string> = {
-  published: "Published",
-  ready: "Ready",
-  "in-progress": "In progress",
-  planning: "Planning",
-  placeholder: "Not started",
-  blocked: "Needs fixes",
-  draft: "Draft",
-};
-
-function Chip({ label, value, tone = "muted" }: { label: string; value: string; tone?: "muted" | "ok" | "warn" }) {
-  const cls = tone === "ok" ? "text-green-700" : tone === "warn" ? "text-amber-700" : "text-muted";
-  return (
-    <span className="text-[11px]">
-      <span className="text-muted">{label}: </span>
-      <span className={`font-medium ${cls}`}>{value}</span>
-    </span>
-  );
-}
-
 /**
- * Story-level "View Progress" overview (#418). Shows a vertical workflow map —
- * metadata, setup, cover, and per-episode production state — so a writer sees
- * what's done and what's next without reading file names or terminal output.
- * Reuses the server-built `StoryProgress` model (cartoon episodes reuse the same
- * readiness classifier as the per-file publish UI, so a placeholder reads as
- * "Not started", never publish-ready). Renders for both fiction and cartoon.
+ * Story-level "View Progress" overview (#418, redesigned #438).
+ *
+ * For CARTOON stories this is the writer's main production dashboard: a vertical
+ * workflow map of numbered sections (Define Story Info → Story Whitepaper →
+ * Genesis / Episode 1 → Episode 2 …), each with a checkbox checklist and a clear
+ * status. The single next-action CTA is rendered inside the section it belongs to
+ * (never a duplicated global bar), so a first-time creator understands the whole
+ * webtoon workflow and where they are in it without reading terminal output or
+ * raw file names.
+ *
+ * FICTION keeps the simpler original layout — metadata, setup steps, a chapter
+ * list — and is completely unaffected by the cartoon redesign.
  */
 export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKey = 0 }: StoryProgressPanelProps) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,40 +55,307 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
     return <div className="h-full flex items-center justify-center text-muted text-sm">Could not load story progress.</div>;
   }
 
+  return progress.contentType === "cartoon"
+    ? <CartoonWorkflowMap progress={progress} storyName={storyName} onOpenFile={onOpenFile} />
+    : <FictionProgressView progress={progress} storyName={storyName} onOpenFile={onOpenFile} />;
+}
+
+// ---------------------------------------------------------------------------
+// Shared header
+// ---------------------------------------------------------------------------
+
+function Chip({ label, value, tone = "muted" }: { label: string; value: string; tone?: "muted" | "ok" | "warn" }) {
+  const cls = tone === "ok" ? "text-green-700" : tone === "warn" ? "text-amber-700" : "text-muted";
+  return (
+    <span className="text-[11px]">
+      <span className="text-muted">{label}: </span>
+      <span className={`font-medium ${cls}`}>{value}</span>
+    </span>
+  );
+}
+
+function ProgressHeader({ progress }: { progress: StoryProgress }) {
   const cartoon = progress.contentType === "cartoon";
   const coverTone = progress.cover === "present" ? "ok" : progress.cover === "invalid" ? "warn" : "muted";
+  return (
+    <div className="px-4 py-3 border-b border-border">
+      <div className="flex items-center gap-2">
+        <h2 className="text-base font-serif text-foreground truncate">{progress.metadata.title || progress.name}</h2>
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${cartoon ? "bg-accent/10 text-accent" : "bg-surface text-muted"}`}>
+          {cartoon ? "Cartoon" : "Fiction"}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+        <Chip label="Language" value={progress.metadata.language || "Needs metadata"} tone={progress.metadata.language ? "muted" : "warn"} />
+        <Chip label="Genre" value={progress.metadata.genre || "Needs metadata"} tone={progress.metadata.genre ? "muted" : "warn"} />
+        {progress.metadata.isNsfw != null && <Chip label="Adult" value={progress.metadata.isNsfw ? "Yes (18+)" : "No"} />}
+        {cartoon && <Chip label="Cover" value={progress.cover === "present" ? "Ready" : progress.cover === "invalid" ? "Invalid" : "Missing"} tone={coverTone} />}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cartoon vertical workflow map (#438)
+// ---------------------------------------------------------------------------
+
+type SectionStatus = "published" | "done" | "current" | "needs-action" | "not-started";
+
+const SECTION_ICON: Record<SectionStatus, string> = {
+  published: "✓", done: "●", current: "◉", "needs-action": "●", "not-started": "○",
+};
+const SECTION_TONE: Record<SectionStatus, string> = {
+  published: "text-green-700", done: "text-green-700", current: "text-accent", "needs-action": "text-amber-700", "not-started": "text-muted",
+};
+const SECTION_LABEL: Record<SectionStatus, string> = {
+  published: "Published", done: "Complete", current: "Current", "needs-action": "Needs action", "not-started": "Not started",
+};
+
+type CheckStatus = "done" | "current" | "todo";
+const CHECK_ICON: Record<CheckStatus, string> = { done: "✓", current: "◓", todo: "○" };
+const CHECK_TONE: Record<CheckStatus, string> = { done: "text-green-700", current: "text-accent", todo: "text-muted" };
+
+interface ChecklistItem { label: string; status: CheckStatus; detail?: string | null }
+
+function ChecklistRow({ item }: { item: ChecklistItem }) {
+  return (
+    <div className="flex items-baseline gap-2 text-[11px]" data-testid="checklist-item" data-status={item.status}>
+      <span className={`${CHECK_TONE[item.status]} flex-shrink-0`} aria-hidden>{CHECK_ICON[item.status]}</span>
+      <span className={item.status === "todo" ? "text-muted" : "text-foreground"}>{item.label}</span>
+      {item.detail && <span className="text-muted">· {item.detail}</span>}
+    </div>
+  );
+}
+
+/**
+ * One numbered workflow section: a status bullet + title + status badge, a nested
+ * checklist, and — only for the active section — the single next-action CTA. The
+ * header navigates to `openFile` when one is provided (sections whose dedicated
+ * page does not exist yet, e.g. Story Info, render a plain header).
+ */
+function Section({
+  index, title, status, items, fileName, openFile, cta,
+}: {
+  index: number;
+  title: string;
+  status: SectionStatus;
+  items: ChecklistItem[];
+  /** Power-user secondary text (real file name), shown small. */
+  fileName?: string | null;
+  /** Called to open the section's underlying file, or undefined for no navigation. */
+  openFile?: () => void;
+  /** The single CTA node, rendered under this section when it is the active one. */
+  cta?: ReactNode;
+}) {
+  const heading = (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className={`flex-shrink-0 ${SECTION_TONE[status]}`} aria-hidden>{SECTION_ICON[status]}</span>
+      <span className="text-xs font-medium text-foreground truncate">{index}. {title}</span>
+      {fileName && <span className="text-[10px] text-muted truncate">{fileName}</span>}
+      <span className={`ml-auto text-[10px] font-medium ${SECTION_TONE[status]} flex-shrink-0`}>{SECTION_LABEL[status]}</span>
+    </div>
+  );
+  return (
+    <div className="px-4 py-2.5 border-b border-border" data-testid={`workflow-section-${index}`} data-status={status}>
+      {openFile
+        ? <button onClick={openFile} className="w-full text-left rounded hover:bg-surface -mx-1 px-1 py-0.5" data-testid={`section-open-${index}`}>{heading}</button>
+        : heading}
+      <div className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-3">
+        {items.map((it, i) => <ChecklistRow key={i} item={it} />)}
+      </div>
+      {cta && <div className="mt-2 ml-1" data-testid="section-cta">{cta}</div>}
+    </div>
+  );
+}
+
+/** Map a cartoon episode's coarse state + whether it's the active step → a section status. */
+function episodeStatus(ep: EpisodeProgress, isActive: boolean): SectionStatus {
+  if (ep.published) return "published";
+  if (isActive) return "current";
+  if (ep.state === "placeholder") return "not-started";
+  if (ep.state === "blocked") return "needs-action";
+  return "needs-action";
+}
+
+/** Build the rendered checklist for a cartoon episode from its production checklist. */
+function episodeItems(ep: EpisodeProgress): ChecklistItem[] {
+  const steps = ep.checklist ?? [];
+  const items: ChecklistItem[] = [];
+  // Genesis is the reader-facing Episode 1 opening, so surface its opening text
+  // as the first (already-done) checklist line; a plain plot episode starts at
+  // its cut plan.
+  if (ep.kind === "genesis") items.push({ label: "Opening text", status: "done" });
+  if (steps.length === 0) {
+    // Not started yet — no cut plan. Show the first couple of steps as to-do so
+    // the writer sees what starting the episode involves.
+    items.push({ label: "Cut plan", status: "todo" });
+    items.push({ label: "Clean artwork", status: "todo" });
+    return items;
+  }
+  for (const s of steps) items.push(checklistStepItem(s));
+  return items;
+}
+
+function checklistStepItem(s: CartoonChecklistStep): ChecklistItem {
+  return { label: s.label, status: s.status, detail: s.detail };
+}
+
+function CartoonWorkflowMap({
+  progress, storyName, onOpenFile,
+}: { progress: StoryProgress; storyName: string; onOpenFile: (storyName: string, file: string) => void }) {
+  // Track the prompt copied from the active-section CTA so the "Copied!" state
+  // resets when the coach changes (mirrors WorkflowCoachView's own handling).
+  const coach = progress.coach ?? null;
+  // The section the single next action belongs to. The coach (without a focus
+  // file) targets setup or the active episode; structure.md maps to the
+  // Whitepaper section, an episode file to that episode's section.
+  const activeFile = coach?.episodeFile ?? null;
+  const whitepaperActive = activeFile === "structure.md";
+
+  // The one CTA, reused from the tested coach view; placed inside its section.
+  const ctaNode = coach ? (
+    <WorkflowCoachView
+      coach={coach}
+      onAction={(action, episodeFile) => {
+        if (action === "view-progress") return; // already here
+        if (episodeFile) onOpenFile(storyName, episodeFile);
+      }}
+    />
+  ) : null;
+
+  // Section 1 — Define Story Info.
+  const m = progress.metadata;
+  const coverDone = progress.cover === "present";
+  const infoItems: ChecklistItem[] = [
+    { label: "Public title", status: m.title ? "done" : "todo", detail: m.title ?? null },
+    { label: "Language", status: m.language ? "done" : "todo", detail: m.language ?? null },
+    { label: "Genre", status: m.genre ? "done" : "todo", detail: m.genre ?? null },
+    { label: "Cover image", status: coverDone ? "done" : "todo", detail: progress.cover === "invalid" ? "Invalid — re-import" : coverDone ? null : "Missing" },
+  ];
+  const infoStatus: SectionStatus = m.title && m.language && m.genre && coverDone ? "done" : "needs-action";
+
+  // Section 2 — Story Whitepaper (structure.md).
+  const hasStructure = progress.setup.hasStructure;
+  const whitepaperStatus: SectionStatus = hasStructure ? "done" : whitepaperActive ? "current" : "not-started";
+
+  // All episodes published with nothing queued → a trailing "start next" CTA.
+  const trailingCta = coach && activeFile === null ? ctaNode : null;
+
+  let sectionIndex = 0;
 
   return (
     <div className="h-full overflow-y-auto" data-testid="story-progress-panel">
-      <div className="px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-serif text-foreground truncate">{progress.metadata.title || progress.name}</h2>
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${cartoon ? "bg-accent/10 text-accent" : "bg-surface text-muted"}`}>
-            {cartoon ? "Cartoon" : "Fiction"}
-          </span>
-        </div>
-        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-          <Chip label="Language" value={progress.metadata.language || "Needs metadata"} tone={progress.metadata.language ? "muted" : "warn"} />
-          <Chip label="Genre" value={progress.metadata.genre || "Needs metadata"} tone={progress.metadata.genre ? "muted" : "warn"} />
-          {progress.metadata.isNsfw != null && <Chip label="Adult" value={progress.metadata.isNsfw ? "Yes (18+)" : "No"} />}
-          {cartoon && <Chip label="Cover" value={progress.cover === "present" ? "Ready" : progress.cover === "invalid" ? "Invalid" : "Missing"} tone={coverTone} />}
-        </div>
-      </div>
+      <ProgressHeader progress={progress} />
+      <p className="px-4 pt-3 pb-1 text-[11px] font-medium text-muted uppercase tracking-wider">Production Progress</p>
 
-      {/* Persistent cartoon workflow coach (#429): one stage label + one primary
-          next action. For cartoon stories it supersedes the plain next-action
-          line below; fiction has no coach, so it keeps the #423 line unchanged.
-          UI actions from the overview open the relevant episode so the writer
-          lands where the action lives. */}
-      {progress.coach ? (
-        <WorkflowCoachView
-          coach={progress.coach}
-          onAction={(action, episodeFile) => {
-            if (action === "view-progress") return; // already here
-            if (episodeFile) onOpenFile(storyName, episodeFile);
-          }}
-        />
-      ) : progress.nextAction && (
+      <Section
+        index={++sectionIndex}
+        title="Define Story Info"
+        status={infoStatus}
+        items={infoItems}
+      />
+
+      <Section
+        index={++sectionIndex}
+        title="Story Whitepaper"
+        status={whitepaperStatus}
+        fileName="structure.md"
+        openFile={hasStructure ? () => onOpenFile(storyName, "structure.md") : undefined}
+        items={[{ label: "Planning document", status: hasStructure ? "done" : "todo", detail: hasStructure ? null : "Not written yet" }]}
+        cta={whitepaperActive ? ctaNode : undefined}
+      />
+
+      {progress.episodes.map((ep) => {
+        const isActive = activeFile === ep.file;
+        return (
+          <EpisodeSection
+            key={ep.file}
+            index={++sectionIndex}
+            ep={ep}
+            isActive={isActive}
+            storyName={storyName}
+            onOpenFile={onOpenFile}
+            cta={isActive ? ctaNode : undefined}
+          />
+        );
+      })}
+
+      {trailingCta && (
+        <div className="px-4 py-2.5 border-b border-border" data-testid="workflow-next-episode">
+          <div className="ml-1" data-testid="section-cta">{trailingCta}</div>
+        </div>
+      )}
+
+      <div className="px-4 py-2 text-[11px] text-muted flex flex-wrap gap-x-3" data-testid="progress-summary">
+        <span>{progress.summary.published} published</span>
+        <span>{progress.summary.readyToPublish} ready</span>
+        {progress.summary.placeholders > 0 && <span>{progress.summary.placeholders} not started</span>}
+        {progress.summary.blocked > 0 && <span className="text-error">{progress.summary.blocked} need fixes</span>}
+      </div>
+    </div>
+  );
+}
+
+/** A `progress-episode-<file>` section, kept testid-stable so clicking it opens the file. */
+function EpisodeSection({
+  index, ep, isActive, storyName, onOpenFile, cta,
+}: {
+  index: number;
+  ep: EpisodeProgress;
+  isActive: boolean;
+  storyName: string;
+  onOpenFile: (storyName: string, file: string) => void;
+  cta?: ReactNode;
+}) {
+  const status = episodeStatus(ep, isActive);
+  const items = episodeItems(ep);
+  const title = ep.title ? `${ep.label} · ${ep.title}` : ep.label;
+  return (
+    <div className="px-4 py-2.5 border-b border-border" data-testid={`workflow-section-${index}`} data-status={status}>
+      <button
+        onClick={() => onOpenFile(storyName, ep.file)}
+        data-testid={`progress-episode-${ep.file}`}
+        data-state={ep.state}
+        className="w-full text-left rounded hover:bg-surface -mx-1 px-1 py-0.5"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`flex-shrink-0 ${SECTION_TONE[status]}`} aria-hidden>{SECTION_ICON[status]}</span>
+          <span className="text-xs font-medium text-foreground truncate">{index}. {title}</span>
+          <span className="text-[10px] text-muted truncate">{ep.file}</span>
+          <span className={`ml-auto text-[10px] font-medium ${SECTION_TONE[status]} flex-shrink-0`}>{SECTION_LABEL[status]}</span>
+        </div>
+      </button>
+      <div className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-3">
+        {items.map((it, i) => <ChecklistRow key={i} item={it} />)}
+      </div>
+      {cta && <div className="mt-2 ml-1" data-testid="section-cta">{cta}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fiction progress view — the original, simpler layout (unchanged behavior)
+// ---------------------------------------------------------------------------
+
+const STATE_ICON: Record<EpisodeState, string> = {
+  published: "✓", ready: "●", "in-progress": "◐", planning: "○", placeholder: "○", blocked: "✕", draft: "○",
+};
+const STATE_TONE: Record<EpisodeState, string> = {
+  published: "text-green-700", ready: "text-green-700", "in-progress": "text-accent", planning: "text-accent", placeholder: "text-muted", blocked: "text-error", draft: "text-muted",
+};
+const STATE_LABEL: Record<EpisodeState, string> = {
+  published: "Published", ready: "Ready", "in-progress": "In progress", planning: "Planning", placeholder: "Not started", blocked: "Needs fixes", draft: "Draft",
+};
+
+function FictionProgressView({
+  progress, storyName, onOpenFile,
+}: { progress: StoryProgress; storyName: string; onOpenFile: (storyName: string, file: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="h-full overflow-y-auto" data-testid="story-progress-panel">
+      <ProgressHeader progress={progress} />
+
+      {progress.nextAction && (
         <div className="px-4 py-2 border-b border-accent/30 bg-accent/5 text-xs space-y-1.5" data-testid="progress-next-action">
           <div>
             <span className="font-medium text-foreground">Next: </span>
@@ -147,15 +380,15 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
       <div className="px-4 py-2 border-b border-border flex flex-col gap-1">
         <StepRow done={progress.setup.hasStructure} label="Story bible (structure.md)"
           onClick={progress.setup.hasStructure ? () => onOpenFile(storyName, "structure.md") : undefined} />
-        <StepRow done={progress.setup.hasGenesis} label={cartoon ? "Genesis / Episode 1 written" : "Genesis written"}
+        <StepRow done={progress.setup.hasGenesis} label="Genesis written"
           onClick={progress.setup.hasGenesis ? () => onOpenFile(storyName, "genesis.md") : undefined} />
       </div>
 
-      {/* Per-episode workflow map. */}
+      {/* Chapter list. */}
       <div className="px-4 py-2">
-        <p className="text-[11px] font-medium text-muted uppercase tracking-wider mb-1.5">Episodes</p>
+        <p className="text-[11px] font-medium text-muted uppercase tracking-wider mb-1.5">Chapters</p>
         {progress.episodes.length === 0 ? (
-          <p className="text-xs text-muted italic" data-testid="progress-no-episodes">No episodes yet — write the Genesis to start.</p>
+          <p className="text-xs text-muted italic" data-testid="progress-no-episodes">No chapters yet — write the Genesis to start.</p>
         ) : (
           <ol className="flex flex-col gap-1">
             {progress.episodes.map((ep) => (
@@ -182,11 +415,8 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
         )}
       </div>
 
-      {/* Compact summary. */}
       <div className="px-4 py-2 border-t border-border text-[11px] text-muted flex flex-wrap gap-x-3" data-testid="progress-summary">
         <span>{progress.summary.published} published</span>
-        {cartoon && <span>{progress.summary.readyToPublish} ready</span>}
-        {cartoon && progress.summary.placeholders > 0 && <span>{progress.summary.placeholders} not started</span>}
         {progress.summary.blocked > 0 && <span className="text-error">{progress.summary.blocked} need fixes</span>}
       </div>
     </div>
