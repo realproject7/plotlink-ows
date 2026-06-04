@@ -6,6 +6,7 @@ import { StoryProgressPanel } from "./StoryProgressPanel";
 import { CartoonWorkflowNav, type CartoonWorkflowTab } from "./CartoonWorkflowNav";
 import { StoryInfoPage } from "./StoryInfoPage";
 import { EpisodesPage } from "./EpisodesPage";
+import { CartoonPublishPage } from "./CartoonPublishPage";
 import { LANGUAGES, GENRES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
@@ -47,7 +48,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   // Cartoon right-panel workflow nav (#439): a non-file workflow page is open
   // (Story Info / Episodes). null ⇒ the view follows selectedFile (or Progress).
-  const [cartoonView, setCartoonView] = useState<"story-info" | "episodes" | null>(null);
+  const [cartoonView, setCartoonView] = useState<"story-info" | "episodes" | "publish" | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
   // Durable publish blocker (#375): unlike the transient publishProgress text,
@@ -732,6 +733,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const activeCartoonTab: CartoonWorkflowTab =
     cartoonView === "story-info" ? "story-info"
     : cartoonView === "episodes" ? "episodes"
+    : cartoonView === "publish" ? "publish"
     : selectedFile === "structure.md" ? "whitepaper"
     : selectedFile === "genesis.md" ? "genesis"
     : selectedFile && /^plot-\d+\.md$/.test(selectedFile) ? "episodes"
@@ -749,10 +751,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       case "story-info": setCartoonView("story-info"); break;
       case "episodes": setCartoonView("episodes"); break;
       case "whitepaper": handleSelectFile(story, "structure.md"); break;
-      // Genesis is Episode 1; Publish routes to its publish controls (the
-      // dedicated Publish page is a later ticket, §10).
-      case "genesis":
-      case "publish": handleSelectFile(story, "genesis.md"); break;
+      case "genesis": handleSelectFile(story, "genesis.md"); break;
+      // Publish opens its own readiness page and stays on the Publish tab (#449),
+      // instead of visually routing to the Genesis file view.
+      case "publish": setCartoonView("publish"); break;
     }
   }, [selectedStory, handleSelectFile]);
 
@@ -811,6 +813,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           <StoryInfoPage storyName={selectedStory} authFetch={authFetch} onSaved={handleStoryInfoSaved} />
         ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
           <EpisodesPage storyName={selectedStory} authFetch={authFetch} onOpenFile={handleSelectFile} />
+        ) : isCartoonStory && cartoonView === "publish" && selectedStory ? (
+          <CartoonPublishPage storyName={selectedStory} authFetch={authFetch} onOpenFile={handleSelectFile} onOpenStoryInfo={() => setCartoonView("story-info")} />
         ) : selectedStory && !selectedFile ? (
           <StoryProgressPanel
             storyName={selectedStory}
