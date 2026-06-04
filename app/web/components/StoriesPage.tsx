@@ -50,6 +50,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   // (Story Info / Episodes). null ⇒ the view follows selectedFile (or Progress).
   const [cartoonView, setCartoonView] = useState<"story-info" | "episodes" | "publish" | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
+  // Bumped on a confirmed publish so the cartoon Publish page re-reads readiness
+  // and advances to the next episode (#461).
+  const [cartoonPublishRefresh, setCartoonPublishRefresh] = useState(0);
   const [publishProgress, setPublishProgress] = useState<string>("");
   // Durable publish blocker (#375): unlike the transient publishProgress text,
   // this stays visible until the writer dismisses it or starts a new publish, so
@@ -515,6 +518,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                     authorAddress: walletAddress,
                   }),
                 });
+                // Advance the cartoon Publish page to the next episode (#461).
+                setCartoonPublishRefresh((n) => n + 1);
 
                 // Pre-publish cover (#284): a new genesis can't carry a cover
                 // through createStoryline, so once the storyline exists, attach
@@ -814,7 +819,18 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
           <EpisodesPage storyName={selectedStory} authFetch={authFetch} onOpenFile={handleSelectFile} />
         ) : isCartoonStory && cartoonView === "publish" && selectedStory ? (
-          <CartoonPublishPage storyName={selectedStory} authFetch={authFetch} onOpenFile={handleSelectFile} onOpenStoryInfo={() => setCartoonView("story-info")} />
+          <CartoonPublishPage
+            storyName={selectedStory}
+            authFetch={authFetch}
+            onOpenFile={handleSelectFile}
+            onOpenStoryInfo={() => setCartoonView("story-info")}
+            onPublish={handlePublish}
+            publishingFile={publishingFile}
+            genre={storyGenres[selectedStory]}
+            language={storyLanguages[selectedStory]}
+            isNsfw={storyNsfw[selectedStory]}
+            refreshKey={cartoonPublishRefresh}
+          />
         ) : selectedStory && !selectedFile ? (
           <StoryProgressPanel
             storyName={selectedStory}

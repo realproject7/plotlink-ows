@@ -4,10 +4,19 @@ import type { StoryProgress, EpisodeProgress } from "@app-lib/story-progress";
 interface CartoonPublishPageProps {
   storyName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
-  /** Open the episode's preview/cut workspace, where export/upload/publish live. */
+  /** Open the episode's cut workspace to finish production (letter / export / upload). */
   onOpenFile: (storyName: string, file: string) => void;
-  /** Switch to the Story Info page (to add a missing cover). */
+  /** Switch to the Story Info page (to add a missing cover / set genre+language). */
   onOpenStoryInfo: () => void;
+  /** Trigger the on-chain publish for the active episode (same flow the episode used
+   *  to host). The page loads the imported cover for Genesis and hands it through. */
+  onPublish?: (storyName: string, file: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void | Promise<boolean | void>;
+  /** The file currently mid-publish (disables the button + shows progress). */
+  publishingFile?: string | null;
+  /** Story metadata from Story Info — Genesis can't publish without genre+language. */
+  genre?: string;
+  language?: string;
+  isNsfw?: boolean;
   refreshKey?: number;
 }
 
@@ -28,10 +37,28 @@ interface PublishCheck { label: string; status: CheckState; detail?: string | nu
  * Cartoon-only: mounted from the cartoon workflow nav, so fiction publish is
  * untouched.
  */
-export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenStoryInfo, refreshKey = 0 }: CartoonPublishPageProps) {
+export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenStoryInfo, onPublish, publishingFile, genre, language, isNsfw, refreshKey = 0 }: CartoonPublishPageProps) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  // Load the imported Genesis cover (assets/cover.webp) as a File so the publish
+  // flow attaches it on createStoryline — the same auto-detect the episode used to
+  // run. Best-effort: a missing/invalid cover just publishes without one (#461).
+  const loadCoverFile = async (): Promise<File | null> => {
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cover-asset`);
+      const data = res.ok ? await res.json() : null;
+      if (!data?.found || !data.valid || !data.path) return null;
+      const assetRes = await authFetch(`/api/stories/${storyName}/asset/${String(data.path).replace(/^assets\//, "")}`);
+      if (!assetRes.ok) return null;
+      const blob = await assetRes.blob();
+      return new File([blob], String(data.path).split("/").pop() || "cover.webp", { type: data.type || blob.type });
+    } catch {
+      return null;
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +118,23 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
 
   const ready = active.state === "ready";
   const blocked = active.state === "blocked";
+  // Genesis publishes via createStoryline and needs genre+language (set in Story
+  // Info); plots inherit the storyline, so they don't.
+  const isGenesisActive = active.file === "genesis.md";
+  const metaReady = !isGenesisActive || (!!genre && !!language);
+  const isPublishing = !!publishingFile && publishingFile === active.file;
+  const canPublish = ready && metaReady && !isPublishing && !!onPublish;
+
+  const handlePublish = async () => {
+    if (!canPublish || !onPublish) return;
+    setPublishError(null);
+    try {
+      const cover = isGenesisActive ? await loadCoverFile() : null;
+      await onPublish(storyName, active.file, genre ?? "", language ?? "", !!isNsfw, cover);
+    } catch {
+      setPublishError("Publish could not be started. Please try again.");
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto px-4 py-4" data-testid="cartoon-publish-page">
@@ -117,6 +161,15 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
             Add a cover image (Story Info)
           </button>
         )}
+        {isGenesisActive && !metaReady && (
+          <button
+            onClick={onOpenStoryInfo}
+            data-testid="publish-set-metadata"
+            className="self-start rounded border border-border px-3 py-1.5 text-xs text-foreground hover:border-accent hover:text-accent transition-colors"
+          >
+            Set genre &amp; language (Story Info)
+          </button>
+        )}
         {!ready && (
           <button
             onClick={() => onOpenFile(storyName, active.file)}
@@ -127,20 +180,27 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
           </button>
         )}
         <button
-          onClick={() => onOpenFile(storyName, active.file)}
-          disabled={!ready}
+          onClick={handlePublish}
+          disabled={!canPublish}
           data-testid="publish-cta"
           className="self-start rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-dim disabled:opacity-50 transition-colors"
-          title={ready ? undefined : "Finish the remaining steps above first"}
+          title={canPublish ? undefined : "Finish the remaining steps above first"}
         >
-          {ready ? `Review & publish ${active.label}` : "Publish to PlotLink"}
+          {isPublishing ? "Publishing…" : `Publish ${active.label} to PlotLink`}
         </button>
-        {!ready && (
+        {!ready ? (
           <p className="text-[11px] text-muted" data-testid="publish-blocked-reason">
             {blocked
               ? `Not publishable yet — ${active.summary.toLowerCase()}. Open the episode to fix the flagged cuts.`
               : `Not ready yet — ${active.summary.toLowerCase()}.`}
           </p>
+        ) : !metaReady ? (
+          <p className="text-[11px] text-amber-700" data-testid="publish-needs-metadata">
+            Set the genre and language in Story Info before publishing.
+          </p>
+        ) : null}
+        {publishError && (
+          <p className="text-[11px] text-error" data-testid="publish-error">{publishError}</p>
         )}
       </div>
 
@@ -149,7 +209,7 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
         <div className="mt-1 text-[10px] text-muted space-y-0.5">
           <p>Episode file: <span className="font-mono">{active.file}</span></p>
           <p>State: {active.state} — {active.summary}</p>
-          <p>Full per-cut validation runs in the episode’s publish controls (open the episode above).</p>
+          <p>Per-cut production (cut plan, clean images, lettering, export, upload) happens in the episode’s cut workspace; open it above to finish any remaining step.</p>
         </div>
       </details>
     </div>
