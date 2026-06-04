@@ -245,6 +245,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     }
     let cancelled = false;
     const plotFile = fileName.replace(/\.md$/, "");
+    // Clear the prior plot's cut tallies while a new plot loads so a stale
+    // summary can never sit beside another episode's state (#420 / @re1).
+    setCartoonCutProgress(null);
     (async () => {
       try {
         const [fileRes, cutsRes] = await Promise.all([
@@ -283,6 +286,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
           setCartoonChecklistData(null);
+          setCartoonCutProgress(null);
         }
       }
     })();
