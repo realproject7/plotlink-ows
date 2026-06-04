@@ -3,7 +3,7 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { StoryProgressPanel } from "./StoryProgressPanel";
-import { LANGUAGES } from "../../../lib/genres";
+import { LANGUAGES, GENRES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
@@ -52,6 +52,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [ratio, setRatio] = useState(loadRatio);
   const [untitledSessions, setUntitledSessions] = useState<string[]>([]);
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
+  const [newStoryTitle, setNewStoryTitle] = useState("");
+  const [newStoryDescription, setNewStoryDescription] = useState("");
+  const [newStoryGenre, setNewStoryGenre] = useState("");
   const [newStoryLanguage, setNewStoryLanguage] = useState("English");
   const [newStoryAgentMode, setNewStoryAgentMode] = useState<"normal" | "bypass">("normal");
   const [newStoryAgentProvider, setNewStoryAgentProvider] = useState<"claude" | "codex">("claude");
@@ -120,28 +123,50 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   const handleNewStory = useCallback(() => {
+    setNewStoryTitle("");
+    setNewStoryDescription("");
+    setNewStoryGenre("");
     setNewStoryAgentMode("normal");
     setNewStoryAgentProvider("claude");
     setShowNewStoryModal(true);
   }, []);
 
-  const handleCreateStory = useCallback((contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass", agentProvider: "claude" | "codex") => {
-    setShowNewStoryModal(false);
-    const id = `_new_${Date.now()}`;
-    // Cartoon always uses Codex: the clean-image step needs image generation.
+  // Guided New Story (#423): create the named story up front from the chosen
+  // title/metadata (server writes .story.json + CLAUDE.md), then land on the
+  // story progress overview (#418) so the user sees what's next + a copy-paste
+  // first prompt — no need to ask the agent to rename an "Untitled" project.
+  const handleCreateStory = useCallback(async (contentType: "fiction" | "cartoon", language: string, agentMode: "normal" | "bypass", agentProvider: "claude" | "codex") => {
+    const title = newStoryTitle.trim();
+    if (!title) return; // guarded by the disabled Create buttons
     const provider = contentType === "cartoon" ? "codex" : agentProvider;
-    contentTypeMap.current.set(id, contentType);
-    languageMap.current.set(id, language);
-    agentModeMap.current.set(id, agentMode);
-    agentProviderMap.current.set(id, provider);
-    setAgentProviders((prev) => ({ ...prev, [id]: provider }));
-    if (agentMode === "bypass") {
-      setBypassStories((prev) => ({ ...prev, [id]: true }));
-    }
-    setUntitledSessions((prev) => [...prev, id]);
-    setSelectedStory(id);
-    setSelectedFile(null);
-  }, []);
+    try {
+      const res = await authFetch("/api/stories/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: newStoryDescription.trim() || undefined,
+          language,
+          genre: newStoryGenre || undefined,
+          contentType,
+          agentMode,
+          agentProvider: provider,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setShowNewStoryModal(false);
+      // Prime the client maps so gating/labels are right before the next poll.
+      setStoryContentTypes((prev) => ({ ...prev, [data.name]: contentType }));
+      setStoryLanguages((prev) => ({ ...prev, [data.name]: language }));
+      if (newStoryGenre) setStoryGenres((prev) => ({ ...prev, [data.name]: newStoryGenre }));
+      setAgentProviders((prev) => ({ ...prev, [data.name]: provider }));
+      if (agentMode === "bypass") setBypassStories((prev) => ({ ...prev, [data.name]: true }));
+      // Land on the progress overview for the named story.
+      setSelectedStory(data.name);
+      setSelectedFile(null);
+    } catch { /* leave the modal open on failure */ }
+  }, [authFetch, newStoryTitle, newStoryDescription, newStoryGenre]);
 
   // Poll for new stories and auto-transition untitled sessions
   useEffect(() => {
@@ -776,6 +801,40 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           <div className="bg-surface border border-border rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
             <h3 className="text-sm font-serif font-medium text-foreground text-center">New Story</h3>
             <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Title <span className="text-accent">*</span></span>
+              <input
+                type="text"
+                value={newStoryTitle}
+                onChange={(e) => setNewStoryTitle(e.target.value)}
+                placeholder="e.g. 신의 세포"
+                data-testid="new-story-title"
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Short description (optional)</span>
+              <input
+                type="text"
+                value={newStoryDescription}
+                onChange={(e) => setNewStoryDescription(e.target.value)}
+                placeholder="One line about the story"
+                data-testid="new-story-description"
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted">Genre (optional)</span>
+              <select
+                value={newStoryGenre}
+                onChange={(e) => setNewStoryGenre(e.target.value)}
+                data-testid="new-story-genre"
+                className="w-full px-2 py-1.5 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+              >
+                <option value="">— Select later —</option>
+                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1">
               <span className="text-[10px] font-medium text-muted">Language</span>
               <select
                 value={newStoryLanguage}
@@ -819,11 +878,16 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
                   : "Claude prepares image prompts; you generate and upload clean images externally."}
               </p>
             </label>
-            <p className="text-xs text-muted text-center">Choose a content type</p>
+            <p className="text-xs text-muted text-center">Choose a content type to create</p>
+            {!newStoryTitle.trim() && (
+              <p className="text-[10px] text-amber-700 text-center" data-testid="new-story-title-required">Enter a title to create your story.</p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleCreateStory("fiction", newStoryLanguage, newStoryAgentMode, newStoryAgentProvider)}
-                className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1"
+                disabled={!newStoryTitle.trim()}
+                data-testid="create-fiction"
+                className="border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
               >
                 <p className="text-sm font-serif font-medium text-foreground">Fiction</p>
                 <p className="text-[11px] text-muted">Novels, short stories, poetry</p>
@@ -831,7 +895,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               <div className="space-y-1">
                 <button
                   onClick={() => handleCreateStory("cartoon", newStoryLanguage, newStoryAgentMode, "codex")}
-                  disabled={cartoonBlocked}
+                  disabled={cartoonBlocked || !newStoryTitle.trim()}
+                  data-testid="create-cartoon"
                   className="w-full border border-border rounded-lg p-4 hover:border-accent hover:bg-accent/5 transition-colors text-center space-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
                 >
                   <p className="text-sm font-serif font-medium text-foreground">Cartoon</p>

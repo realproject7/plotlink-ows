@@ -90,6 +90,19 @@ describe("buildStoryProgress (#418)", () => {
     expect(p.nextAction).toMatch(/Chapter 1/);
   });
 
+  it("provides a copy-paste nextPrompt for the agent stages (#423)", () => {
+    // Brand-new cartoon (no structure) → a setup prompt the writer can paste.
+    const fresh = buildStoryProgress({ name: "s", contentType: "cartoon", title: "신의 세포", language: "Korean", hasStructure: false, hasGenesis: false, cover: "missing", episodes: [] });
+    expect(fresh.nextPrompt).toMatch(/Write the story bible/i);
+    expect(fresh.nextPrompt).toMatch(/Don't generate images/i);
+
+    // A UI-only next step (cover) has no agent prompt.
+    const coverNext = buildStoryProgress({ name: "s", contentType: "cartoon", title: "S", hasStructure: true, hasGenesis: true, cover: "missing",
+      episodes: [ep({ file: "genesis.md", status: "pending", markdown: readyBlock(1, "https://x/1"), cuts: [uploadedCut(1, "https://x/1")] })] });
+    expect(coverNext.nextAction).toMatch(/cover/i);
+    expect(coverNext.nextPrompt).toBeNull();
+  });
+
   it("all published ⇒ nextAction is null", () => {
     const p = buildStoryProgress({
       name: "s", contentType: "fiction", title: "S", hasStructure: true, hasGenesis: true, cover: "missing",

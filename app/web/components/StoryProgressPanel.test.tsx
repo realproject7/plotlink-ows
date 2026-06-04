@@ -18,6 +18,7 @@ const PROGRESS: StoryProgress = {
   ],
   summary: { episodes: 2, published: 0, readyToPublish: 1, placeholders: 1, blocked: 0 },
   nextAction: "Create or import a cover image for the story.",
+  nextPrompt: null,
 };
 
 function makeAuthFetch(progress: StoryProgress | null = PROGRESS) {
@@ -54,6 +55,18 @@ describe("StoryProgressPanel (#418)", () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={onOpenFile} />);
     fireEvent.click(await screen.findByTestId("progress-episode-plot-01.md"));
     expect(onOpenFile).toHaveBeenCalledWith("god-cell", "plot-01.md");
+  });
+
+  it("shows a copy-paste next prompt with a Copy button when one is available (#423)", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const withPrompt: StoryProgress = { ...PROGRESS, nextPrompt: "Let's start this cartoon. Write the story bible (structure.md)…" };
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(withPrompt)} onOpenFile={vi.fn()} />);
+
+    const prompt = await screen.findByTestId("progress-next-prompt");
+    expect(prompt).toHaveTextContent(/Write the story bible/i);
+    fireEvent.click(screen.getByTestId("copy-next-prompt"));
+    expect(writeText).toHaveBeenCalledWith("Let's start this cartoon. Write the story bible (structure.md)…");
   });
 
   it("shows a friendly error if progress cannot be loaded", async () => {

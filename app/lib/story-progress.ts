@@ -58,6 +58,10 @@ export interface StoryProgress {
   };
   /** Single product-level next step in plain language, or null if all done. */
   nextAction: string | null;
+  /** A copy-paste prompt the writer can hand to the agent for the next step
+   * (#423), or null when the next step is a UI action (cover/publish) not an
+   * agent task. */
+  nextPrompt: string | null;
 }
 
 export interface EpisodeInput {
@@ -151,12 +155,21 @@ export function buildStoryProgress(input: StoryProgressInput): StoryProgress {
   const blocked = episodes.filter((e) => e.state === "blocked").length;
 
   let nextAction: string | null;
+  // A paste-ready agent prompt for the agent-driven stages; null for UI-only
+  // steps (cover/publish). Worded for the writer to copy verbatim (#423).
+  let nextPrompt: string | null = null;
   if (!input.hasStructure) {
     nextAction = "Ask the agent to write the story bible (structure.md).";
+    nextPrompt = cartoon
+      ? "Let's start this cartoon. Write the story bible (structure.md) — visual style, character bible, and episode format — then the Genesis (Episode 1) opening. Don't generate images, letter, upload, or publish yet."
+      : "Let's start this story. Write the structure (outline, characters, arc), then the Genesis hook.";
   } else if (!input.hasGenesis) {
     nextAction = cartoon
       ? "Ask the agent to write the Genesis (Episode 1) opening."
       : "Ask the agent to write the Genesis (story hook).";
+    nextPrompt = cartoon
+      ? "Write the Genesis (Episode 1) opening for this cartoon, then plan its cuts in genesis.cuts.json. Don't generate images yet."
+      : "Write the Genesis (story hook) for this story.";
   } else if (cartoon && input.cover === "missing") {
     nextAction = "Create or import a cover image for the story.";
   } else {
@@ -169,9 +182,14 @@ export function buildStoryProgress(input: StoryProgressInput): StoryProgress {
       ? `Continue ${working.label}: ${working.summary.toLowerCase()}.`
       : `Review and publish ${working.label}.`;
     else if (draft) nextAction = `Review and publish ${draft.label}.`;
-    else if (placeholder) nextAction = `Plan the cuts for ${placeholder.label} to start it.`;
-    else if (episodes.length > 0 && published === episodes.length) nextAction = null; // all published
-    else nextAction = cartoon ? "Plan the next episode's cuts." : "Write the next chapter.";
+    else if (placeholder) {
+      nextAction = `Plan the cuts for ${placeholder.label} to start it.`;
+      nextPrompt = `Plan the cuts for ${placeholder.label} in its cuts.json. Don't generate images, letter, upload, or publish yet.`;
+    } else if (episodes.length > 0 && published === episodes.length) nextAction = null; // all published
+    else {
+      nextAction = cartoon ? "Plan the next episode's cuts." : "Write the next chapter.";
+      nextPrompt = cartoon ? "Plan the cuts for the next episode in a new cuts.json. Don't generate images yet." : "Write the next chapter.";
+    }
   }
 
   return {
@@ -189,5 +207,6 @@ export function buildStoryProgress(input: StoryProgressInput): StoryProgress {
     episodes,
     summary: { episodes: episodes.length, published, readyToPublish, placeholders, blocked },
     nextAction,
+    nextPrompt,
   };
 }

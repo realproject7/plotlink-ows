@@ -1299,3 +1299,64 @@ describe("GET /api/stories/:name/progress — story progress overview (#418)", (
     expect(res.status).toBe(404);
   });
 });
+
+describe("POST /api/stories/create — guided New Story setup (#423)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-create-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  function create(body: Record<string, unknown>) {
+    return app.request("/api/stories/create", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  }
+
+  it("creates a named cartoon story (.story.json + CLAUDE.md) from the chosen title up front", async () => {
+    const res = await create({ title: "Ghost Signal", language: "English", genre: "Science Fiction", contentType: "cartoon" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("ghost-signal");
+    const meta = readStoryMeta(path.join(tmpDir, "ghost-signal"));
+    expect(meta.contentType).toBe("cartoon");
+    expect(meta.title).toBe("Ghost Signal");
+    expect(meta.genre).toBe("Science Fiction");
+    expect(meta.language).toBe("English");
+    expect(meta.agentProvider).toBe("codex"); // cartoon forces Codex
+    // (CLAUDE.md generation via writeStoryInstructions is covered by the
+    // generate-story-instructions suite; it's module-mocked in this file.)
+  });
+
+  it("keeps a non-Latin title in .story.json with an ASCII fallback slug (신의 세포)", async () => {
+    const res = await create({ title: "신의 세포", language: "Korean", contentType: "cartoon" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("story"); // ASCII fallback slug
+    // The real Korean title is preserved and is what the UI displays.
+    expect(readStoryMeta(path.join(tmpDir, "story")).title).toBe("신의 세포");
+  });
+
+  it("disambiguates duplicate slugs (same title twice → -2)", async () => {
+    await create({ title: "Dusk", contentType: "fiction" });
+    const res = await create({ title: "Dusk", contentType: "fiction" });
+    expect((await res.json()).name).toBe("dusk-2");
+    expect(fs.existsSync(path.join(tmpDir, "dusk"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "dusk-2"))).toBe(true);
+  });
+
+  it("400s on an empty title", async () => {
+    const res = await create({ title: "   ", contentType: "fiction" });
+    expect(res.status).toBe(400);
+  });
+
+  it("fiction keeps its chosen provider (not forced to Codex)", async () => {
+    await create({ title: "Quiet Novel", contentType: "fiction", agentProvider: "claude" });
+    expect(readStoryMeta(path.join(tmpDir, "quiet-novel")).agentProvider).toBe("claude");
+  });
+});
