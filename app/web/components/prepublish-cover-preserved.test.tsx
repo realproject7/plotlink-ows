@@ -60,7 +60,7 @@ async function renderWithSelectedCover(onPublish: (...args: unknown[]) => unknow
       onPublish={onPublish as never}
       publishingFile={null}
       walletAddress={WALLET}
-      contentType="cartoon"
+      contentType="fiction"
       genre="Adventure"
       language="English"
     />,
@@ -74,6 +74,9 @@ async function renderWithSelectedCover(onPublish: (...args: unknown[]) => unknow
   return { authFetch };
 }
 
+// #461: the pre-publish cover picker + inline publish button render for FICTION
+// genesis only now; the cover-preserved-on-blocked-publish path is shared, so
+// this exercises it via a fiction genesis (unchanged behavior).
 describe("PreviewPanel keeps the selected cover when publish is blocked (#375)", () => {
   it("retains the cover preview when onPublish resolves falsy (blocked preflight)", async () => {
     const onPublish = vi.fn().mockResolvedValue(false); // simulates a blocked preflight

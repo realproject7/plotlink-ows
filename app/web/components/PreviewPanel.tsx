@@ -6,11 +6,10 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES, canonicalizeGenre } from "../../../lib/genres";
 import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
-import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
 import { WorkflowCoach } from "./WorkflowCoach";
 import type { CoachUiAction } from "@app-lib/cartoon-coach";
-import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, summarizeCutProgress, previewFooterGuidance, type CartoonReadinessStage as CartoonStage, type CartoonChecklist, type CartoonCutProgress } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, cartoonGenesisReadiness, summarizeCutProgress, previewFooterGuidance, type CartoonReadinessStage as CartoonStage, type CartoonCutProgress } from "@app-lib/cartoon-readiness";
 import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
@@ -79,6 +78,10 @@ interface PreviewPanelProps {
   // Open a sibling file in this story, so the workflow coach (#429) can route to
   // the episode an action concerns (e.g. from structure.md to the active episode).
   onOpenFile?: (file: string) => void;
+  // Navigate to the cartoon Publish tab (#461), where publish readiness/title/
+  // issue diagnostics + the publish action now live. Cartoon episode views show a
+  // single compact CTA that calls this instead of hosting publish controls.
+  onViewPublish?: () => void;
 }
 
 interface FileData {
@@ -95,7 +98,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress, onOpenFile }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress, onOpenFile, onViewPublish }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -129,16 +132,16 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [selectedGenre, setSelectedGenre] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState("");
   const [isNsfw, setIsNsfw] = useState(false);
-  const [cartoonIssues, setCartoonIssues] = useState<string[]>([]);
+  // Coarse readiness stage for the selected cartoon plot — still drives the
+  // state-aware footer cut-count (#422) and the workflow coach refresh. The
+  // publish-issue list + 6-step checklist moved to the Publish tab (#461), so
+  // they're no longer kept here.
   const [cartoonStage, setCartoonStage] = useState<CartoonStage | null>(null);
   const [cartoonAwaitingCount, setCartoonAwaitingCount] = useState(0);
   const [cartoonTotalCuts, setCartoonTotalCuts] = useState(0);
   // Per-cut production tallies (clean/lettered/exported/uploaded) for the compact
   // cartoon status summary in the bottom panel (#420).
   const [cartoonCutProgress, setCartoonCutProgress] = useState<CartoonCutProgress | null>(null);
-  // Granular 6-step production checklist for the cartoon plot workspace (#335),
-  // computed from cuts.json + asset/upload/publish state in the readiness effect.
-  const [cartoonChecklistData, setCartoonChecklistData] = useState<CartoonChecklist | null>(null);
   // Inputs for resolving + showing the public publish title before publish (#358):
   // the story structure.md content (genesis story title) and the cut plan's
   // episode title (cartoon plot).
@@ -148,8 +151,6 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // save), so the readiness effect re-fetches and the Episode-steps panel stays
   // in sync with the cut cards after a lettering export (#343).
   const [cutsRefreshKey, setCutsRefreshKey] = useState(0);
-  const [cartoonGenerating, setCartoonGenerating] = useState(false);
-  const [cartoonGenWarnings, setCartoonGenWarnings] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dirtyRef = useRef(false);
 
@@ -247,11 +248,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const cartoonPlotForReadiness = contentType === "cartoon" && !!fileName && /^plot-\d+\.md$/.test(fileName);
   useEffect(() => {
     if (!cartoonPlotForReadiness || !storyName || !fileName) {
-      setCartoonIssues([]);
       setCartoonStage(null);
       setCartoonAwaitingCount(0);
       setCartoonTotalCuts(0);
-      setCartoonChecklistData(null);
       setCartoonCutProgress(null);
       return;
     }
@@ -268,11 +267,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         ]);
         if (cancelled) return;
         if (!cutsRes.ok) {
-          setCartoonIssues(["Cuts file missing or invalid — generate cuts and upload images first"]);
           setCartoonStage("error");
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
-          setCartoonChecklistData(null);
           setCartoonCutProgress(null);
           return;
         }
@@ -280,24 +277,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         const cuts = cutsData.cuts || [];
         const content = fileRes.ok ? (await fileRes.json()).content ?? "" : "";
         const result = classifyCartoonReadiness(content, cuts);
-        const checklist = cartoonChecklist({ cuts, published: fileData?.status === "published" });
         if (!cancelled) {
-          setCartoonIssues(result.issues);
           setCartoonStage(result.stage);
           setCartoonAwaitingCount(result.awaitingCount);
           setCartoonTotalCuts(result.totalCuts);
-          setCartoonChecklistData(checklist);
           setCartoonCutProgress(summarizeCutProgress(cuts));
           // Cut plan's episode title for the publish-title display (#358).
           setCartoonEpisodeTitle(typeof cutsData.title === "string" ? cutsData.title : null);
         }
       } catch {
         if (!cancelled) {
-          setCartoonIssues(["Could not verify publish readiness"]);
           setCartoonStage("error");
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
-          setCartoonChecklistData(null);
           setCartoonCutProgress(null);
         }
       }
@@ -377,24 +369,21 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   }, [storyName, fileName, authFetch, editContent]);
 
   // Generate the cartoon markdown skeleton from the cut plan, then refresh
-  // preview/readiness so the planning callout gives way to the upload-stage state.
+  // preview/readiness so the workflow coach's next action advances (#429). The
+  // "Prepare episode for publish" UI now lives on the Publish tab / cut workspace
+  // (#461); this stays as the coach's `generate-markdown` action handler.
   const handleGenerateMarkdown = useCallback(async () => {
     if (!storyName || !fileName) return;
     const plotFile = fileName.replace(/\.md$/, "");
-    setCartoonGenerating(true);
-    setCartoonGenWarnings([]);
     try {
       const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setCartoonGenWarnings(data.warnings || []);
         await loadFile();
         // Re-run readiness + reload the workflow coach so the next action moves
         // off "Prepare the episode for publish" once the layout is built (#429).
         setCutsRefreshKey((k) => k + 1);
       }
     } catch { /* ignore */ }
-    setCartoonGenerating(false);
   }, [storyName, fileName, authFetch, loadFile]);
 
   // Route a workflow-coach UI action to the right control (#429). When the
@@ -762,6 +751,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
   const isCartoonPlot = contentType === "cartoon" && isPlot;
   const isCartoonGenesis = contentType === "cartoon" && isGenesis;
+  // #461: cartoon episode views (Genesis + plots) hide every publish-control /
+  // readiness block — those move to the Publish tab — and show only the opening
+  // content, production next-step guidance, and a compact "Review publish" CTA.
+  const isCartoonEpisode = isCartoonGenesis || isCartoonPlot;
   const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
 
   // State-aware preview footer guidance (#422). Cut count for the selected
@@ -1350,7 +1343,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 )}
               </div>
             )}
-            {isCartoonPlot && <CartoonStepGuide checklist={cartoonChecklistData} />}
+            {/* #461: the 6-step production checklist is a publish/production
+                checklist — it now lives on the Publish tab + the cut workspace's
+                FinishEpisodePanel, so it no longer renders under the episode. */}
             {/* Genesis-as-Episode-1 cut summary (#422): discover + summarize
                 genesis.cuts.json so a writer sees its real cut/image state in the
                 readiness UI instead of treating Genesis as text-only. */}
@@ -1388,60 +1383,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 <span className="text-xs text-muted">{footerGuidance}</span>
               </div>
             )}
-            {/* Cartoon planning-stage callout: cut plan exists but the episode
-                hasn't been prepared for publish. Surface that action as the next
-                step instead of red errors. */}
-            {isCartoonPlot && cartoonStage === "planning" && (
-              <div
-                className={`${cartoonStatusCardClass} flex flex-col gap-2 border-accent/30 bg-accent/5`}
-                data-testid="cartoon-planning-callout"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Ready</span>
-                  <span className="text-xs font-medium text-foreground">Cut plan is set</span>
-                </div>
-                <div className="text-xs text-muted">
-                  Prepare the episode for publish to lay out the cut blocks. After that, upload the final images.
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleGenerateMarkdown}
-                    disabled={cartoonGenerating}
-                    className="px-3 py-1.5 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="generate-md-preview-btn"
-                  >
-                    {cartoonGenerating ? "Preparing…" : "Prepare episode for publish"}
-                  </button>
-                  {cartoonGenWarnings.length > 0 && (
-                    <span className="text-amber-600 text-xs">{cartoonGenWarnings.length} cut(s) still need images</span>
-                  )}
-                </div>
-              </div>
-            )}
-            {/* Cartoon awaiting-upload state: every cut block exists but final
-                images haven't been uploaded yet. Calm, non-red pending status
-                that makes the next action clear, NOT a wall of errors. */}
-            {isCartoonPlot && cartoonStage === "awaiting-upload" && (
-              <div
-                className={`${cartoonStatusCardClass} flex flex-col gap-1.5 border-accent/30 bg-accent/5`}
-                data-testid="cartoon-awaiting-upload"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-accent">Waiting</span>
-                  <span className="text-xs font-medium text-foreground">Episode prepared for publish</span>
-                </div>
-                <span className="text-xs text-muted">
-                  {cartoonAwaitingCount} of {cartoonTotalCuts} cuts still need a final uploaded image
-                </span>
-                {/* Next-action line tracks the CURRENT cartoon step (#345) — once
-                    clean/letter/export are done it says "upload …", not the
-                    generic full-sequence copy. Shares cartoonChecklist.nextStep
-                    with the Episode steps panel so the two never disagree. */}
-                <span className="text-xs text-muted" data-testid="cartoon-awaiting-next">
-                  Next: {cartoonChecklistData?.nextStep ?? "add clean images, letter the bubbles, export the final images, then upload them."}
-                </span>
-              </div>
-            )}
+            {/* #461: the planning-stage "Prepare episode for publish" callout and
+                the awaiting-upload pending callout are publish-readiness states —
+                they now live on the Publish tab. The cartoon episode keeps only
+                production next-step guidance (cartoon-not-started / cut summaries)
+                plus the compact "Review publish checklist" CTA below. */}
             {/* Inline illustration upload for plot files (Preview tab only) */}
             {isPlot && !isCartoonPlot && activeTab === "preview" && (
               <div>
@@ -1515,7 +1461,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 cut/lettering editor gets the height — the cover stays available
                 in the Opening-text/Preview view, Story Info, and the Publish page,
                 and the auto-detect effect still loads it for publish. */}
-            {isGenesis && !(activeTab === "edit" && genesisEditMode === "cuts") && (
+            {isGenesis && contentType !== "cartoon" && !(activeTab === "edit" && genesisEditMode === "cuts") && (
               <div className="flex flex-col gap-1.5" data-testid="prepublish-cover">
                 <span className="text-xs font-medium text-foreground">Cover Image <span className="text-muted font-normal">(optional)</span></span>
                 {/* Cartoon cover readiness + requirements (#337): keep the cover
@@ -1599,10 +1545,16 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </div>
               </div>
             )}
-            {/* Public title shown + validated before publish (#358). */}
-            {renderPublishTitle()}
-            {/* Cartoon Genesis prologue readiness checklist (#359). */}
-            {renderGenesisReadiness()}
+            {/* Public title shown + validated before publish (#358). #461: moved
+                to the Publish tab for cartoon — fiction keeps it inline. */}
+            {!isCartoonEpisode && renderPublishTitle()}
+            {/* Cartoon Genesis prologue readiness checklist (#359). #461: moved to
+                the Publish tab; never rendered in the cartoon episode view. */}
+            {!isCartoonEpisode && renderGenesisReadiness()}
+            {/* #461: the genre/language selects + publish button + publish-disabled
+                reasons are publish controls — for cartoon they live on the Publish
+                tab. Fiction keeps the inline publish controls unchanged. */}
+            {!isCartoonEpisode && (
             <div className="flex items-center gap-2">
               {/* Genre/language are edited in Story Info for cartoon (#439/#450);
                   the inline selects are fiction-only so the cartoon cut workspace
@@ -1714,37 +1666,18 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 </span>
               )}
             </div>
-            {isCartoonPlot && cartoonStage === "error" && cartoonIssues.length > 0 && (
-              // Concise, grouped-by-workflow-step headings (#360/#421) so a writer
-              // sees "Upload final images" / "Prepare the episode for publish"
-              // instead of a wall of per-cut validator strings. The raw validator
-              // lines stay available, collapsed, as technical details for debugging.
-              <div
-                className={`${cartoonStatusCardClass} flex flex-col gap-2 border-error/30 bg-error/5`}
-                data-testid="cartoon-publish-issues"
+            )}
+            {/* #461: the grouped publish-readiness issues card (#360/#421) is a
+                publish checklist — it now renders on the Publish tab. The cartoon
+                episode view links there via the compact CTA below. */}
+            {isCartoonEpisode && (
+              <button
+                onClick={() => onViewPublish?.()}
+                data-testid="cartoon-review-publish"
+                className="self-start rounded border border-accent/40 px-3 py-1 text-xs text-accent hover:bg-accent/5 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-error px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Before publish</span>
-                  <span className="text-xs font-medium text-foreground">Finish these workflow steps</span>
-                </div>
-                {groupCartoonIssues(cartoonIssues).map((g) => (
-                  <div
-                    key={g.key}
-                    className="rounded-lg border border-error/15 bg-background/70 px-2.5 py-2"
-                    data-testid={`cartoon-issue-group-${g.key}`}
-                  >
-                    <span className="text-[11px] font-medium text-foreground">{g.title}</span>
-                  </div>
-                ))}
-                <details className="text-[10px] text-muted" data-testid="cartoon-technical-details">
-                  <summary className="cursor-pointer select-none">Technical details</summary>
-                  <ul className="mt-1 ml-3 list-disc">
-                    {cartoonIssues.map((issue, i) => (
-                      <li key={i} className="font-mono break-words">{issue}</li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
+                Review publish checklist →
+              </button>
             )}
             {imageValidation.warnings.length > 0 && (
               <div className="flex flex-col gap-0.5">

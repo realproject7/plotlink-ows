@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import { PreviewPanel } from "./PreviewPanel";
 
 afterEach(cleanup);
@@ -78,21 +78,23 @@ describe("PreviewPanel cartoon scaffold states (#422)", () => {
     expect(await screen.findByTestId("cartoon-not-started")).toHaveTextContent(/generate the clean images/i);
   });
 
-  it("a placeholder plot (empty cuts) reads as not-started, not a publish error, and publish is disabled", async () => {
+  it("a placeholder plot (empty cuts) reads as not-started, not a publish error, with no inline publish (#461)", async () => {
     const authFetch = makeAuthFetch({
       file: { file: "plot-02.md", status: "pending", content: "# Episode 2\n\nPlaceholder only. OWS generates the publish markdown from plot-02.cuts.json." },
       cuts: { version: 1, plotFile: "plot-02", cuts: [] },
     });
     render(
       <PreviewPanel storyName="god-cell" fileName="plot-02.md" authFetch={authFetch}
-        onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis />,
+        onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis
+        onViewPublish={vi.fn()} />,
     );
     const callout = await screen.findByTestId("cartoon-not-started");
     expect(callout).toHaveTextContent(/hasn't been started — expand its cut plan/i);
     // Not an error: the red publish-issues block must not render.
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled(),
-    );
+    // #461: no inline publish control on the cartoon episode — just the compact
+    // CTA that routes to the Publish tab (where readiness is gated).
+    expect(screen.queryByText("Publish to PlotLink")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("cartoon-review-publish")).toBeInTheDocument();
   });
 });

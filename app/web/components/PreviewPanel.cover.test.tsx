@@ -150,6 +150,10 @@ function makeDraftAuthFetch() {
   });
 }
 
+// #461: the pre-publish cover picker + inline "Publish to PlotLink" button now
+// render for FICTION genesis only — for cartoon they moved to the Publish tab.
+// The 6th-arg cover publish path is shared, so these tests exercise it via a
+// fiction genesis (unchanged behavior).
 describe("PreviewPanel pre-publish cover (#284)", () => {
   async function renderDraftGenesis(onPublish: ReturnType<typeof vi.fn>) {
     render(
@@ -160,7 +164,7 @@ describe("PreviewPanel pre-publish cover (#284)", () => {
         onPublish={onPublish}
         publishingFile={null}
         walletAddress={WALLET}
-        contentType="cartoon"
+        contentType="fiction"
         genre="Adventure"
         language="English"
       />,

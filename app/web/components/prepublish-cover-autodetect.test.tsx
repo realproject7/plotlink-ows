@@ -56,7 +56,7 @@ async function renderDraft(authFetch: ReturnType<typeof makeAuthFetch>, onPublis
       onPublish={onPublish}
       publishingFile={null}
       walletAddress={WALLET}
-      contentType="cartoon"
+      contentType="fiction"
       genre="Adventure"
       language="English"
     />,
@@ -65,6 +65,11 @@ async function renderDraft(authFetch: ReturnType<typeof makeAuthFetch>, onPublis
   return { onPublish, publishBtn: screen.getByRole("button", { name: "Publish to PlotLink" }) };
 }
 
+// #461: the pre-publish cover picker (with auto-detect + manual override) now
+// renders for FICTION genesis only — cartoon's cover moved to Story Info, and
+// the auto-load-at-publish moved to the Publish tab (see CartoonPublishPage).
+// These auto-detect/publish-path tests run on a fiction genesis, where the
+// picker behavior is unchanged.
 describe("PreviewPanel auto-detected cover (#296)", () => {
   it("detects a valid assets/cover.webp, shows status + preview, and publishes it without manual selection", async () => {
     const authFetch = makeAuthFetch({ found: true, valid: true, path: "assets/cover.webp", type: "image/webp" });

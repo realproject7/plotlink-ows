@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import { PreviewPanel } from "./PreviewPanel";
+import { CartoonPublishPage } from "./CartoonPublishPage";
 import { installObjectUrlStub } from "./asset-test-utils";
+import type { StoryProgress, EpisodeProgress } from "@app-lib/story-progress";
 
 // #360: when a cartoon episode is publish-blocked in the "error" stage, the
 // publish panel groups the readiness issues by workflow step (with a writer-facing
 // heading) instead of listing a flat wall of repeated per-cut technical errors.
+//
+// #461: the grouped-issues card moved from the episode view to the Publish tab,
+// so this renders CartoonPublishPage for the active plot episode.
 beforeAll(() => {
   installObjectUrlStub();
   global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -24,27 +28,44 @@ function mismatchedCut() {
   };
 }
 
+const READY_CUTS = { total: 1, needClean: 1, withClean: 1, withText: 1, exported: 1, uploaded: 1 };
+
+function ep(o: Partial<EpisodeProgress> & { file: string }): EpisodeProgress {
+  return {
+    file: o.file, label: o.label ?? "Episode 01", kind: o.kind ?? "plot", title: o.title ?? null,
+    state: o.state ?? "blocked", summary: o.summary ?? "issues", published: o.published ?? false,
+    checklist: o.checklist ?? null, cuts: o.cuts ?? READY_CUTS,
+  };
+}
+
+function progress(episodes: EpisodeProgress[]): StoryProgress {
+  return {
+    name: "coupon-crush", contentType: "cartoon",
+    metadata: { title: "Coupon Crush", language: "English", genre: "Adventure", isNsfw: false, contentType: "cartoon" },
+    setup: { hasStructure: true, hasGenesis: true }, cover: "present",
+    episodes,
+    summary: { episodes: episodes.length, published: 0, readyToPublish: 0, placeholders: 0, blocked: 0 },
+    nextAction: null, nextPrompt: null,
+  };
+}
+
 function makeFetch() {
+  const p = progress([
+    ep({ file: "genesis.md", kind: "genesis", label: "Episode 1 / Genesis", published: true, state: "published" }),
+    ep({ file: "plot-01.md" }),
+  ]);
   return vi.fn((url: string) => {
-    if (url.endsWith("/cover-asset")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ found: false }) });
-    }
-    if (url.endsWith("/structure.md")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: "" }) });
-    }
-    if (url.includes("/cuts/")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "plot-01", title: "The Couple Coupon", cuts: [mismatchedCut()] }) });
-    }
-    if (url.endsWith("/plot-01.md")) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ file: "plot-01.md", status: "pending", content: CONTENT }) });
-    }
+    if (url.endsWith("/progress")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(p) });
+    if (url.endsWith("/structure.md")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: "" }) });
+    if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "plot-01", title: "The Couple Coupon", cuts: [mismatchedCut()] }) });
+    if (url.endsWith("/plot-01.md")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: CONTENT }) });
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
   });
 }
 
 describe("cartoon grouped publish-readiness messaging (#360)", () => {
   it("renders issues grouped by workflow step instead of a flat per-cut list", async () => {
-    render(<PreviewPanel storyName="coupon-crush" fileName="plot-01.md" authFetch={makeFetch()} onPublish={vi.fn()} publishingFile={null} walletAddress="test-wallet-address" contentType="cartoon" />);
+    render(<CartoonPublishPage storyName="coupon-crush" authFetch={makeFetch()} onOpenFile={vi.fn()} onOpenStoryInfo={vi.fn()} onPublish={vi.fn()} genre="Adventure" language="English" />);
 
     const container = await screen.findByTestId("cartoon-publish-issues");
     expect(container).toHaveTextContent("Finish these workflow steps");
@@ -58,7 +79,5 @@ describe("cartoon grouped publish-readiness messaging (#360)", () => {
     const details = screen.getByTestId("cartoon-technical-details");
     expect(details).toHaveTextContent("Technical details");
     expect(details).toHaveTextContent(/does not match the recorded uploaded URL/);
-    // Publish is blocked while in the error stage.
-    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
   });
 });
