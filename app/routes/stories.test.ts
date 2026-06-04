@@ -1250,3 +1250,52 @@ describe("generate-markdown produces publish-ready cartoon markdown (#319)", () 
     expect(checkMarkdownReadiness(md, cuts).ready).toBe(false);
   });
 });
+
+describe("GET /api/stories/:name/progress — story progress overview (#418)", () => {
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-progress-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it("aggregates metadata, setup, cover and per-episode state for a cartoon story", async () => {
+    const storyDir = path.join(tmpDir, "god-cell");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, ".story.json"), JSON.stringify({ contentType: "cartoon", language: "Korean", genre: "Science Fiction" }));
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# 신의 세포\n");
+    fs.writeFileSync(path.join(storyDir, "genesis.md"), "# 신의 세포\n\nA cell awakens.");
+    // Genesis-as-Episode-1 has a real cut plan; plot-01 is an empty placeholder.
+    writeCutsFile(storyDir, "genesis", createCutsFile("genesis", 2));
+    fs.writeFileSync(path.join(storyDir, "plot-01.md"), "# Episode 2\n\nPlaceholder, not started.");
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 0));
+
+    const res = await app.request("/api/stories/god-cell/progress");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.contentType).toBe("cartoon");
+    expect(body.metadata.language).toBe("Korean");
+    expect(body.metadata.genre).toBe("Science Fiction");
+    expect(body.setup.hasStructure).toBe(true);
+    expect(body.setup.hasGenesis).toBe(true);
+    expect(body.cover).toBe("missing");
+
+    const genesis = body.episodes.find((e: { file: string }) => e.file === "genesis.md");
+    expect(genesis.label).toBe("Episode 1 / Genesis");
+    const plot = body.episodes.find((e: { file: string }) => e.file === "plot-01.md");
+    expect(plot.label).toBe("Episode 2");
+    expect(plot.state).toBe("placeholder"); // empty cuts ⇒ not started, never ready
+    expect(body.summary.placeholders).toBe(1);
+    // Cover missing ⇒ the next product step is to add a cover.
+    expect(body.nextAction).toMatch(/cover/i);
+  });
+
+  it("404s for a missing story", async () => {
+    const res = await app.request("/api/stories/nope/progress");
+    expect(res.status).toBe(404);
+  });
+});

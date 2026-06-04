@@ -72,6 +72,8 @@ interface PreviewPanelProps {
   // Whether the story has a genesis.md, so the outline (structure.md) footer can
   // tell "write the Genesis next" from "Genesis already exists, review it" (#422).
   hasGenesis?: boolean;
+  // Deselect the file to reveal the story-level progress overview (#418).
+  onViewProgress?: () => void;
 }
 
 interface FileData {
@@ -88,7 +90,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -857,6 +859,16 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       <div className="border-b border-border">
         <div className="px-3 py-1.5 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-mono text-muted">
+            {onViewProgress && (
+              <button
+                onClick={onViewProgress}
+                data-testid="view-progress-btn"
+                className="text-accent hover:underline font-sans"
+                title="Story progress overview"
+              >
+                ← Progress
+              </button>
+            )}
             <span>{storyName}/{fileName}</span>
             {fileData?.status === "published" && (
               <span className="text-green-700 font-medium">Published</span>
