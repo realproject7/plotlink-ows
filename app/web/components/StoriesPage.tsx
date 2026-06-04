@@ -738,7 +738,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     : "progress";
 
   const handleCartoonNav = useCallback((tab: CartoonWorkflowTab) => {
-    const story = latestStoryRef.current ?? selectedStory;
+    // Use the current selected story, not latestStoryRef — that ref is only set
+    // by handleSelectStory, so opening another story's file via the LEFT tree
+    // (handleSelectFile) would leave it stale and route file tabs to the wrong
+    // story (#445 RE1). `selectedStory` always reflects the visible story.
+    const story = selectedStory;
     if (!story) return;
     switch (tab) {
       case "progress": setCartoonView(null); setSelectedFile(null); break;
