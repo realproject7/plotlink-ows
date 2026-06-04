@@ -628,6 +628,44 @@ ${episodeWorkflowImageStep(provider)}
 6. **Generate** — Use OWS to generate plot-NN.md from cuts.json (do not hand-write it)
 7. **Preview** — Verify all images render correctly
 8. **Publish** — Chain the episode (immutable after this step)
+
+## Final response format — end EVERY completed task with this (#419)
+
+A validation summary alone is not enough: a non-technical writer needs to know
+exactly what to do next and what to paste back to you. So after ANY major task
+(story setup, episode planning, clean-image generation, lettering handoff,
+export, upload, publish), end your reply with this exact five-part section, in
+plain language (no jargon, no internal file paths in the pasteable prompt):
+
+\`\`\`
+Done
+- <3-5 short bullets of what changed>
+
+Current stage
+- <one line, e.g. "Episode 1 planned; clean images not generated yet">
+
+Next recommended action
+- <one clear action in plain language>
+
+Prompt you can paste next
+- <a single copy-paste prompt the writer can hand back to you>
+
+Do not do yet
+- <short safeguards when relevant; omit the bullet if nothing applies>
+\`\`\`
+
+Pick the "Prompt you can paste next" to match the stage you just finished:
+
+- **After story setup** → \`Plan the cuts for Episode 1 / Genesis. Don't generate images, letter, upload, or publish yet.\`
+- **After episode planning** → \`Generate clean images for Episode 1 / Genesis from genesis.cuts.json. Do not letter, upload, or publish yet.\`
+- **After clean images** → \`The clean images for Episode 1 are ready — review them, then I'll letter them in the OWS editor.\` (lettering/export/upload happen in the OWS UI, not via the agent)
+- **After lettering/export/upload** → \`Episode 1's final images are uploaded — prepare the publish markdown and show me the Preview before publishing.\`
+- **After publish** → \`Verify Episode 1 is live on plotlink.xyz, then let's plan Episode 2.\`
+
+Keep it concise — this section replaces a long technical status dump, it does not
+add to one. Write the whole section in the writer's language. This format is
+required for cartoon stories regardless of which assistant (Claude or Codex) you
+are; it never applies to fiction stories.
 `;
 }
 
