@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "1.2.84",
+  "version": "1.2.86",
   "packageManager": "npm@10.9.8",
   "engines": {
     "node": "20.x",
@@ -15,7 +15,23 @@
     "lib/ows/",
     "packages/",
     "public/",
-    "scripts/"
+    "scripts/",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/*.test.js",
+    "!**/*.test.jsx",
+    "!**/*.test.mjs",
+    "!**/*.spec.ts",
+    "!**/*.spec.tsx",
+    "!**/*.spec.js",
+    "!**/__tests__/**",
+    "!**/node_modules/**",
+    "!**/*.tgz",
+    "!**/.next/cache/**",
+    "!**/.turbo/**",
+    "!**/.vite/**",
+    "!**/.cache/**",
+    "!**/*.tsbuildinfo"
   ],
   "workspaces": [
     "packages/*"
@@ -31,6 +47,7 @@
     "app:dev": "concurrently \"tsx watch app/server.ts\" \"vite --config app/vite.config.ts\"",
     "app:build": "vite build --config app/vite.config.ts",
     "app:start": "tsx app/server.ts",
+    "preflight": "node scripts/preflight.mjs",
     "prepublishOnly": "npm run app:build",
     "postinstall": "prisma generate --schema app/prisma/schema.prisma",
     "prisma:local": "prisma generate --schema app/prisma/schema.prisma && prisma db push --schema app/prisma/schema.prisma",
