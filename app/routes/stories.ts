@@ -10,7 +10,7 @@ import { diagnoseCutAssets, summarizeAssetDiagnostics } from "../lib/cut-asset-d
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
 import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
-import { imageAssetIssue, isValidImageAsset, CLEAN_IMAGE_VALID_EXT } from "../lib/image-asset-validate";
+import { imageAssetIssue, isValidImageAsset, pngAssetExists, CLEAN_IMAGE_VALID_EXT } from "../lib/image-asset-validate";
 
 const stories = new Hono();
 
@@ -814,7 +814,17 @@ stories.get("/:name/cuts/:plotFile/asset-diagnostics", (c) => {
   }
   if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
 
-  const diagnostics = diagnoseCutAssets(cutsFile.cuts, (rel) => imageAssetIssue(storyDir, rel));
+  // Resolve a convertible PNG clean image for a cut (#441): the recorded clean
+  // path when it's a real PNG, else an unrecorded `cut-NN-clean.png` on disk.
+  const pngClean = (cut: { id: number; cleanImagePath: string | null }): string | null => {
+    if (cut.cleanImagePath && /\.png$/i.test(cut.cleanImagePath) && pngAssetExists(storyDir, cut.cleanImagePath)) {
+      return cut.cleanImagePath;
+    }
+    const candidate = `assets/${plotFile}/cut-${String(cut.id).padStart(2, "0")}-clean.png`;
+    return pngAssetExists(storyDir, candidate) ? candidate : null;
+  };
+
+  const diagnostics = diagnoseCutAssets(cutsFile.cuts, (rel) => imageAssetIssue(storyDir, rel), pngClean);
   const summary = summarizeAssetDiagnostics(diagnostics);
   return c.json({ diagnostics, summary });
 });

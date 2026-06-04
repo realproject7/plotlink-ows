@@ -500,6 +500,15 @@ export interface CartoonCutProgress {
   uploaded: number;
 }
 
+/**
+ * A clean-image path is a publishable format only when it's WebP/JPEG (#441).
+ * Pure path-extension check (browser-safe, no fs) mirroring the publish-strict
+ * `CLEAN_IMAGE_VALID_EXT`; a `.png` is a convert-me intermediate, not finished.
+ */
+export function isSupportedCleanImage(cleanImagePath: string): boolean {
+  return /\.(webp|jpe?g)$/i.test(cleanImagePath);
+}
+
 export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
   let needClean = 0;
   let withClean = 0;
@@ -512,7 +521,11 @@ export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
     // uploads a final image, so those are counted for both kinds.
     if (!isTextPanel(cut)) {
       needClean++;
-      if (cut.cleanImagePath) {
+      // A PNG clean image is a draft intermediate, not a finished clean asset
+      // (#441): it must be converted to WebP/JPEG first, so it does NOT count as
+      // "clean" — the cut sits at the convert step, not lettering. Matches the
+      // publish-strict WebP/JPEG requirement without a disk read (path ext only).
+      if (cut.cleanImagePath && isSupportedCleanImage(cut.cleanImagePath)) {
         withClean++;
         // Guard a malformed/legacy cut missing `overlays` — the checklist runs on
         // every cut-list render now (#414), so a bad persisted cut must not crash it.
