@@ -3,6 +3,9 @@ import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { StoryProgressPanel } from "./StoryProgressPanel";
+import { CartoonWorkflowNav, type CartoonWorkflowTab } from "./CartoonWorkflowNav";
+import { StoryInfoPage } from "./StoryInfoPage";
+import { EpisodesPage } from "./EpisodesPage";
 import { LANGUAGES, GENRES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
@@ -42,6 +45,9 @@ function clampRatio(r: number, available: number): number {
 export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [selectedStory, setSelectedStory] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  // Cartoon right-panel workflow nav (#439): a non-file workflow page is open
+  // (Story Info / Episodes). null ⇒ the view follows selectedFile (or Progress).
+  const [cartoonView, setCartoonView] = useState<"story-info" | "episodes" | null>(null);
   const [publishingFile, setPublishingFile] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<string>("");
   // Durable publish blocker (#375): unlike the transient publishProgress text,
@@ -75,6 +81,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   // values. `undefined` ⇒ not set in .story.json → client shows "Needs metadata".
   const [storyGenres, setStoryGenres] = useState<Record<string, string | undefined>>({});
   const [storyNsfw, setStoryNsfw] = useState<Record<string, boolean | undefined>>({});
+  const [storyTitles, setStoryTitles] = useState<Record<string, string>>({});
   // Provider recorded on each persisted story (read-only, from /api/stories).
   // Absent ⇒ legacy story with no provider (defaults to Claude at launch).
   const [storyProviders, setStoryProviders] = useState<Record<string, "claude" | "codex" | undefined>>({});
@@ -250,6 +257,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const handleSelectFile = useCallback((storyName: string, fileName: string) => {
     setSelectedStory(storyName);
     setSelectedFile(fileName);
+    setCartoonView(null); // a file view supersedes a non-file workflow page
   }, []);
 
   const latestStoryRef = useRef<string | null>(null);
@@ -258,6 +266,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     latestStoryRef.current = name;
     setSelectedStory(name);
     setSelectedFile(null);
+    setCartoonView(null);
     // Cartoon stories land on the story-level progress overview (#418). Fiction
     // PRESERVES the existing auto-open-latest-file behavior (fiction can still
     // reach the overview via the "Progress" button).
@@ -606,7 +615,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; hasGenesis?: boolean; contentType?: "fiction" | "cartoon"; language?: string; genre?: string; isNsfw?: boolean; agentProvider?: "claude" | "codex" }[]) => {
+    const updateFromStories = (stories: { name: string; title?: string | null; hasStructure: boolean; hasGenesis?: boolean; contentType?: "fiction" | "cartoon"; language?: string; genre?: string; isNsfw?: boolean; agentProvider?: "claude" | "codex" }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
       setGenesisStories(new Set(stories.filter((s) => s.hasGenesis).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
@@ -614,6 +623,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       const genre: Record<string, string | undefined> = {};
       const nsfw: Record<string, boolean | undefined> = {};
       const prov: Record<string, "claude" | "codex" | undefined> = {};
+      const titles: Record<string, string> = {};
       for (const s of stories) {
         ct[s.name] = s.contentType || "fiction";
         // Preserve absence (vs. defaulting to English/Romance) so the publish
@@ -622,12 +632,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         genre[s.name] = s.genre;
         nsfw[s.name] = s.isNsfw;
         prov[s.name] = s.agentProvider;
+        if (s.title) titles[s.name] = s.title;
       }
       setStoryContentTypes(ct);
       setStoryLanguages(lang);
       setStoryGenres(genre);
       setStoryNsfw(nsfw);
       setStoryProviders(prov);
+      setStoryTitles(titles);
     };
     authFetch("/api/stories").then((res) => res.ok ? res.json() : null).then((data) => {
       if (data?.stories) updateFromStories(data.stories);
@@ -706,11 +718,51 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const selectedProvider = selectedStory
     ? (agentProviders[selectedStory] ?? storyProviders[selectedStory])
     : undefined;
+  const selectedContentType = resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current);
   const selectedNeedsProviderRepair = needsLegacyProviderRepair(
-    resolveSelectedContentType(selectedStory, storyContentTypes, contentTypeMap.current),
+    selectedContentType,
     selectedProvider,
     selectedStory,
   );
+
+  // Cartoon-only right-panel workflow nav (#439). The active tab follows the
+  // open non-file view (Story Info / Episodes) or the closest file: structure.md
+  // ⇒ Whitepaper, genesis.md ⇒ Genesis / Ep 1, plot-NN ⇒ Episodes, else Progress.
+  const isCartoonStory = !!selectedStory && selectedContentType === "cartoon";
+  const activeCartoonTab: CartoonWorkflowTab =
+    cartoonView === "story-info" ? "story-info"
+    : cartoonView === "episodes" ? "episodes"
+    : selectedFile === "structure.md" ? "whitepaper"
+    : selectedFile === "genesis.md" ? "genesis"
+    : selectedFile && /^plot-\d+\.md$/.test(selectedFile) ? "episodes"
+    : "progress";
+
+  const handleCartoonNav = useCallback((tab: CartoonWorkflowTab) => {
+    // Use the current selected story, not latestStoryRef — that ref is only set
+    // by handleSelectStory, so opening another story's file via the LEFT tree
+    // (handleSelectFile) would leave it stale and route file tabs to the wrong
+    // story (#445 RE1). `selectedStory` always reflects the visible story.
+    const story = selectedStory;
+    if (!story) return;
+    switch (tab) {
+      case "progress": setCartoonView(null); setSelectedFile(null); break;
+      case "story-info": setCartoonView("story-info"); break;
+      case "episodes": setCartoonView("episodes"); break;
+      case "whitepaper": handleSelectFile(story, "structure.md"); break;
+      // Genesis is Episode 1; Publish routes to its publish controls (the
+      // dedicated Publish page is a later ticket, §10).
+      case "genesis":
+      case "publish": handleSelectFile(story, "genesis.md"); break;
+    }
+  }, [selectedStory, handleSelectFile]);
+
+  // Keep the publish-control seeds in sync after a Story Info save (#439).
+  const handleStoryInfoSaved = useCallback((patch: { genre?: string; language?: string; isNsfw?: boolean }) => {
+    if (!selectedStory) return;
+    if (patch.genre !== undefined) setStoryGenres((prev) => ({ ...prev, [selectedStory]: patch.genre || undefined }));
+    if (patch.language !== undefined) setStoryLanguages((prev) => ({ ...prev, [selectedStory]: patch.language || undefined }));
+    if (patch.isNsfw !== undefined) setStoryNsfw((prev) => ({ ...prev, [selectedStory]: patch.isNsfw }));
+  }, [selectedStory]);
 
   return (
     <div ref={containerRef} className="h-[calc(100vh-3.5rem)] flex">
@@ -747,7 +799,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       {/* Preview — takes remaining space. With a story but no file selected, show
           the story-level progress overview (#418) instead of the empty state. */}
       <div className="min-w-0 flex flex-col" style={{ flex: `${1 - ratio} 0 0` }}>
-        {selectedStory && !selectedFile ? (
+        {/* Cartoon workflow nav (#439) — persistent above the right-panel content. */}
+        {isCartoonStory && selectedStory && (
+          <CartoonWorkflowNav
+            storyTitle={storyTitles[selectedStory] || selectedStory}
+            active={activeCartoonTab}
+            onSelect={handleCartoonNav}
+          />
+        )}
+        {isCartoonStory && cartoonView === "story-info" && selectedStory ? (
+          <StoryInfoPage storyName={selectedStory} authFetch={authFetch} onSaved={handleStoryInfoSaved} />
+        ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
+          <EpisodesPage storyName={selectedStory} authFetch={authFetch} onOpenFile={handleSelectFile} />
+        ) : selectedStory && !selectedFile ? (
           <StoryProgressPanel
             storyName={selectedStory}
             authFetch={authFetch}

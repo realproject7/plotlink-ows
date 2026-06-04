@@ -7,11 +7,14 @@ import { StoriesPage } from "./StoriesPage";
 const childProps = vi.hoisted(() => ({
   onNewStory: null as null | (() => void),
   onSelectFile: null as null | ((storyName: string, fileName: string) => void),
+  onSelectStory: null as null | ((name: string) => void),
   renameRef: null as null | { current: ((o: string, n: string, meta?: unknown) => Promise<boolean>) | null },
   agentProviders: null as null | Record<string, "claude" | "codex">,
   needsProviderRepair: null as null | boolean,
   onRepairProvider: null as null | (() => void | Promise<void>),
   renameCalls: [] as Array<{ oldName: string; newName: string; meta?: unknown }>,
+  previewStory: undefined as string | null | undefined,
+  previewFile: undefined as string | null | undefined,
 }));
 
 vi.mock("./StoryBrowser", () => ({
@@ -28,8 +31,10 @@ vi.mock("./TerminalPanel", () => ({
     agentProviders?: Record<string, "claude" | "codex">;
     needsProviderRepair?: boolean;
     onRepairProvider?: () => void | Promise<void>;
+    onSelectStory?: (name: string) => void;
   }) => {
     childProps.renameRef = props.renameRef;
+    childProps.onSelectStory = props.onSelectStory ?? null;
     childProps.agentProviders = props.agentProviders ?? null;
     childProps.needsProviderRepair = props.needsProviderRepair ?? null;
     childProps.onRepairProvider = props.onRepairProvider ?? null;
@@ -44,7 +49,11 @@ vi.mock("./TerminalPanel", () => ({
 }));
 
 vi.mock("./PreviewPanel", () => ({
-  PreviewPanel: () => <div data-testid="mock-preview" />,
+  PreviewPanel: (props: { storyName?: string | null; fileName?: string | null }) => {
+    childProps.previewStory = props.storyName;
+    childProps.previewFile = props.fileName;
+    return <div data-testid="mock-preview" data-story={props.storyName ?? ""} data-file={props.fileName ?? ""} />;
+  },
 }));
 
 beforeAll(() => {
@@ -60,11 +69,14 @@ afterEach(() => {
   vi.useRealTimers();
   childProps.onNewStory = null;
   childProps.onSelectFile = null;
+  childProps.onSelectStory = null;
   childProps.renameRef = null;
   childProps.agentProviders = null;
   childProps.needsProviderRepair = null;
   childProps.onRepairProvider = null;
   childProps.renameCalls = [];
+  childProps.previewStory = undefined;
+  childProps.previewFile = undefined;
 });
 
 interface FetchCall { url: string; body: unknown }
@@ -407,4 +419,54 @@ describe("StoriesPage cartoon codex readiness gating", () => {
     const fictionBtn = screen.getByText("Fiction").closest("button") as HTMLButtonElement;
     expect(fictionBtn).not.toBeDisabled();
   });
+});
+
+// Two cartoon stories so we can switch between them. /api/stories carries titles
+// for the nav header; story detail returns no auto-open files for cartoon.
+function makeTwoCartoonAuthFetch() {
+  const stories = [
+    { name: "cartoon-a", title: "Story A", hasStructure: true, hasGenesis: true, contentType: "cartoon", agentProvider: "codex" },
+    { name: "cartoon-b", title: "Story B", hasStructure: true, hasGenesis: true, contentType: "cartoon", agentProvider: "codex" },
+  ];
+  const fn = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+    if (url === "/api/wallet") return Promise.resolve({ ok: true, json: () => Promise.resolve({ address: "0xabc" }) });
+    if (url === "/api/agent/readiness") {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ claude: { installed: true }, codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" }, checkedAt: 1748000000000 }) });
+    }
+    if (url === "/api/stories" && !opts) return Promise.resolve({ ok: true, json: () => Promise.resolve({ stories }) });
+    if (url.endsWith("/progress")) return Promise.resolve({ ok: true, json: () => Promise.resolve({ contentType: "cartoon", episodes: [], cover: "missing" }) });
+    // story detail (cartoon ⇒ no auto-open) and everything else.
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ contentType: "cartoon", files: [] }) });
+  });
+  return { fn };
+}
+
+describe("StoriesPage cartoon workflow nav routing (#439)", () => {
+  it("routes file-backed nav tabs to the CURRENT story after a left-tree switch to another story (#445 RE1)", async () => {
+    const { fn } = makeTwoCartoonAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
+
+    // Open story A via the terminal/story selector → latestStoryRef = A.
+    childProps.onSelectStory!("cartoon-a");
+    // Then open story B's file via the LEFT FILE TREE (handleSelectFile).
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+    childProps.onSelectFile!("cartoon-b", "genesis.md");
+    await waitFor(() => expect(childProps.previewStory).toBe("cartoon-b"));
+
+    // The nav now shows story B; clicking Whitepaper must open B's structure.md,
+    // not story A's (the stale-ref bug).
+    fireEvent.click(screen.getByTestId("nav-tab-whitepaper"));
+    await waitFor(() => {
+      expect(childProps.previewStory).toBe("cartoon-b");
+      expect(childProps.previewFile).toBe("structure.md");
+    });
+
+    // Genesis / Publish tabs likewise stay on the current story.
+    fireEvent.click(screen.getByTestId("nav-tab-genesis"));
+    await waitFor(() => {
+      expect(childProps.previewStory).toBe("cartoon-b");
+      expect(childProps.previewFile).toBe("genesis.md");
+    });
+  }, 10000);
 });
