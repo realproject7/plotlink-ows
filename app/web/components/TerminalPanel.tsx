@@ -5,6 +5,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { FRESH_SPAWN_SIGNAL } from "@app-lib/terminal-protocol";
+import { redactTerminalSecrets } from "@app-lib/terminal-redact";
 
 /** Story metadata persisted with a `_new_*` → real-folder rename (#295). */
 export interface RenameMeta {
@@ -238,7 +239,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
           return;
         }
       }
-      session.term.write(e.data);
+      // Mask obvious auth secrets before they reach the terminal / scrollback (#454).
+      session.term.write(typeof e.data === "string" ? redactTerminalSecrets(e.data) : e.data);
     };
 
     ws.onclose = (event) => {
@@ -324,11 +326,16 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
     sessions.set(name, session);
     setSessionList((prev) => [...prev, name]);
 
-    // Restore scrollback from IndexedDB
+    // Restore scrollback from IndexedDB, masking any auth secrets first so an OLD
+    // transcript can't re-display previously-persisted tokens/passphrases (#454).
+    // If redaction changed it, re-save the masked copy so the raw value is gone
+    // from storage and never re-persisted later.
     try {
       const saved = await loadScrollback(name);
       if (saved) {
-        term.write(saved);
+        const redacted = redactTerminalSecrets(saved);
+        term.write(redacted);
+        if (redacted !== saved) saveScrollback(name, redacted).catch(() => {});
       }
     } catch { /* ignore */ }
 

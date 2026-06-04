@@ -53,6 +53,15 @@ Each chapter is a self-contained prose section:
 - Genesis publishes via \`createStoryline\` (one-time per story)
 - Plots publish via \`chainPlot\` (one per chapter)
 - Always check character count before publishing (500–10,000 chars)
+
+## Security — never print secrets into the terminal
+
+- Do NOT print, \`echo\`, \`cat\`, or log auth material in this terminal: no
+  \`Authorization: Bearer\` headers or session tokens, no \`OWS_PASSPHRASE\`, and no
+  login passphrase or any login command that contains it.
+- The app stores the passphrase in \`~/.plotlink-ows/.env\` and authenticates for
+  you — you never need to read or echo it. Use the documented API; keep secrets
+  out of command output.
 `;
 }
 
@@ -617,6 +626,15 @@ Correct flow:
 - Genesis publishes via \`createStoryline\` (one-time, text-only synopsis)
 - Episodes publish via \`chainPlot\` (per episode, image-sequence markdown)
 - Once published, images cannot be replaced or edited
+
+## Security — never print secrets into the terminal
+
+- Do NOT print, \`echo\`, \`cat\`, or log auth material in this terminal: no
+  \`Authorization: Bearer\` headers or session tokens, no \`OWS_PASSPHRASE\`, and no
+  login passphrase or any login command that contains it.
+- The app stores the passphrase in \`~/.plotlink-ows/.env\` and authenticates for
+  you — you never need to read or echo it. Use the documented API; keep secrets
+  out of command output.
 
 ## Episode Workflow
 

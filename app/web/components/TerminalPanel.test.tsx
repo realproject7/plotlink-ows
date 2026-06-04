@@ -46,6 +46,9 @@ let wsConstructed: string[];
 // #453 fresh-spawn-dedup test.
 let wsInstances: Array<{ readyState: number; onopen: (() => void) | null; onmessage: ((e: { data: unknown }) => void) | null }>;
 const idbDeletes = vi.hoisted(() => ({ keys: [] as unknown[] }));
+// Backing store for the IndexedDB scrollback stub so a test can seed a saved
+// transcript (e.g. with a placeholder secret) and observe re-saves (#454).
+const idbStore = vi.hoisted(() => ({ map: new Map<unknown, unknown>() }));
 
 beforeAll(() => {
   global.ResizeObserver = class {
@@ -63,16 +66,16 @@ beforeAll(() => {
         transaction: () => {
           const tx: Record<string, unknown> = {
             objectStore: () => ({
-              put: () => {},
-              get: () => {
+              put: (val: unknown, key: unknown) => { idbStore.map.set(key, val); },
+              get: (key: unknown) => {
                 const r: Record<string, unknown> = {};
                 queueMicrotask(() => {
-                  r.result = null;
+                  r.result = idbStore.map.get(key) ?? null;
                   (r.onsuccess as (() => void) | undefined)?.();
                 });
                 return r;
               },
-              delete: (key: unknown) => { idbDeletes.keys.push(key); },
+              delete: (key: unknown) => { idbDeletes.keys.push(key); idbStore.map.delete(key); },
             }),
             oncomplete: null,
             onerror: null,
@@ -99,6 +102,7 @@ beforeEach(() => {
   termSpy.writes = [];
   termSpy.resets = 0;
   idbDeletes.keys = [];
+  idbStore.map.clear();
   global.WebSocket = class {
     static OPEN = 1;
     readyState = 0;
@@ -385,5 +389,48 @@ describe("TerminalPanel fresh-spawn scrollback dedup (#453)", () => {
     expect(termSpy.resets).toBe(0);
     expect(termSpy.writes).toContain("live pty output");
     expect(idbDeletes.keys).not.toContain("tidewright");
+  });
+});
+
+describe("TerminalPanel redacts auth secrets in terminal output (#454)", () => {
+  function renderPanel(storyName: string) {
+    const renameRef = { current: null } as { current: ((o: string, n: string) => Promise<boolean>) | null };
+    return render(
+      <TerminalPanel token="t" storyName={storyName} authFetch={noopFetch} renameRef={renameRef} />,
+    );
+  }
+
+  it("masks an Authorization: Bearer token before writing it to the terminal", async () => {
+    renderPanel("god-cell");
+    await waitFor(() => expect(wsInstances.length).toBeGreaterThan(0));
+    const ws = wsInstances[wsInstances.length - 1];
+    act(() => { ws.readyState = 1; ws.onopen?.(); });
+
+    // Placeholder secret only — never a real token.
+    act(() => { ws.onmessage?.({ data: "Authorization: Bearer test-token-abcdef123456\r\n" }); });
+    const written = termSpy.writes.join("");
+    expect(written).toContain("Authorization: Bearer [REDACTED]");
+    expect(written).not.toContain("test-token-abcdef123456");
+  });
+
+  // #454 (re1): an OLD persisted transcript must also be masked on restore, and
+  // the redacted copy re-saved so the raw secret leaves storage.
+  it("masks auth secrets in restored scrollback and re-persists the redacted copy", async () => {
+    idbStore.map.set("secret-story", "OWS_PASSPHRASE=placeholder-pass\r\nAuthorization: Bearer test-token-abcdef123456\r\n");
+    renderPanel("secret-story");
+
+    await waitFor(() => expect(termSpy.writes.length).toBeGreaterThan(0));
+    const written = termSpy.writes.join("");
+    // The restored transcript is written masked — the raw secret is never written.
+    expect(written).toContain("Authorization: Bearer [REDACTED]");
+    expect(written).toContain("OWS_PASSPHRASE=[REDACTED]");
+    expect(written).not.toContain("test-token-abcdef123456");
+    expect(written).not.toContain("placeholder-pass");
+    // The redacted scrollback is re-persisted, so the raw value is gone from storage.
+    await waitFor(() => {
+      const stored = idbStore.map.get("secret-story") as string;
+      expect(stored).toContain("[REDACTED]");
+      expect(stored).not.toContain("test-token-abcdef123456");
+    });
   });
 });

@@ -27,6 +27,11 @@ All endpoints except auth use \`Authorization: Bearer {token}\` headers.
 The OWS passphrase is stored in \`~/.plotlink-ows/.env\` as \`OWS_PASSPHRASE\`.
 For login, the passphrase is hashed with HMAC-SHA256 and compared against the stored hash.
 
+**Never print secrets into the terminal.** Do not \`echo\`, \`cat\`, or log the
+\`OWS_PASSPHRASE\`, the session token, or any \`Authorization: Bearer\` header / login
+command that contains the passphrase. The app authenticates for you — you never
+need to read or print these.
+
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | \`/api/auth/status\` | GET | No | Check if passphrase is configured |
