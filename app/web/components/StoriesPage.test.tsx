@@ -469,4 +469,22 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
       expect(childProps.previewFile).toBe("genesis.md");
     });
   }, 10000);
+
+  // #449: the Publish tab opens its own readiness page and stays selected,
+  // instead of visually routing to the Genesis file view.
+  it("Publish tab opens the dedicated publish page and stays on Publish, not Genesis", async () => {
+    const { fn } = makeTwoCartoonAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
+    childProps.onSelectStory!("cartoon-a");
+
+    fireEvent.click(await screen.findByTestId("nav-tab-publish"));
+
+    // The dedicated publish page renders; the Publish tab is active; the Genesis
+    // file view is NOT shown (no mock-preview, Genesis tab not active).
+    await screen.findByTestId("cartoon-publish-page");
+    expect(screen.getByTestId("nav-tab-publish")).toHaveAttribute("data-active", "true");
+    expect(screen.getByTestId("nav-tab-genesis")).toHaveAttribute("data-active", "false");
+    expect(screen.queryByTestId("mock-preview")).not.toBeInTheDocument();
+  }, 10000);
 });
