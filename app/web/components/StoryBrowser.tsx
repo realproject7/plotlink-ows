@@ -114,13 +114,13 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
   };
 
   const handleStoryClick = (story: StoryInfo) => {
+    // Always open the story-level progress overview on a root-row click (#418),
+    // whether the click expands or collapses the inline file list — an empty file
+    // selection reveals the overview in the right pane. Clearing the file on every
+    // root click means an already-expanded story with a file open still switches
+    // to the overview (not just the first expand). File rows below open a file.
     toggleExpand(story.name);
-    // Open the story-level progress overview when expanding (#418) — an empty
-    // file selection reveals the overview in the right pane — instead of dropping
-    // straight into a file. File rows below still open a specific file.
-    if (!expanded.has(story.name)) {
-      onSelectFile(story.name, "");
-    }
+    onSelectFile(story.name, "");
   };
 
   // Sort files: structure first, genesis, then plots in order
