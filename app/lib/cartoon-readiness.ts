@@ -683,3 +683,95 @@ export function previewFooterGuidance(ctx: PreviewFooterContext): string | null 
 
   return null;
 }
+
+/**
+ * Two-axis publish verdict for cartoon markdown (#421). The pilot showed a
+ * confusing mix of a green "Readiness: Ready to publish" line next to raw
+ * validator warnings. Split the concepts a writer actually needs:
+ *
+ * - `possible` — the HARD blocker axis: can this publish at all? Mirrors the
+ *   publish gate exactly (only a fully-ready episode is publishable).
+ * - `recommended` — the SOFT axis: is publishing advisable right now, or does
+ *   the content look like planning/placeholder text?
+ *
+ * Plus a concise, user-facing headline / detail / suggested action — the raw
+ * validator strings stay available separately as collapsible technical details.
+ */
+export interface CartoonPublishVerdict {
+  possible: boolean;
+  recommended: boolean;
+  tone: "ok" | "info" | "warning" | "blocker";
+  /** Concise user-facing status, e.g. "Not recommended yet". */
+  headline: string;
+  /** One short line explaining the state in plain language. */
+  detail: string;
+  /** Suggested next action, or null when none applies (already publishable). */
+  action: string | null;
+}
+
+export function cartoonPublishVerdict(input: {
+  stage: CartoonReadinessStage | null;
+  imageCount: number;
+  hasNonImageProse: boolean;
+}): CartoonPublishVerdict {
+  const { stage, imageCount, hasNonImageProse } = input;
+
+  if (stage === "ready") {
+    return {
+      possible: true, recommended: true, tone: "ok",
+      headline: "Ready to publish",
+      detail: "Every cut has an uploaded final image.",
+      action: null,
+    };
+  }
+
+  // Placeholder / planning text: no images and the page is prose. This is the
+  // pilot's plot-NN.md "Episode 2 placeholder" — never label it ready, and frame
+  // it as a recommendation rather than a wall of validator errors (#421).
+  if (imageCount === 0 && hasNonImageProse) {
+    return {
+      possible: false, recommended: false, tone: "warning",
+      headline: "Not recommended yet — this looks like planning/placeholder text",
+      detail: "There are no images and the page is prose, so it reads as planning notes, not a finished episode.",
+      action: "Prepare episode for publish after final images are uploaded.",
+    };
+  }
+
+  switch (stage) {
+    case "not-started":
+      return {
+        possible: false, recommended: false, tone: "info",
+        headline: "Not started",
+        detail: "This episode has no cuts planned yet.",
+        action: "Plan its cuts, then create and upload images.",
+      };
+    case "planning":
+      return {
+        possible: false, recommended: false, tone: "info",
+        headline: "Not ready yet — prepare for publish",
+        detail: "The cut plan is set, but the publish layout isn't built yet.",
+        action: "Prepare the episode for publish.",
+      };
+    case "awaiting-upload":
+      return {
+        possible: false, recommended: false, tone: "info",
+        headline: "Waiting on image uploads",
+        detail: "Some cuts still need a final uploaded image.",
+        action: "Upload the remaining final images, then publish.",
+      };
+    case "error":
+      return {
+        possible: false, recommended: false, tone: "blocker",
+        headline: "Not publishable — needs fixes",
+        detail: "Some cuts have problems that must be fixed before publishing.",
+        action: "Open the technical details below to see what to fix.",
+      };
+    default:
+      return {
+        possible: false, recommended: false, tone: "info",
+        headline: "Checking readiness…",
+        detail: "",
+        action: null,
+      };
+  }
+}

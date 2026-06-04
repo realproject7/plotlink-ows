@@ -52,8 +52,12 @@ describe("cartoon grouped publish-readiness messaging (#360)", () => {
     const group = await screen.findByTestId("cartoon-issue-group-images");
     expect(group).toBeInTheDocument();
     expect(group).toHaveTextContent("Fix image references");
-    // The underlying technical detail is still present, nested under the step.
-    expect(container.textContent).toMatch(/does not match the recorded uploaded URL/);
+    // The concise group heading does NOT inline the raw validator string…
+    expect(group.textContent).not.toMatch(/does not match the recorded uploaded URL/);
+    // …but the raw line is still available, collapsed, in the technical details (#421).
+    const details = screen.getByTestId("cartoon-technical-details");
+    expect(details).toHaveTextContent("Technical details");
+    expect(details).toHaveTextContent(/does not match the recorded uploaded URL/);
     // Publish is blocked while in the error stage.
     expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
   });
