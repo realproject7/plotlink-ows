@@ -103,6 +103,13 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // "inspect" = cuts.json planning inspector. Kept distinct so planning prose
   // does not masquerade as publish content (#289).
   const [cartoonPreviewMode, setCartoonPreviewMode] = useState<"publish" | "inspect">("publish");
+  // Cartoon Genesis is a hybrid (a prose opening + its own genesis.cuts.json image
+  // cuts), so its Edit tab offers two sub-views: the opening-text editor and the
+  // cut workspace (#429). Plots use the cut workspace directly; fiction never sees
+  // this. Defaults to "text" so opening Edit on Genesis is unchanged; the workflow
+  // coach's cut actions switch it to "cuts" so lettering/upload/refresh land on a
+  // real, actionable workspace instead of the markdown editor.
+  const [genesisEditMode, setGenesisEditMode] = useState<"text" | "cuts">("text");
   // #371: a deep-link request from the Cut Inspector's per-cut CTA into the Edit
   // tab for that exact cut. `seq` makes repeated clicks (even on the same cut)
   // re-trigger the focus/expand effect in CutListPanel; it is cleared once
@@ -405,6 +412,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       case "upload":
       case "refresh-assets":
         setActiveTab("edit");
+        // For Genesis the Edit tab defaults to the opening-text editor; switch to
+        // the cut workspace so the lettering/upload/refresh action is actionable.
+        // No-op for plots (the cut workspace is the only Edit view).
+        setGenesisEditMode("cuts");
         break;
       case "generate-markdown":
         handleGenerateMarkdown();
@@ -613,6 +624,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     setDetectedCoverWarning(null);
     setCoverStatus("unknown");
     coverUserTouchedRef.current = false;
+    setGenesisEditMode("text");
   }, [storyName, fileName]);
 
   // Auto-detect an agent-created cover (assets/cover.webp|jpg) for an UNPUBLISHED
@@ -901,6 +913,36 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const publishContent = fileData?.content ?? "";
   const imageValidation = !isPublished ? validateImageRefs(publishContent) : { count: 0, warnings: [] };
 
+  // Plain prose editor (fiction files + the Genesis "Opening text" sub-view).
+  const proseEditor = (
+    <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
+      <textarea
+        ref={textareaRef}
+        value={editContent}
+        onChange={(e) => { setEditContent(e.target.value); setDirty(true); dirtyRef.current = true; }}
+        className="flex-1 min-h-0 w-full resize-none px-4 py-3 text-sm leading-relaxed focus:outline-none"
+        style={{
+          fontFamily: '"Geist Mono", ui-monospace, monospace',
+          background: "var(--paper-bg)",
+          color: "var(--text)",
+        }}
+        spellCheck={false}
+      />
+      <div className="px-3 py-1.5 border-t border-border flex items-center justify-between">
+        <span className="text-xs text-muted">
+          {dirty ? "Unsaved changes" : "No changes"}
+        </span>
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full flex flex-col">
       {/* Header with file path + tabs */}
@@ -1031,33 +1073,38 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         <div className="flex-1 min-h-[22rem] overflow-hidden" style={{ background: "var(--paper-bg)" }}>
           <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} focusRequest={cutFocus} onFocusHandled={() => setCutFocus(null)} />
         </div>
-      ) : (
+      ) : isCartoonGenesis ? (
+        // Genesis Edit tab: opening-text editor vs. its cut workspace (#429), so
+        // the coach's lettering/upload/refresh actions for Episode 1 are actionable
+        // and Genesis cuts get the same workspace as plots — without losing the
+        // hand-written opening prose editor.
         <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
-          <textarea
-            ref={textareaRef}
-            value={editContent}
-            onChange={(e) => { setEditContent(e.target.value); setDirty(true); dirtyRef.current = true; }}
-            className="flex-1 min-h-0 w-full resize-none px-4 py-3 text-sm leading-relaxed focus:outline-none"
-            style={{
-              fontFamily: '"Geist Mono", ui-monospace, monospace',
-              background: "var(--paper-bg)",
-              color: "var(--text)",
-            }}
-            spellCheck={false}
-          />
-          <div className="px-3 py-1.5 border-t border-border flex items-center justify-between">
-            <span className="text-xs text-muted">
-              {dirty ? "Unsaved changes" : "No changes"}
-            </span>
+          <div className="flex gap-1 px-3 py-1 border-b border-border">
             <button
-              onClick={handleSave}
-              disabled={!dirty || saving}
-              className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="genesis-edit-mode-text"
+              onClick={() => setGenesisEditMode("text")}
+              className={`px-2 py-0.5 text-[11px] rounded ${genesisEditMode === "text" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
             >
-              {saving ? "Saving..." : "Save"}
+              Opening text
+            </button>
+            <button
+              data-testid="genesis-edit-mode-cuts"
+              onClick={() => setGenesisEditMode("cuts")}
+              className={`px-2 py-0.5 text-[11px] rounded ${genesisEditMode === "cuts" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
+            >
+              Cuts
             </button>
           </div>
+          <div className="flex-1 min-h-0">
+            {genesisEditMode === "cuts" ? (
+              <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} focusRequest={cutFocus} onFocusHandled={() => setCutFocus(null)} />
+            ) : (
+              proseEditor
+            )}
+          </div>
         </div>
+      ) : (
+        proseEditor
       )}
 
       {/* Action bar */}
