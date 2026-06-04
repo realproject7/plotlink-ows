@@ -41,11 +41,12 @@ interface StoryInfo {
   plotCount: number;
   publishedCount: number;
   contentType: "fiction" | "cartoon";
-  language: string;
   // Publish metadata from .story.json, surfaced so the publish controls seed
-  // from the real story values (#424). Absent ⇒ not set in .story.json, so the
-  // client shows an explicit "Needs metadata" state instead of a misleading
-  // default. `genre` is the raw stored label; the client canonicalizes it.
+  // from the real story values (#424). Absent ⇒ could not be determined (no
+  // .story.json value, no structure.md hint, no script detection), so the client
+  // shows an explicit "Needs metadata" state instead of a misleading default
+  // (English/Romance). `genre` is the raw stored label; the client canonicalizes.
+  language?: string;
   genre?: string;
   isNsfw?: boolean;
   // Optional. Absent ⇒ no provider recorded (legacy story ⇒ defaults to Claude
@@ -167,12 +168,15 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     }
   } catch { /* best effort */ }
 
-  let language = storyMeta.language || "English";
-  if (!storyMeta.language) {
+  // Resolve language best-effort from explicit metadata → structure.md hint →
+  // script detection. Do NOT blind-default to English (#424): when nothing
+  // determines it, leave it undefined so the client shows "Needs metadata"
+  // rather than silently publishing the wrong language.
+  let language: string | undefined = storyMeta.language;
+  if (!language) {
     const fromMetadata = structContent ? parseLanguageMetadata(structContent) : null;
     const fromScript = title ? detectLanguageFromScript(title) : null;
-    if (fromMetadata) language = fromMetadata;
-    else if (fromScript) language = fromScript;
+    language = fromMetadata ?? fromScript ?? undefined;
   }
 
   return {
@@ -186,9 +190,10 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     plotCount,
     publishedCount,
     contentType: storyMeta.contentType,
-    language,
-    // Surfaced from .story.json so the publish controls seed real values (#424);
-    // omitted when unset so the client can show "Needs metadata".
+    // Surfaced from .story.json/detection so the publish controls seed real
+    // values (#424); omitted when undetermined so the client shows "Needs
+    // metadata" instead of a misleading English default.
+    ...(language ? { language } : {}),
     ...(storyMeta.genre ? { genre: storyMeta.genre } : {}),
     ...(storyMeta.isNsfw !== undefined ? { isNsfw: storyMeta.isNsfw } : {}),
     // Read-only passthrough. Absent when the story has no provider recorded

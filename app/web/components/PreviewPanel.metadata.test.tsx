@@ -99,6 +99,34 @@ describe("PreviewPanel publish metadata seeding (#424)", () => {
     expect(screen.getByText("Publish to PlotLink").closest("button")).not.toBeDisabled();
   });
 
+  it("shows Needs metadata for language and gates publish even when genre is set", async () => {
+    // Genre set, but language could not be determined (no prop, empty structure).
+    renderPanel({ genre: "Mystery" });
+    const language = (await screen.findByTestId("publish-language-select")) as HTMLSelectElement;
+    await waitFor(() => expect(language.value).toBe("")); // explicit unset, not English
+    expect(screen.getByTestId("language-needs-metadata")).toBeInTheDocument();
+    expect(screen.getByText("Publish to PlotLink").closest("button")).toBeDisabled();
+  });
+
+  it("persists a language change back to .story.json and re-enables publish", async () => {
+    const calls = renderPanel({ genre: "Mystery" }); // genre ok, language unset
+    const language = (await screen.findByTestId("publish-language-select")) as HTMLSelectElement;
+    await waitFor(() => expect(language.value).toBe(""));
+
+    fireEvent.change(language, { target: { value: "Korean" } });
+
+    await waitFor(() => {
+      const post = calls.calls.find(
+        (c) => c.url.endsWith("/api/stories/god-cell/publish-metadata") && c.method === "POST",
+      );
+      expect(post).toBeTruthy();
+      expect(JSON.parse(post!.body as string)).toEqual({ language: "Korean" });
+    });
+    expect(screen.queryByTestId("language-needs-metadata")).not.toBeInTheDocument();
+    // Both genre + language now set ⇒ publish enabled.
+    expect(screen.getByText("Publish to PlotLink").closest("button")).not.toBeDisabled();
+  });
+
   it("persists an isNsfw toggle back to .story.json", async () => {
     const calls = renderPanel({ genre: "Romance", language: "English", isNsfw: false });
     await screen.findByTestId("publish-genre-select");

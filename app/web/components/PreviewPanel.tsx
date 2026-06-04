@@ -107,10 +107,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [dirty, setDirty] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [indexTimeLeft, setIndexTimeLeft] = useState<number | null>(null);
-  // "" ⇒ unset ⇒ "Needs metadata" (no misleading Romance default). Seeded from
-  // .story.json props / structure.md in the seeding effect below (#424).
+  // "" ⇒ unset ⇒ "Needs metadata" (no misleading Romance/English default).
+  // Seeded from .story.json props / structure.md in the seeding effect (#424).
   const [selectedGenre, setSelectedGenre] = useState("");
-  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
+  const [selectedLanguage, setSelectedLanguage] = useState("");
   const [isNsfw, setIsNsfw] = useState(false);
   const [cartoonIssues, setCartoonIssues] = useState<string[]>([]);
   const [cartoonStage, setCartoonStage] = useState<CartoonStage | null>(null);
@@ -294,13 +294,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     }
     setSelectedGenre(genreVal);
     // Language: the server-resolved story language (explicit .story.json or
-    // script-detected), else structure.md, else the first option.
+    // script-detected), else structure.md, else unset ("Needs metadata" — no
+    // misleading English default). `language` is undefined when undetermined.
     let langVal = (language && LANGUAGES.find((l) => l.toLowerCase() === language.toLowerCase())) || "";
     if (!langVal && structureContent) {
       const langMatch = structureContent.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
       if (langMatch) langVal = LANGUAGES.find((l) => l.toLowerCase() === langMatch[1].replace(/\*+/g, "").trim().toLowerCase()) || "";
     }
-    setSelectedLanguage(langVal || LANGUAGES[0]);
+    setSelectedLanguage(langVal);
     setIsNsfw(nsfwMeta ?? false);
   }, [storyName, genreMeta, language, nsfwMeta, structureContent]);
 
@@ -1407,10 +1408,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     data-testid="publish-language-select"
                     onChange={(e) => {
                       setSelectedLanguage(e.target.value);
-                      persistPublishMeta({ language: e.target.value });
+                      if (e.target.value) persistPublishMeta({ language: e.target.value });
                     }}
-                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                    className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedLanguage ? "border-border" : "border-amber-500"}`}
                   >
+                    {/* Explicit unset state — no silent English default (#424). */}
+                    {!selectedLanguage && <option value="" disabled>Needs metadata — select language</option>}
                     {LANGUAGES.map((l) => (
                       <option key={l} value={l}>{l}</option>
                     ))}
@@ -1452,7 +1455,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                     onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
                   }
                 }}
-                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isGenesis && !selectedGenre) || (isCartoonPlot && cartoonStage !== "ready")}
+                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isGenesis && (!selectedGenre || !selectedLanguage)) || (isCartoonPlot && cartoonStage !== "ready")}
                 className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
@@ -1460,6 +1463,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               {isGenesis && !selectedGenre && (
                 <span className="text-amber-600 text-xs" data-testid="genre-needs-metadata">
                   Needs metadata — choose a genre before publishing
+                </span>
+              )}
+              {isGenesis && selectedGenre && !selectedLanguage && (
+                <span className="text-amber-600 text-xs" data-testid="language-needs-metadata">
+                  Needs metadata — choose a language before publishing
                 </span>
               )}
               {overLimit && (

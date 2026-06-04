@@ -162,6 +162,7 @@ describe("PreviewPanel pre-publish cover (#284)", () => {
         walletAddress={WALLET}
         contentType="cartoon"
         genre="Adventure"
+        language="English"
       />,
     );
     // The unpublished genesis publish form (with the pre-publish cover picker).

@@ -62,6 +62,7 @@ async function renderWithSelectedCover(onPublish: (...args: unknown[]) => unknow
       walletAddress={WALLET}
       contentType="cartoon"
       genre="Adventure"
+      language="English"
     />,
   );
   await screen.findByTestId("prepublish-cover");

@@ -99,6 +99,7 @@ describe("fiction PreviewPanel regression", () => {
         onPublish={onPublish}
         contentType="fiction"
         genre="Fantasy"
+        language="English"
       />,
     );
 

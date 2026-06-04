@@ -889,7 +889,7 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(res.status).toBe(404);
   });
 
-  it("defaults language to English when no CJK in title", async () => {
+  it("omits language (⇒ Needs metadata) when undetermined — no blind English default (#424)", async () => {
     const storyDir = path.join(tmpDir, "english-story");
     fs.mkdirSync(storyDir, { recursive: true });
     fs.writeFileSync(path.join(storyDir, "structure.md"), "# The Last Hero\n\nContent");
@@ -898,7 +898,9 @@ describe("POST /upload-clean/:cutId route", () => {
     const res = await app.request("/api/stories/english-story");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.language).toBe("English");
+    // No .story.json language, no structure hint, Latin-script title ⇒ unknown.
+    // The client must show "Needs metadata", not silently publish English.
+    expect(body.language).toBeUndefined();
   });
 
   it("sync-clean-images does NOT record a .png file (png no longer accepted)", async () => {
