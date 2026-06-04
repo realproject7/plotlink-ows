@@ -94,7 +94,11 @@ describe("cartoon publish blocking in PreviewPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("cartoon-publish-issues")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("cartoon-issue-group-export")).toHaveTextContent(/re-export required before publish/i);
+    // The export step is surfaced as a concise grouped heading, and the raw
+    // re-export validator string is available in the collapsible technical
+    // details (#421).
+    expect(screen.getByTestId("cartoon-issue-group-export")).toBeInTheDocument();
+    expect(screen.getByTestId("cartoon-technical-details")).toHaveTextContent(/re-export required before publish/i);
     expect(screen.getByText("Publish to PlotLink")).toBeDisabled();
   });
 });

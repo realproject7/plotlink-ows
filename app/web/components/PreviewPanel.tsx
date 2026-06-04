@@ -1550,9 +1550,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               )}
             </div>
             {isCartoonPlot && cartoonStage === "error" && cartoonIssues.length > 0 && (
-              // Grouped by workflow step (#360) so a writer sees "Upload final
-              // images" / "Prepare the episode for publish" headings instead of a
-              // flat wall of repeated per-cut technical errors.
+              // Concise, grouped-by-workflow-step headings (#360/#421) so a writer
+              // sees "Upload final images" / "Prepare the episode for publish"
+              // instead of a wall of per-cut validator strings. The raw validator
+              // lines stay available, collapsed, as technical details for debugging.
               <div
                 className={`${cartoonStatusCardClass} flex flex-col gap-2 border-error/30 bg-error/5`}
                 data-testid="cartoon-publish-issues"
@@ -1564,15 +1565,20 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 {groupCartoonIssues(cartoonIssues).map((g) => (
                   <div
                     key={g.key}
-                    className="flex flex-col gap-1 rounded-lg border border-error/15 bg-background/70 px-2.5 py-2"
+                    className="rounded-lg border border-error/15 bg-background/70 px-2.5 py-2"
                     data-testid={`cartoon-issue-group-${g.key}`}
                   >
                     <span className="text-[11px] font-medium text-foreground">{g.title}</span>
-                    {g.lines.map((line, i) => (
-                      <span key={i} className="text-[11px] text-muted">{line}</span>
-                    ))}
                   </div>
                 ))}
+                <details className="text-[10px] text-muted" data-testid="cartoon-technical-details">
+                  <summary className="cursor-pointer select-none">Technical details</summary>
+                  <ul className="mt-1 ml-3 list-disc">
+                    {cartoonIssues.map((issue, i) => (
+                      <li key={i} className="font-mono break-words">{issue}</li>
+                    ))}
+                  </ul>
+                </details>
               </div>
             )}
             {imageValidation.warnings.length > 0 && (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, previewFooterGuidance } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, previewFooterGuidance, cartoonPublishVerdict } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -797,6 +797,51 @@ describe("classifyCartoonReadiness — not-started placeholder (#422)", () => {
   it("a plan with cuts is still classified by the normal stages (not-started is 0-cuts only)", () => {
     const md = "# Ep\n\nno blocks yet";
     expect(classifyCartoonReadiness(md, [makeCut()]).stage).toBe("planning");
+  });
+});
+
+describe("cartoonPublishVerdict — possible vs recommended (#421)", () => {
+  it("ready ⇒ publish possible AND recommended, no action", () => {
+    const v = cartoonPublishVerdict({ stage: "ready", imageCount: 3, hasNonImageProse: false });
+    expect(v.possible).toBe(true);
+    expect(v.recommended).toBe(true);
+    expect(v.headline).toMatch(/Ready to publish/i);
+    expect(v.action).toBeNull();
+  });
+
+  it("zero images + prose ⇒ not possible, not recommended, placeholder framing + prepare action", () => {
+    // The pilot's plot-NN.md "Episode 2 placeholder" — must never read as ready.
+    for (const stage of ["not-started", "planning", "error"] as const) {
+      const v = cartoonPublishVerdict({ stage, imageCount: 0, hasNonImageProse: true });
+      expect(v.possible).toBe(false);
+      expect(v.recommended).toBe(false);
+      expect(v.tone).toBe("warning");
+      expect(v.headline).toMatch(/planning\/placeholder text/i);
+      expect(v.action).toMatch(/Prepare episode for publish/i);
+    }
+  });
+
+  it("not-started (no prose) is a calm info state, not a blocker", () => {
+    const v = cartoonPublishVerdict({ stage: "not-started", imageCount: 0, hasNonImageProse: false });
+    expect(v.possible).toBe(false);
+    expect(v.tone).toBe("info");
+    expect(v.headline).toMatch(/Not started/i);
+  });
+
+  it("error (with images) is a hard blocker pointing at the technical details", () => {
+    const v = cartoonPublishVerdict({ stage: "error", imageCount: 2, hasNonImageProse: false });
+    expect(v.possible).toBe(false);
+    expect(v.tone).toBe("blocker");
+    expect(v.headline).toMatch(/Not publishable/i);
+    expect(v.action).toMatch(/technical details/i);
+  });
+
+  it("awaiting-upload is possible:false but a calm waiting state", () => {
+    const v = cartoonPublishVerdict({ stage: "awaiting-upload", imageCount: 1, hasNonImageProse: false });
+    expect(v.possible).toBe(false);
+    expect(v.recommended).toBe(false);
+    expect(v.tone).toBe("info");
+    expect(v.action).toMatch(/Upload the remaining final images/i);
   });
 });
 
