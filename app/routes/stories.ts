@@ -4,6 +4,7 @@ import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
+import { buildStoryProgress } from "../lib/story-progress";
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
 import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
@@ -816,6 +817,88 @@ stories.get("/:name/cover-asset", (c) => {
   }
 
   return c.json({ found: false });
+});
+
+/** Cover state for the story progress overview (#418): present / invalid / missing. */
+function detectCoverState(storyDir: string): "missing" | "present" | "invalid" {
+  for (const cand of COVER_CANDIDATES) {
+    const full = path.join(storyDir, cand.rel);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
+    const size = fs.statSync(full).size;
+    if (size > COVER_MAX_BYTES) return "invalid";
+    let sniffed: SniffedType = "unknown";
+    try {
+      const fd = fs.openSync(full, "r");
+      try {
+        const head = Buffer.alloc(16);
+        const read = fs.readSync(fd, head, 0, 16, 0);
+        sniffed = sniffImageType(head.subarray(0, read));
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch { return "invalid"; }
+    return sniffed === cand.sniff ? "present" : "invalid";
+  }
+  return "missing";
+}
+
+/**
+ * GET /api/stories/:name/progress — story-level production progress map (#418).
+ *
+ * Aggregates the story's metadata, setup, cover, and per-episode state into one
+ * workflow overview so a writer sees what's done and what's next without reading
+ * file names or terminal output. Cartoon episodes reuse the same readiness
+ * classifier as the per-file publish UI (so a placeholder plot reads as
+ * "placeholder", never publish-ready); fiction gets a simpler written/published
+ * view. Pure aggregation — no wallet/publish side effects.
+ */
+stories.get("/:name/progress", (c) => {
+  const name = safeName(c.req.param("name"));
+  if (!name) return c.json({ error: "Invalid story name" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  const info = scanStory(storyDir, name);
+  const statusByFile = new Map(info.files.map((f) => [f.file, f.status]));
+
+  // Episodes in reader order: Genesis (Episode 1) first, then plot-NN.
+  const episodeFiles = [
+    ...(info.hasGenesis ? ["genesis.md"] : []),
+    ...info.files
+      .map((f) => f.file)
+      .filter((f) => /^plot-\d+\.md$/.test(f))
+      .sort((a, b) => parseInt(a.match(/\d+/)![0], 10) - parseInt(b.match(/\d+/)![0], 10)),
+  ];
+
+  const episodes = episodeFiles.map((file) => {
+    const plotFile = file.replace(/\.md$/, "");
+    let markdown = "";
+    try { markdown = fs.readFileSync(path.join(storyDir, file), "utf-8"); } catch { /* missing */ }
+    let cuts = null;
+    let title: string | null = null;
+    try {
+      const cutsFile = readCutsFile(storyDir, plotFile);
+      if (cutsFile) { cuts = cutsFile.cuts; title = typeof cutsFile.title === "string" ? cutsFile.title : null; }
+    } catch { /* invalid cuts ⇒ treat as none */ }
+    return { file, status: statusByFile.get(file) ?? ("pending" as const), markdown, cuts, title };
+  });
+
+  const progress = buildStoryProgress({
+    name,
+    contentType: info.contentType,
+    title: info.title,
+    language: info.language ?? null,
+    genre: info.genre ?? null,
+    isNsfw: info.isNsfw ?? null,
+    hasStructure: info.hasStructure,
+    hasGenesis: info.hasGenesis,
+    cover: detectCoverState(storyDir),
+    episodes,
+  });
+
+  return c.json(progress);
 });
 
 /**

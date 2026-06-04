@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { StoryBrowser } from "./StoryBrowser";
 import { TerminalPanel } from "./TerminalPanel";
 import { PreviewPanel } from "./PreviewPanel";
+import { StoryProgressPanel } from "./StoryProgressPanel";
 import { LANGUAGES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
@@ -228,29 +229,14 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
   const latestStoryRef = useRef<string | null>(null);
 
-  const handleSelectStory = useCallback(async (name: string) => {
+  const handleSelectStory = useCallback((name: string) => {
+    // Land on the story-level progress overview (#418) — a product-level view of
+    // what's done and what's next — instead of dropping straight into a file.
+    // The overview links each step/episode to its file to open it.
     latestStoryRef.current = name;
     setSelectedStory(name);
     setSelectedFile(null);
-    // Auto-select latest file for this story
-    try {
-      const res = await authFetch(`/api/stories/${name}`);
-      if (res.ok && latestStoryRef.current === name) {
-        const data = await res.json();
-        const files: { file: string }[] = data.files || [];
-        // Priority: highest plot → genesis → structure → first
-        const plots = files
-          .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
-          .filter((p) => p.num != null)
-          .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
-        const latest = plots[0]?.file
-          ?? (files.find((f) => f.file === "genesis.md")?.file)
-          ?? (files.find((f) => f.file === "structure.md")?.file)
-          ?? files[0]?.file;
-        if (latest && latestStoryRef.current === name) setSelectedFile(latest);
-      }
-    } catch { /* ignore */ }
-  }, [authFetch]);
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -716,8 +702,16 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         </div>
       </div>
 
-      {/* Preview — takes remaining space */}
+      {/* Preview — takes remaining space. With a story but no file selected, show
+          the story-level progress overview (#418) instead of the empty state. */}
       <div className="min-w-0 flex flex-col" style={{ flex: `${1 - ratio} 0 0` }}>
+        {selectedStory && !selectedFile ? (
+          <StoryProgressPanel
+            storyName={selectedStory}
+            authFetch={authFetch}
+            onOpenFile={handleSelectFile}
+          />
+        ) : (
         <PreviewPanel
           storyName={selectedStory}
           fileName={selectedFile}
@@ -730,7 +724,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           genre={selectedStory ? storyGenres[selectedStory] : undefined}
           isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
           hasGenesis={selectedStory ? genesisStories.has(selectedStory) : false}
+          onViewProgress={() => setSelectedFile(null)}
         />
+        )}
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
             {publishProgress}

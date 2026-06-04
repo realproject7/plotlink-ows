@@ -104,19 +104,6 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     }
   }, [selectedStory]);
 
-  const getLatestFile = (files: FileStatus[]): string | null => {
-    // Latest plot by highest number
-    const plots = files
-      .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
-      .filter((p) => p.num != null)
-      .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
-    if (plots.length > 0) return plots[0].file;
-    // Fallback: genesis, then structure
-    if (files.some((f) => f.file === "genesis.md")) return "genesis.md";
-    if (files.some((f) => f.file === "structure.md")) return "structure.md";
-    return files[0]?.file ?? null;
-  };
-
   const toggleExpand = (name: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -128,10 +115,11 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
 
   const handleStoryClick = (story: StoryInfo) => {
     toggleExpand(story.name);
-    // Auto-select latest file when expanding (not when collapsing)
+    // Open the story-level progress overview when expanding (#418) — an empty
+    // file selection reveals the overview in the right pane — instead of dropping
+    // straight into a file. File rows below still open a specific file.
     if (!expanded.has(story.name)) {
-      const latest = getLatestFile(story.files);
-      if (latest) onSelectFile(story.name, latest);
+      onSelectFile(story.name, "");
     }
   };
 
