@@ -37,6 +37,28 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("10K characters");
   });
 
+  it("cartoon output requires the actionable Next-steps final response format for BOTH providers (#419)", () => {
+    for (const provider of ["claude", "codex"] as const) {
+      const out = generateStoryInstructions("cartoon", provider);
+      // The five required parts of the completion section.
+      expect(out).toContain("Final response format");
+      expect(out).toContain("Done");
+      expect(out).toContain("Current stage");
+      expect(out).toContain("Next recommended action");
+      expect(out).toContain("Prompt you can paste next");
+      expect(out).toContain("Do not do yet");
+      // A concrete copy-paste prompt per stage, in plain language.
+      expect(out).toContain("Generate clean images for Episode 1 / Genesis from genesis.cuts.json");
+      expect(out).toMatch(/Plan the cuts for Episode 1 \/ Genesis/);
+    }
+  });
+
+  it("fiction output does NOT contain the cartoon Next-steps protocol (#419)", () => {
+    const out = generateStoryInstructions("fiction");
+    expect(out).not.toContain("Prompt you can paste next");
+    expect(out).not.toContain("Final response format");
+  });
+
   it("cartoon output prohibits baking text into images", () => {
     const out = generateStoryInstructions("cartoon");
     expect(out).toContain("Do NOT bake dialogue");
