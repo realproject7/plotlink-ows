@@ -229,14 +229,31 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
 
   const latestStoryRef = useRef<string | null>(null);
 
-  const handleSelectStory = useCallback((name: string) => {
-    // Land on the story-level progress overview (#418) — a product-level view of
-    // what's done and what's next — instead of dropping straight into a file.
-    // The overview links each step/episode to its file to open it.
+  const handleSelectStory = useCallback(async (name: string) => {
     latestStoryRef.current = name;
     setSelectedStory(name);
     setSelectedFile(null);
-  }, []);
+    // Cartoon stories land on the story-level progress overview (#418). Fiction
+    // PRESERVES the existing auto-open-latest-file behavior (fiction can still
+    // reach the overview via the "Progress" button).
+    try {
+      const res = await authFetch(`/api/stories/${name}`);
+      if (res.ok && latestStoryRef.current === name) {
+        const data = await res.json();
+        if (data.contentType === "cartoon") return; // overview
+        const files: { file: string }[] = data.files || [];
+        const plots = files
+          .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
+          .filter((p) => p.num != null)
+          .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
+        const latest = plots[0]?.file
+          ?? (files.find((f) => f.file === "genesis.md")?.file)
+          ?? (files.find((f) => f.file === "structure.md")?.file)
+          ?? files[0]?.file;
+        if (latest && latestStoryRef.current === name) setSelectedFile(latest);
+      }
+    } catch { /* ignore — stays on overview */ }
+  }, [authFetch]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

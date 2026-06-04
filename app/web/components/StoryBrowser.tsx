@@ -113,14 +113,30 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     });
   };
 
+  const getLatestFile = (files: FileStatus[]): string | null => {
+    const plots = files
+      .map((f) => ({ file: f.file, num: f.file.match(/^plot-(\d+)\.md$/)?.[1] }))
+      .filter((p) => p.num != null)
+      .sort((a, b) => parseInt(b.num!) - parseInt(a.num!));
+    if (plots.length > 0) return plots[0].file;
+    if (files.some((f) => f.file === "genesis.md")) return "genesis.md";
+    if (files.some((f) => f.file === "structure.md")) return "structure.md";
+    return files[0]?.file ?? null;
+  };
+
   const handleStoryClick = (story: StoryInfo) => {
-    // Always open the story-level progress overview on a root-row click (#418),
-    // whether the click expands or collapses the inline file list — an empty file
-    // selection reveals the overview in the right pane. Clearing the file on every
-    // root click means an already-expanded story with a file open still switches
-    // to the overview (not just the first expand). File rows below open a file.
     toggleExpand(story.name);
-    onSelectFile(story.name, "");
+    // Cartoon: a root-row click opens the story-level progress overview (#418) on
+    // EVERY click (an empty file selection reveals it), incl. when already
+    // expanded with a file open. Fiction PRESERVES the existing auto-open-latest-
+    // file behavior — fiction can still reach the overview via the "Progress"
+    // button in the file header. File rows below open a specific file.
+    if (story.contentType === "cartoon") {
+      onSelectFile(story.name, "");
+    } else {
+      const latest = getLatestFile(story.files);
+      if (latest) onSelectFile(story.name, latest);
+    }
   };
 
   // Sort files: structure first, genesis, then plots in order

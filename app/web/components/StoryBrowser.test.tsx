@@ -20,10 +20,26 @@ const STORY = {
   contentType: "cartoon",
 };
 
-function makeAuthFetch() {
+const FICTION_STORY = {
+  name: "novel",
+  title: "A Novel",
+  files: [
+    { file: "structure.md", status: "draft" },
+    { file: "genesis.md", status: "pending" },
+    { file: "plot-01.md", status: "pending" },
+    { file: "plot-02.md", status: "pending" },
+  ],
+  hasStructure: true,
+  hasGenesis: true,
+  plotCount: 2,
+  publishedCount: 0,
+  contentType: "fiction",
+};
+
+function makeAuthFetch(stories: unknown[] = [STORY]) {
   return vi.fn((url: string) => {
     if (url === "/api/stories") {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stories: [STORY] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stories }) });
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stories: [] }) });
   });
@@ -54,5 +70,17 @@ describe("StoryBrowser story-root click → progress overview (#418)", () => {
     // File list expanded → a specific file row is now reachable and opens that file.
     fireEvent.click((await screen.findByText("genesis.md")).closest("button")!);
     expect(onSelectFile).toHaveBeenLastCalledWith("god-cell", "genesis.md");
+  });
+
+  it("FICTION root click preserves auto-open-latest-file (not the overview)", async () => {
+    // Fiction must keep its existing behavior: clicking the story opens the
+    // latest file (highest plot), not the progress overview (#418 / @re1).
+    const onSelectFile = vi.fn();
+    render(
+      <StoryBrowser authFetch={makeAuthFetch([FICTION_STORY])} selectedStory={null} selectedFile={null} onSelectFile={onSelectFile} />,
+    );
+    fireEvent.click((await screen.findByText("A Novel")).closest("button")!);
+    expect(onSelectFile).toHaveBeenLastCalledWith("novel", "plot-02.md");
+    expect(onSelectFile).not.toHaveBeenCalledWith("novel", "");
   });
 });
