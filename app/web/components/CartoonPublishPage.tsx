@@ -226,7 +226,12 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
 
   // The diagnostics also gate publish (mirror PreviewPanel's titleBlocked /
   // genesisBlocked), so a raw title / weak Genesis can't publish from here either.
-  const canPublish = ready && metaReady && !titleBlocked && !genesisBlocked && !isPublishing && !!onPublish;
+  // Require the diagnostics to have LOADED first (#461, re1): until the episode
+  // content (+ cut plan for plots) is fetched, titleBlocked/genesisBlocked are
+  // both false, so a ready episode with metadata could otherwise publish in the
+  // load window before the raw-title / weak-Genesis checks have run.
+  const diagReady = diagLoaded && (isGenesisActive || activeCuts !== null);
+  const canPublish = ready && metaReady && diagReady && !titleBlocked && !genesisBlocked && !isPublishing && !!onPublish;
 
   const handlePublish = async () => {
     if (!canPublish || !onPublish) return;

@@ -101,6 +101,38 @@ describe("CartoonPublishPage (#449)", () => {
     expect(onPublish).not.toHaveBeenCalled();
   });
 
+  // #461 (re1): the migrated title/prologue diagnostics must gate publish, so a
+  // ready episode with metadata must NOT be publishable in the window before the
+  // episode content/cuts have loaded — only once the diagnostics finish + pass.
+  it("keeps publish disabled until the migrated diagnostics load, then enables", async () => {
+    const onPublish = vi.fn().mockResolvedValue(true);
+    let releaseContent!: (v: unknown) => void;
+    const contentJson = new Promise<unknown>((r) => { releaseContent = r; });
+    const p = progress({ cover: "present", episodes: [ep({ file: "genesis.md", state: "ready", summary: "Ready to publish", cuts: READY_CUTS })] });
+    const authFetch = vi.fn((url: string) => {
+      if (url.endsWith("/progress")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(p) });
+      if (url.endsWith("/structure.md")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ content: "# The Awakening\n" }) });
+      if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cuts: [], title: null }) });
+      // The episode content json is DEFERRED until we release it.
+      if (/\/stories\/[^/]+\/genesis\.md$/.test(url)) return Promise.resolve({ ok: true, status: 200, json: () => contentJson });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    render(<CartoonPublishPage storyName="god-cell" authFetch={authFetch} onOpenFile={vi.fn()} onOpenStoryInfo={vi.fn()} onPublish={onPublish} genre="Science Fiction" language="Korean" />);
+
+    // Progress says ready + metadata is set, but the diagnostics haven't loaded:
+    // publish must stay disabled and clicking must not publish.
+    const cta = await screen.findByTestId("publish-cta");
+    expect(cta).toBeDisabled();
+    fireEvent.click(cta);
+    expect(onPublish).not.toHaveBeenCalled();
+
+    // Diagnostics finish (publishable Genesis) → publish enables.
+    releaseContent({ content: GOOD_GENESIS });
+    await waitFor(() => expect(cta).not.toBeDisabled());
+    fireEvent.click(cta);
+    await waitFor(() => expect(onPublish).toHaveBeenCalled());
+  });
+
   it("offers an Add-cover action routing to Story Info when the cover is missing", async () => {
     const onOpenStoryInfo = vi.fn();
     const p = progress({ cover: "missing", episodes: [ep({ file: "genesis.md", state: "ready", summary: "Ready to publish", cuts: READY_CUTS })] });
