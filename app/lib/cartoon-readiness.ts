@@ -188,6 +188,10 @@ export function checkMarkdownReadiness(
 }
 
 export type CartoonReadinessStage =
+  // No cuts planned yet — a scaffold placeholder / future episode (#422). This is
+  // a calm "not started" state, NOT an error: an empty cut plan can't be
+  // publishable, but it also shouldn't surface alarming publish warnings.
+  | "not-started"
   | "planning"
   | "awaiting-upload"
   | "error"
@@ -219,6 +223,15 @@ export function classifyCartoonReadiness(
   cuts: Cut[],
 ): CartoonReadinessReport {
   const totalCuts = cuts.length;
+
+  // An empty cut plan is a not-started placeholder / future episode (#422), not
+  // an error. Classify it first so a placeholder plot-NN.md (instructional prose,
+  // no cuts) reads as "not started yet" instead of dumping placeholder-prose /
+  // missing-block publish errors. The publish gate is unaffected — a 0-cut plan
+  // is never `ready`.
+  if (totalCuts === 0) {
+    return { stage: "not-started", issues: [], awaitingCount: 0, totalCuts: 0 };
+  }
 
   if (isCartoonPlanningStage(markdown, cuts)) {
     return { stage: "planning", issues: [], awaitingCount: 0, totalCuts };
@@ -599,4 +612,65 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const nextStep = currentIdx === -1 ? "Published — this episode is live on PlotLink." : NEXT[order[currentIdx]];
 
   return { steps, nextStep };
+}
+
+/**
+ * Context for the preview action-bar footer guidance (#422). The cartoon
+ * scaffold mixes an outline (structure.md), a Genesis-as-Episode-1 (genesis.md
+ * + genesis.cuts.json), and future-episode placeholders (plot-NN.md +
+ * empty-cuts plot-NN.cuts.json). The old footer showed a single "write the
+ * genesis next" line for structure.md regardless of state, which was wrong once
+ * Genesis existed. This derives a state-aware line per selected file.
+ */
+export interface PreviewFooterContext {
+  /** Selected file basename, e.g. "structure.md" | "genesis.md" | "plot-01.md". */
+  fileName: string;
+  contentType: "fiction" | "cartoon";
+  /** Whether the story already has a genesis.md. */
+  hasGenesis: boolean;
+  /** Whether the selected file is already published on-chain. */
+  isPublished: boolean;
+  /**
+   * Cut count for the selected episode file (Genesis or a plot), from its
+   * cuts.json. null when the file isn't an episode or its cuts are unknown.
+   */
+  cutCount: number | null;
+  /** Of those cuts, how many have an uploaded final image. */
+  uploadedCount: number;
+}
+
+const FICTION_OUTLINE_GUIDANCE = "This is your story outline — not publishable. Ask AI to write the genesis next.";
+
+/**
+ * State-aware guidance for the preview footer (#422). Returns the line to show,
+ * or null to let the existing per-stage UI speak instead. Fiction is unchanged:
+ * structure.md keeps its original outline line and no other file is annotated.
+ */
+export function previewFooterGuidance(ctx: PreviewFooterContext): string | null {
+  const { fileName, contentType, hasGenesis, isPublished, cutCount, uploadedCount } = ctx;
+  const isStructure = fileName === "structure.md";
+  const isGenesis = fileName === "genesis.md";
+  const isPlot = /^plot-\d+\.md$/.test(fileName);
+
+  if (isStructure) {
+    if (contentType !== "cartoon") return FICTION_OUTLINE_GUIDANCE;
+    return hasGenesis
+      ? "Your story outline is set. Genesis (Episode 1) already exists — review its opening and cuts; you don't need to write the Genesis again."
+      : "This is your story outline — not publishable. Write the Genesis opening (Episode 1) next.";
+  }
+
+  // Cartoon episode files, pre-publish only. Published/ready files are handled
+  // by the publish controls and per-stage callouts, so don't annotate them.
+  if (contentType === "cartoon" && !isPublished && (isGenesis || isPlot) && cutCount !== null) {
+    if (cutCount === 0) {
+      return isGenesis
+        ? "Genesis is your Episode 1 opening. Plan its cuts, then generate clean images for them."
+        : "This episode hasn't been started — expand its cut plan before preparing it for publish.";
+    }
+    if (isGenesis && uploadedCount === 0) {
+      return "Genesis has a cut plan but no uploaded images yet — generate clean images for its cuts next.";
+    }
+  }
+
+  return null;
 }

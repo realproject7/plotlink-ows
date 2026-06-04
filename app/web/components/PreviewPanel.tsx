@@ -8,7 +8,7 @@ import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
-import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, type CartoonReadinessStage as CartoonStage, type CartoonChecklist } from "@app-lib/cartoon-readiness";
+import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, summarizeCutProgress, previewFooterGuidance, type CartoonReadinessStage as CartoonStage, type CartoonChecklist, type CartoonCutProgress } from "@app-lib/cartoon-readiness";
 import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
@@ -69,6 +69,9 @@ interface PreviewPanelProps {
   language?: string;
   genre?: string;
   isNsfw?: boolean;
+  // Whether the story has a genesis.md, so the outline (structure.md) footer can
+  // tell "write the Genesis next" from "Genesis already exists, review it" (#422).
+  hasGenesis?: boolean;
 }
 
 interface FileData {
@@ -85,7 +88,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -207,6 +210,21 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     const interval = setInterval(loadFile, 3000);
     return () => clearInterval(interval);
   }, [storyName, fileName, loadFile, activeTab, dirty]);
+
+  // Genesis-as-Episode-1 cut progress (#422): discover + summarize
+  // genesis.cuts.json so the Genesis view reflects its real cut/image state and
+  // the footer can guide "plan cuts" vs "generate clean images".
+  const [genesisCutProgress, setGenesisCutProgress] = useState<CartoonCutProgress | null>(null);
+  const cartoonGenesisForCuts = contentType === "cartoon" && fileName === "genesis.md";
+  useEffect(() => {
+    if (!cartoonGenesisForCuts || !storyName) { setGenesisCutProgress(null); return; }
+    let cancelled = false;
+    authFetch(`/api/stories/${storyName}/cuts/genesis`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled) setGenesisCutProgress(data ? summarizeCutProgress(data.cuts || []) : null); })
+      .catch(() => { if (!cancelled) setGenesisCutProgress(null); });
+    return () => { cancelled = true; };
+  }, [cartoonGenesisForCuts, storyName, authFetch]);
 
   // Compute cartoon publish readiness for cartoon plot files
   const cartoonPlotForReadiness = contentType === "cartoon" && !!fileName && /^plot-\d+\.md$/.test(fileName);
@@ -689,6 +707,24 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const isCartoonGenesis = contentType === "cartoon" && isGenesis;
   const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
 
+  // State-aware preview footer guidance (#422). Cut count for the selected
+  // episode: Genesis from genesis.cuts.json, a plot from its readiness scan
+  // (null until loaded, so we don't flash "not started"). Drives outline/
+  // genesis/placeholder-plot guidance; null ⇒ let the per-stage UI speak.
+  const episodeCutCount = isCartoonGenesis
+    ? (genesisCutProgress ? genesisCutProgress.total : null)
+    : isCartoonPlot
+      ? (cartoonStage === null ? null : cartoonTotalCuts)
+      : null;
+  const footerGuidance = previewFooterGuidance({
+    fileName: fileName ?? "",
+    contentType,
+    hasGenesis,
+    isPublished,
+    cutCount: episodeCutCount,
+    uploadedCount: genesisCutProgress?.uploaded ?? 0,
+  });
+
   // Resolve + validate the public publish title shown before publish (#358).
   // Scoped to cartoon (genesis story title + plot episode title); fiction is
   // unchanged. `resolvedPublishTitle` mirrors what handlePublish/derivePublishTitle
@@ -952,7 +988,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       {/* Action bar */}
       <div className="px-3 py-2 border-t border-border flex items-center justify-between">
         {fileName === "structure.md" ? (
-          <p className="text-muted text-xs italic">This is your story outline — not publishable. Ask AI to write the genesis next.</p>
+          <p className="text-muted text-xs italic" data-testid="footer-guidance">{footerGuidance}</p>
         ) : fileData?.status === "published-not-indexed" ? (
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-xs">
@@ -1174,6 +1210,34 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 can see which step is current/next without internal jargon
                 (#320, expanded to per-cut granularity in #335). */}
             {isCartoonPlot && <CartoonStepGuide checklist={cartoonChecklistData} />}
+            {/* Genesis-as-Episode-1 cut summary (#422): discover + summarize
+                genesis.cuts.json so a writer sees its real cut/image state in the
+                readiness UI instead of treating Genesis as text-only. */}
+            {isCartoonGenesis && genesisCutProgress && (
+              <div className="text-xs text-muted" data-testid="genesis-cuts-summary">
+                Episode 1 (Genesis) cuts: {genesisCutProgress.total} planned
+                {genesisCutProgress.total > 0 && <> · {genesisCutProgress.uploaded} with uploaded images</>}
+              </div>
+            )}
+            {/* State-aware guidance for a not-yet-produced Genesis or a future-
+                episode placeholder (#422): plan cuts / generate clean images /
+                expand the cut plan — never a misleading "ready to publish". */}
+            {(isCartoonGenesis || isCartoonPlot) && footerGuidance && (
+              <div
+                className={`${cartoonStatusCardClass} flex flex-col gap-1 border-border bg-surface/50`}
+                data-testid="cartoon-not-started"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+                    {episodeCutCount === 0 ? "Not started" : "Next step"}
+                  </span>
+                  <span className="text-xs font-medium text-foreground">
+                    {isCartoonGenesis ? "Genesis (Episode 1)" : "Future episode"}
+                  </span>
+                </div>
+                <span className="text-xs text-muted">{footerGuidance}</span>
+              </div>
+            )}
             {/* Cartoon planning-stage callout: cut plan exists but the episode
                 hasn't been prepared for publish. Surface that action as the next
                 step instead of red errors. */}
