@@ -1021,7 +1021,9 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs conversion");
     expect(screen.getByTestId("card-convert-1")).toBeInTheDocument();
     expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent("Ready for lettering");
-    expect(screen.getByTestId("card-letter-2")).toBeInTheDocument();
+    // A clean, un-lettered cut shows the first-class lettering choice (#442).
+    expect(screen.getByTestId("lettering-2")).toBeInTheDocument();
+    expect(screen.getByTestId("add-bubbles-2")).toBeInTheDocument();
     expect(screen.getByTestId("cut-card-status-3")).toHaveTextContent("Needs image");
 
     // Technical controls live under a collapsed-by-default Details disclosure.
@@ -1029,6 +1031,48 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(advanced.tagName.toLowerCase()).toBe("details");
     expect(advanced).not.toHaveAttribute("open");
     expect(within(advanced).getByTestId("sync-clean-btn")).toBeInTheDocument();
+  });
+
+  // #442: lettering is a first-class, visible step with an intentional
+  // Manual vs AI-draft choice, and "Review lettering" once bubbles exist.
+  it("offers a Manual/AI-draft lettering choice on a clean cut and 'Review lettering' once bubbles exist", async () => {
+    const overlay = { id: "o1", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.15, text: "Hi", speaker: "Sera" };
+    const fn = vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          diagnostics: [
+            { cutId: 1, kind: "image", state: "clean-ready", issue: null, convertiblePng: null },
+            { cutId: 2, kind: "image", state: "clean-ready", issue: null, convertiblePng: null },
+          ],
+          summary: { planned: 0, needsConversion: 0, missing: 0, cleanReady: 2, finalReady: 0, uploaded: 0 },
+        }) });
+      }
+      if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "genesis", cuts: [
+        makeCut({ id: 1, shotType: "close-up", cleanImagePath: "assets/genesis/cut-01-clean.webp", dialogue: [{ speaker: "Sera", text: "그거 따라한 거야" }], description: "Close shot" }),
+        makeCut({ id: 2, shotType: "wide", cleanImagePath: "assets/genesis/cut-02-clean.webp", overlays: [overlay], description: "Wide shot" }),
+      ] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+    await screen.findByTestId("cut-list-panel");
+
+    // Cut 1 (no bubbles): the lettering choice + "Add speech bubbles" (Manual is default).
+    const lettering = await screen.findByTestId("lettering-1");
+    expect(within(lettering).getByTestId("lettering-mode-manual-1")).toBeChecked();
+    expect(screen.getByTestId("add-bubbles-1")).toHaveTextContent("Add speech bubbles");
+
+    // Switch to AI draft → the copy-prompt CTA appears and copies the lettering prompt.
+    fireEvent.click(screen.getByTestId("lettering-mode-ai-1"));
+    fireEvent.click(screen.getByTestId("copy-lettering-1"));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
+    const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(copied).toContain("Draft the speech bubbles and captions for cut 1 of genesis");
+    expect(copied).toMatch(/do NOT export or upload/i);
+
+    // Cut 2 (bubbles already placed): status "Needs review" + a "Review lettering" CTA.
+    expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent("Needs review");
+    expect(screen.getByTestId("add-bubbles-2")).toHaveTextContent("Review lettering");
   });
 
   it("clears the stale diagnostics banner on a file switch whose diagnostics request fails (@re1)", async () => {

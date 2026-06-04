@@ -519,6 +519,19 @@ describe("cartoonChecklist (#335)", () => {
     expect(labels).not.toMatch(/generate md|markdown|cuts\.json/i);
   });
 
+  // #442: lettering is a first-class progress step. Its state must move from
+  // current → done as overlays are placed (before/after overlays exist).
+  it("(#442) the 'Add speech bubbles & captions' step is current after clean art, done once overlays exist", () => {
+    const before = cartoonChecklist({ cuts: [makeCut({ id: 1, cleanImagePath: "c.webp", overlays: [] })] });
+    expect(before.steps.find((s) => s.key === "letter")!.label).toMatch(/speech bubbles/i);
+    expect(statusOf(before, "clean")).toBe("done");
+    expect(statusOf(before, "letter")).toBe("current");
+
+    const after = cartoonChecklist({ cuts: [makeCut({ id: 1, cleanImagePath: "c.webp", overlays: [{ id: "o1", type: "speech", x: 0, y: 0, width: 0.2, height: 0.1, text: "hi" }] })] });
+    expect(statusOf(after, "letter")).toBe("done");
+    expect(statusOf(after, "export")).toBe("current");
+  });
+
   it("with only a cut plan: plan done, create-clean-images is current", () => {
     const r = cartoonChecklist({ cuts: [makeCut({ id: 1 }), makeCut({ id: 2 })] });
     expect(statusOf(r, "plan")).toBe("done");

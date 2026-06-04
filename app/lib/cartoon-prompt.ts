@@ -1,4 +1,5 @@
 import type { Cut } from "./cuts";
+import { cutScriptLines } from "./lettering-status";
 
 const SHOT_TYPE_LABELS: Record<string, string> = {
   wide: "Wide",
@@ -83,5 +84,39 @@ export function buildCodexTaskPrompt(cut: Cut, plotFile: string): string {
     "- Clean image only: no text, speech bubbles, captions, sound effects, signage, watermark, or signature.",
     "- Hold the style lock above — an illustrated comic/webtoon panel, NOT a photoreal photo, painterly concept art, or 3D render. If a result reads photorealistic, regenerate it as illustrated panel art.",
     "- Do not letter or upload anything — final lettering and upload happen later in OWS.",
+  ].join("\n");
+}
+
+/**
+ * Build the "Ask AI to draft lettering" prompt for a cut (#442). The agent writes
+ * DRAFT speech bubbles/captions into the cut's `overlays` array in cuts.json from
+ * the recorded script; the writer then reviews/adjusts them in the OWS lettering
+ * editor and exports there. Intentionally a copy-paste prompt — no auto-apply, no
+ * export/upload — so the human stays in control of the final lettering. Pure.
+ */
+export function buildLetteringPrompt(cut: Cut, plotFile: string): string {
+  const cutsFile = `${plotFile}.cuts.json`;
+  const lines = cutScriptLines(cut);
+  const script = lines.length > 0
+    ? lines
+        .map((l) =>
+          l.type === "speech"
+            ? `- speech — ${l.speaker || "Speaker"}: "${l.text}"`
+            : l.type === "narration"
+              ? `- narration: ${l.text}`
+              : `- sfx: ${l.text}`,
+        )
+        .join("\n")
+    : "- (no dialogue/narration/SFX recorded for this cut — add a caption only if the scene needs one)";
+  return [
+    `Draft the speech bubbles and captions for cut ${cut.id} of ${plotFile}.`,
+    "",
+    "Script to letter:",
+    script,
+    "",
+    "How to draft it:",
+    `- Edit cut ${cut.id}'s "overlays" array in ${cutsFile}: add one overlay per line above — "type":"speech" for dialogue (also set "speaker"), "narration" for captions, "sfx" for sound effects, with the line's text.`,
+    "- Position each overlay with x, y, width, height as 0–1 fractions of the panel, roughly where it belongs over the art, and keep bubbles clear of faces.",
+    "- These are DRAFT positions only: do NOT export or upload. The writer reviews and adjusts them in the OWS lettering editor, then exports the final image there.",
   ].join("\n");
 }

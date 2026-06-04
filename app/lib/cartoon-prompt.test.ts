@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildCleanImagePrompt,
   buildCodexTaskPrompt,
+  buildLetteringPrompt,
   cleanImageOutputPath,
   CLEAN_IMAGE_STYLE_LOCK,
 } from "./cartoon-prompt";
@@ -176,6 +177,38 @@ describe("buildCodexTaskPrompt", () => {
     const cut = makeCut({ characters: ["Mira"] });
     const before = JSON.stringify(cut);
     buildCodexTaskPrompt(cut, "plot-01");
+    expect(JSON.stringify(cut)).toBe(before);
+  });
+});
+
+describe("buildLetteringPrompt (#442)", () => {
+  it("lists the cut's script and instructs editing the overlays array, without exporting", () => {
+    const cut = makeCut({
+      id: 3,
+      dialogue: [{ speaker: "세라", text: "그거 방금 네가 움직인 걸 따라한 거야." }],
+      narration: "화면의 점들은 사라지지 않았다.",
+    });
+    const prompt = buildLetteringPrompt(cut, "genesis");
+    // Names the cut + the cuts.json file to edit.
+    expect(prompt).toContain("cut 3 of genesis");
+    expect(prompt).toContain("genesis.cuts.json");
+    // Carries the real script lines (speaker + narration), typed by overlay kind.
+    expect(prompt).toContain('speech — 세라: "그거 방금 네가 움직인 걸 따라한 거야."');
+    expect(prompt).toContain("narration: 화면의 점들은 사라지지 않았다.");
+    // Draft-only: the human reviews + exports, the agent must not.
+    expect(prompt).toMatch(/do NOT export or upload/i);
+    expect(prompt).toMatch(/review/i);
+  });
+
+  it("handles a cut with no script text gracefully", () => {
+    const prompt = buildLetteringPrompt(makeCut({ id: 1 }), "plot-01");
+    expect(prompt).toContain("no dialogue/narration/SFX recorded");
+  });
+
+  it("is pure (does not mutate the cut)", () => {
+    const cut = makeCut({ id: 2, narration: "x" });
+    const before = JSON.stringify(cut);
+    buildLetteringPrompt(cut, "plot-01");
     expect(JSON.stringify(cut)).toBe(before);
   });
 });
