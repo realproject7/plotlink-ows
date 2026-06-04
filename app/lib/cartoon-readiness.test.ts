@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, previewFooterGuidance } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -104,7 +104,9 @@ describe("checkMarkdownReadiness", () => {
 
   it("reports over 10K chars", () => {
     const md = "x".repeat(10001);
-    const { issues } = checkMarkdownReadiness(md, []);
+    // Use a real (1-cut) plan: a 0-cut plan now fails closed before the size
+    // check (#422), and the size limit applies to actual episodes anyway.
+    const { issues } = checkMarkdownReadiness(md, [makeCut()]);
     expect(issues.some((i) => i.includes("10,000"))).toBe(true);
   });
 
@@ -771,5 +773,70 @@ describe("groupCartoonIssues (#360)", () => {
 
   it("returns no groups for an empty issue list", () => {
     expect(groupCartoonIssues([])).toEqual([]);
+  });
+});
+
+describe("checkMarkdownReadiness — zero cuts fails closed (#422)", () => {
+  it("is never ready with an empty cut plan, even when the markdown has no other issue", () => {
+    const { ready, issues } = checkMarkdownReadiness("# Episode 2\n\nA clean placeholder.", []);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => /no cuts planned yet/i.test(i))).toBe(true);
+  });
+});
+
+describe("classifyCartoonReadiness — not-started placeholder (#422)", () => {
+  it("classifies an empty cut plan as not-started, not error, regardless of placeholder prose", () => {
+    // A scaffold placeholder plot-NN.md: instructional prose, empty cuts: [].
+    const md = "# Episode 2\n\nPlaceholder only. OWS generates the publish markdown from plot-02.cuts.json.";
+    const report = classifyCartoonReadiness(md, []);
+    expect(report.stage).toBe("not-started");
+    expect(report.issues).toEqual([]);
+    expect(report.totalCuts).toBe(0);
+  });
+
+  it("a plan with cuts is still classified by the normal stages (not-started is 0-cuts only)", () => {
+    const md = "# Ep\n\nno blocks yet";
+    expect(classifyCartoonReadiness(md, [makeCut()]).stage).toBe("planning");
+  });
+});
+
+describe("previewFooterGuidance (#422)", () => {
+  const base = { hasGenesis: false, isPublished: false, cutCount: null as number | null, uploadedCount: 0 };
+
+  it("fiction structure.md keeps the original outline line unchanged", () => {
+    expect(previewFooterGuidance({ ...base, fileName: "structure.md", contentType: "fiction" }))
+      .toBe("This is your story outline — not publishable. Ask AI to write the genesis next.");
+    // Even when a genesis exists, fiction is unchanged.
+    expect(previewFooterGuidance({ ...base, fileName: "structure.md", contentType: "fiction", hasGenesis: true }))
+      .toBe("This is your story outline — not publishable. Ask AI to write the genesis next.");
+  });
+
+  it("cartoon structure.md distinguishes Genesis-missing from Genesis-exists", () => {
+    const missing = previewFooterGuidance({ ...base, fileName: "structure.md", contentType: "cartoon", hasGenesis: false });
+    const exists = previewFooterGuidance({ ...base, fileName: "structure.md", contentType: "cartoon", hasGenesis: true });
+    expect(missing).toMatch(/Write the Genesis opening/i);
+    expect(exists).toMatch(/review its opening and cuts/i);
+    expect(exists).not.toBe(missing);
+  });
+
+  it("cartoon genesis with no cuts suggests planning cuts; with cuts but no images suggests clean images", () => {
+    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 0 }))
+      .toMatch(/Plan its cuts/i);
+    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 4, uploadedCount: 0 }))
+      .toMatch(/no uploaded images yet — generate clean images/i);
+    // Genesis with uploaded images → no nudge (existing flow takes over).
+    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 4, uploadedCount: 4 }))
+      .toBeNull();
+  });
+
+  it("a future-episode placeholder plot (empty cuts) says it hasn't been started", () => {
+    expect(previewFooterGuidance({ ...base, fileName: "plot-02.md", contentType: "cartoon", cutCount: 0 }))
+      .toMatch(/hasn't been started — expand its cut plan/i);
+  });
+
+  it("returns null for unknown cut count, published files, and fiction episodes", () => {
+    expect(previewFooterGuidance({ ...base, fileName: "plot-01.md", contentType: "cartoon", cutCount: null })).toBeNull();
+    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 0, isPublished: true })).toBeNull();
+    expect(previewFooterGuidance({ ...base, fileName: "plot-01.md", contentType: "fiction", cutCount: 0 })).toBeNull();
   });
 });

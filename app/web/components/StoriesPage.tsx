@@ -60,6 +60,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const [agentProviders, setAgentProviders] = useState<Record<string, "claude" | "codex">>({});
   // Track confirmed stories (those with structure.md) for Archive gating
   const [confirmedStories, setConfirmedStories] = useState<Set<string>>(new Set());
+  // Stories that already have a genesis.md — so the outline footer can suggest
+  // reviewing Genesis rather than writing it again (#422).
+  const [genesisStories, setGenesisStories] = useState<Set<string>>(new Set());
   const [storyContentTypes, setStoryContentTypes] = useState<Record<string, "fiction" | "cartoon">>({});
   // `undefined` ⇒ language couldn't be determined for the story → the publish
   // panel shows "Needs metadata" rather than defaulting to English (#424).
@@ -575,8 +578,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   }, []);
 
   useEffect(() => {
-    const updateFromStories = (stories: { name: string; hasStructure: boolean; contentType?: "fiction" | "cartoon"; language?: string; genre?: string; isNsfw?: boolean; agentProvider?: "claude" | "codex" }[]) => {
+    const updateFromStories = (stories: { name: string; hasStructure: boolean; hasGenesis?: boolean; contentType?: "fiction" | "cartoon"; language?: string; genre?: string; isNsfw?: boolean; agentProvider?: "claude" | "codex" }[]) => {
       setConfirmedStories(new Set(stories.filter((s) => s.hasStructure).map((s) => s.name)));
+      setGenesisStories(new Set(stories.filter((s) => s.hasGenesis).map((s) => s.name)));
       const ct: Record<string, "fiction" | "cartoon"> = {};
       const lang: Record<string, string | undefined> = {};
       const genre: Record<string, string | undefined> = {};
@@ -725,6 +729,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           language={selectedStory ? storyLanguages[selectedStory] : undefined}
           genre={selectedStory ? storyGenres[selectedStory] : undefined}
           isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
+          hasGenesis={selectedStory ? genesisStories.has(selectedStory) : false}
         />
         {publishProgress && (
           <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">

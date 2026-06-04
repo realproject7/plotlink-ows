@@ -15,6 +15,7 @@ const sanitizeSchema = {
 };
 
 const STAGE_LABEL: Record<CartoonReadinessStage, string> = {
+  "not-started": "Not started — plan the cuts",
   planning: "Planning — prepare the episode for publish",
   "awaiting-upload": "Awaiting image uploads",
   error: "Not publishable",

@@ -523,6 +523,20 @@ describe("POST /upload-clean/:cutId route", () => {
     expect(body.error).toContain("not found");
   });
 
+  it("discovers genesis.cuts.json (Genesis-as-Episode-1, not only plot-NN) via the cuts route (#422)", async () => {
+    const storyDir = path.join(tmpDir, "genesis-cuts-story");
+    fs.mkdirSync(storyDir, { recursive: true });
+    // plotFile "genesis" ⇒ genesis.cuts.json — OWS must not assume only plot-NN.
+    writeCutsFile(storyDir, "genesis", createCutsFile("genesis", 2));
+
+    const res = await app.request("/api/stories/genesis-cuts-story/cuts/genesis");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.plotFile).toBe("genesis");
+    expect(body.cuts).toHaveLength(2);
+    expect(fs.existsSync(path.join(storyDir, "genesis.cuts.json"))).toBe(true);
+  });
+
   it("GET cuts returns 400 with validation error for invalid schema", async () => {
     const storyDir = path.join(tmpDir, "bad-cuts-story");
     fs.mkdirSync(storyDir, { recursive: true });
