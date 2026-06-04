@@ -10,7 +10,12 @@
 
 import type { Cut } from "./cuts";
 import type { CartoonCoach } from "./cartoon-coach";
-import { classifyCartoonReadiness, summarizeCutProgress } from "./cartoon-readiness";
+import {
+  classifyCartoonReadiness,
+  summarizeCutProgress,
+  cartoonChecklist,
+  type CartoonChecklistStep,
+} from "./cartoon-readiness";
 
 export type EpisodeState =
   | "placeholder"   // cartoon: no cuts planned yet (a future-episode stub)
@@ -38,6 +43,14 @@ export interface EpisodeProgress {
    * the clean-image stage from the lettering stage.
    */
   cuts: { total: number; needClean: number; withClean: number; withText: number; exported: number; uploaded: number } | null;
+  /**
+   * Per-step production checklist (plan → clean → letter → export → upload →
+   * publish) for the cartoon workflow map (#438), reusing the same `cartoonChecklist`
+   * the per-file workflow guide uses so the progress page and the file view agree.
+   * Null for fiction; an empty array for a not-started cartoon episode (no cuts
+   * planned yet), which the map renders as a "not started" stub.
+   */
+  checklist: CartoonChecklistStep[] | null;
 }
 
 export interface StoryProgress {
@@ -120,7 +133,8 @@ function cartoonEpisode(ep: EpisodeInput, contentType: "fiction" | "cartoon"): E
   const cuts = ep.cuts ?? [];
   const p = summarizeCutProgress(cuts);
   const published = isPublished(ep.status);
-  const base = { file: ep.file, label, kind, title: ep.title, published,
+  const checklist = cartoonChecklist({ cuts, published }).steps;
+  const base = { file: ep.file, label, kind, title: ep.title, published, checklist,
     cuts: { total: p.total, needClean: p.needClean, withClean: p.withClean, withText: p.withText, exported: p.exported, uploaded: p.uploaded } } as const;
 
   if (published) return { ...base, state: "published", summary: "Published to PlotLink" };
@@ -146,7 +160,7 @@ function fictionEpisode(ep: EpisodeInput): EpisodeProgress {
   const label = episodeLabel(ep.file, kind, "fiction");
   const published = isPublished(ep.status);
   return {
-    file: ep.file, label, kind, title: ep.title, published, cuts: null,
+    file: ep.file, label, kind, title: ep.title, published, cuts: null, checklist: null,
     state: published ? "published" : "draft",
     summary: published ? "Published to PlotLink" : "Drafted — ready to review and publish",
   };
