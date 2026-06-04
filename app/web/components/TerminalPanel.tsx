@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
+import { FRESH_SPAWN_SIGNAL } from "@app-lib/terminal-protocol";
 
 /** Story metadata persisted with a `_new_*` → real-folder rename (#295). */
 export interface RenameMeta {
@@ -223,7 +224,20 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
       ws.send(JSON.stringify({ type: "resize", cols: session.term.cols, rows: session.term.rows }));
     };
 
+    // The very first frame may be a control signal (#453). A fresh server spawn
+    // (the agent process reprints its banner/history) sends FRESH_SPAWN_SIGNAL —
+    // drop the restored scrollback so the banner isn't duplicated. Any other
+    // first frame (a live-PTY reconnect) is normal PTY output and is kept.
+    let firstFrame = true;
     ws.onmessage = (e) => {
+      if (firstFrame) {
+        firstFrame = false;
+        if (typeof e.data === "string" && e.data === FRESH_SPAWN_SIGNAL) {
+          session.term.reset();
+          deleteScrollback(name).catch(() => {});
+          return;
+        }
+      }
       session.term.write(e.data);
     };
 

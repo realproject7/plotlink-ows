@@ -9,6 +9,7 @@ import type { AgentProvider } from "./stories";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { buildAgentCommand } from "../lib/agent-command";
 import type { AgentMode, AgentCommand } from "../lib/agent-command";
+import { FRESH_SPAWN_SIGNAL } from "../lib/terminal-protocol";
 
 /**
  * Provider-aware session record (new shape). Written ONLY for Codex sessions.
@@ -595,6 +596,11 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boo
   const name = storyName && safeName(storyName) ? storyName : "default";
   let session = ptySessions.get(name);
 
+  // Whether this connection SPAWNS a fresh process vs. reconnecting to a live
+  // PTY. A fresh (re)spawn reprints its own banner/history, so the client must
+  // drop any restored scrollback to avoid a duplicated startup banner (#453).
+  const spawnedFresh = !session || session.state !== "running";
+
   // Lazy spawn if no PTY exists
   if (!session || session.state !== "running") {
     // Enforce max concurrent sessions
@@ -618,6 +624,13 @@ export function attachTerminalWs(ws: WebSocket, storyName?: string, resume?: boo
     session.ws.close(1000, "replaced");
   }
   session.ws = ws;
+
+  // Signal a fresh spawn as the FIRST frame, before any PTY output, so the
+  // client drops its restored scrollback and shows only the fresh reprint (#453).
+  // A live-PTY reconnect sends nothing, so the client keeps its scrollback.
+  if (spawnedFresh && isTerminalSocketOpen(ws)) {
+    ws.send(FRESH_SPAWN_SIGNAL);
+  }
 
   // PTY output → browser
   const dataDisposable = session.term.onData((data: string) => {
