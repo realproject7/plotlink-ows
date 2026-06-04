@@ -87,6 +87,38 @@ describe("LetteringEditor", () => {
     expect(authFetch).toHaveBeenCalledWith("/api/stories/story/asset/plot-01/cut-01-clean.webp");
   });
 
+  // #452: a clean-image cut opens a clear lettering workspace, and a narration
+  // overlay added from the script gets a roomy default box (no instant overflow)
+  // plus a one-click "Fit box to text" resize.
+  it("offers the lettering workspace + a roomy narration overlay with a Fit-to-text control", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ narration: "A long narration line that would overflow a tiny default box on an ordinary panel." })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // Workspace regions: the image canvas, the script-insert buttons, the add tools.
+    await screen.findByAltText("Cut 1 clean");
+    expect(screen.getByTestId("add-narration")).toBeInTheDocument();
+    expect(screen.getByTestId("script-insert-panel")).toBeInTheDocument();
+
+    // Insert the narration line from the script → an overlay is added + selected.
+    fireEvent.click(screen.getByTestId("script-insert-narration"));
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+    // The inspector opens with the text and a one-click Fit control.
+    expect(screen.getByTestId("inspector-text")).toHaveValue("A long narration line that would overflow a tiny default box on an ordinary panel.");
+    const fit = screen.getByTestId("inspector-fit-text");
+    expect(fit).toBeInTheDocument();
+
+    // Clicking Fit keeps the overlay placed (the one-click resize path works).
+    fireEvent.click(fit);
+    expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
+  });
+
   it("shows message when no clean image and no overlays", () => {
     render(
       <LetteringEditor

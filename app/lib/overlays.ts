@@ -363,6 +363,21 @@ export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
   };
 }
 
+/**
+ * A comfortable starting box for a freshly-added overlay (#452): big enough that
+ * an ordinary narration/dialogue line doesn't overflow the instant it's added —
+ * unlike `createOverlay`'s minimal box. The lettering editor refines this with
+ * font metrics when available; this is the no-measurement fallback and the
+ * comfortable width it grows the height from. Clamped so the box stays on the
+ * image starting from (x, y).
+ */
+export function comfortableOverlaySize(type: OverlayType, x: number, y: number): { width: number; height: number } {
+  return {
+    width: Math.min(type === "sfx" ? 0.3 : 0.5, Math.max(0.15, 1 - x)),
+    height: Math.min(type === "sfx" ? 0.1 : 0.2, Math.max(0.06, 1 - y)),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Overlay normalization / export validation (#309)
 //
