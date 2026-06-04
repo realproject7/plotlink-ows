@@ -8,10 +8,34 @@
 export const SUSPICIOUS_RULES = [
   { re: /(^|\/)node_modules\//, label: "bundled node_modules" },
   { re: /\.(test|spec)\.[cm]?[jt]sx?$/, label: "test/spec file" },
+  { re: /(^|\/)(__fixtures__|fixtures)\/|\.fixture\./, label: "test fixture" },
+  { re: /\.snap$/, label: "test snapshot" },
+  { re: /(^|\/)e2e[-/]/, label: "e2e/test tooling" },
   { re: /\.tgz$/, label: "packed tarball" },
-  { re: /(^|\/)(\.next\/cache|\.turbo|\.vite|\.cache)\//, label: "build cache" },
+  { re: /(^|\/)(\.next\/cache|\.turbo|\.vite|\.cache|coverage|\.nyc_output)\//, label: "build/coverage cache" },
+  { re: /(^|\/)screenshots?\/|(^|\/)screenshot-/, label: "screenshot/marketing image" },
+  { re: /(^|\/)(tmp|temp)\/|\.(log|tmp|bak|swp)$/, label: "temp/log file" },
   { re: /(^|\/)\.env(\..+)?$|\.(pem|key)$/, label: "possible secret/credential file" },
 ];
+
+// The runtime files the published package MUST contain. A `files`-allowlist
+// change that drops one of these fails the preflight (#468). `app/web/dist` is
+// required because the CLI serves the prebuilt web UI from it.
+export const REQUIRED_PACK_FILES = [
+  "package.json",
+  "README.md",
+  "LICENSE",
+  "bin/plotlink-ows.js",
+  "app/server.ts",
+  "app/prisma/schema.prisma",
+  "app/web/dist/index.html",
+];
+
+/** Return the REQUIRED_PACK_FILES that are NOT in the packed path list. */
+export function findMissingRequired(paths) {
+  const set = new Set(paths);
+  return REQUIRED_PACK_FILES.filter((req) => !set.has(req));
+}
 
 /**
  * Return `[{ label, path }]` for every path matching a suspicious rule (first

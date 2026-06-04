@@ -26,7 +26,7 @@ import { readFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSuspicious, requiredInstalledFiles } from "./package-hygiene.mjs";
+import { findSuspicious, findMissingRequired, requiredInstalledFiles } from "./package-hygiene.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -86,14 +86,21 @@ let manifest = null;
 try { manifest = JSON.parse(dry.stdout)[0]; } catch { fail("`npm pack --dry-run --json` did not return a parseable manifest."); }
 if (manifest) {
   console.log(`  entries: ${manifest.entryCount}   unpacked: ${(manifest.unpackedSize / 1024).toFixed(0)}KB   tarball: ${(manifest.size / 1024).toFixed(0)}KB`);
-  const bad = findSuspicious(manifest.files.map((f) => f.path));
+  const paths = manifest.files.map((f) => f.path);
+  const bad = findSuspicious(paths);
   if (bad.length) {
     fail(`${bad.length} suspicious file(s) in the packed package (fix the package.json 'files' exclusions):`);
     bad.slice(0, 40).forEach((b) => console.log(`      - ${b.label}: ${b.path}`));
     if (bad.length > 40) console.log(`      … and ${bad.length - 40} more`);
   } else {
-    ok("clean: no node_modules / test / tarball / cache / secret files in the package");
+    ok("clean: no node_modules / test / fixture / coverage / screenshot / tarball / cache / temp / secret files");
   }
+  // Enforce that the required runtime contents are still present (#468) — a
+  // `files` exclusion that's too aggressive (dropping the bin, README, LICENSE,
+  // the Prisma schema, or the prebuilt web UI) fails here.
+  const missing = findMissingRequired(paths);
+  if (missing.length) fail(`packed package is missing required runtime file(s): ${missing.join(", ")}`);
+  else ok("required runtime contents present (bin, README, LICENSE, server, Prisma schema, web dist)");
 }
 
 // ---------------------------------------------------------------------------
