@@ -121,6 +121,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [cartoonStage, setCartoonStage] = useState<CartoonStage | null>(null);
   const [cartoonAwaitingCount, setCartoonAwaitingCount] = useState(0);
   const [cartoonTotalCuts, setCartoonTotalCuts] = useState(0);
+  // Per-cut production tallies (clean/lettered/exported/uploaded) for the compact
+  // cartoon status summary in the bottom panel (#420).
+  const [cartoonCutProgress, setCartoonCutProgress] = useState<CartoonCutProgress | null>(null);
   // Granular 6-step production checklist for the cartoon plot workspace (#335),
   // computed from cuts.json + asset/upload/publish state in the readiness effect.
   const [cartoonChecklistData, setCartoonChecklistData] = useState<CartoonChecklist | null>(null);
@@ -237,6 +240,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       setCartoonAwaitingCount(0);
       setCartoonTotalCuts(0);
       setCartoonChecklistData(null);
+      setCartoonCutProgress(null);
       return;
     }
     let cancelled = false;
@@ -254,6 +258,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonAwaitingCount(0);
           setCartoonTotalCuts(0);
           setCartoonChecklistData(null);
+          setCartoonCutProgress(null);
           return;
         }
         const cutsData = await cutsRes.json();
@@ -267,6 +272,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonAwaitingCount(result.awaitingCount);
           setCartoonTotalCuts(result.totalCuts);
           setCartoonChecklistData(checklist);
+          setCartoonCutProgress(summarizeCutProgress(cuts));
           // Cut plan's episode title for the publish-title display (#358).
           setCartoonEpisodeTitle(typeof cutsData.title === "string" ? cutsData.title : null);
         }
@@ -780,7 +786,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     return (
       <div className="flex flex-col gap-0.5" data-testid="cartoon-cover-status" data-state={r.state}>
         <span className={`text-[11px] font-medium ${COVER_TONE[r.tone]}`}>{r.label}</span>
-        <span className="text-[10px] text-muted" data-testid="cartoon-cover-guidance">{COVER_GUIDANCE}</span>
+        {/* Long cover spec/tips collapsed by default (#420) so the panel isn't a
+            wall of text; the concise status line above is always visible. */}
+        <details className="text-[10px] text-muted" data-testid="cover-details">
+          <summary className="cursor-pointer select-none">Cover tips</summary>
+          <span className="block mt-0.5" data-testid="cartoon-cover-guidance">{COVER_GUIDANCE}</span>
+        </details>
       </div>
     );
   };
@@ -1221,6 +1232,23 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             {/* Creator-facing 6-step production checklist so a first-time user
                 can see which step is current/next without internal jargon
                 (#320, expanded to per-cut granularity in #335). */}
+            {/* Compact cartoon production status (#420): one scannable line of
+                cut/clean/lettered/uploaded tallies, with a link to the full
+                story progress overview (#418). The detailed 6-step guide stays
+                below. */}
+            {isCartoonPlot && cartoonCutProgress && cartoonCutProgress.total > 0 && (
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" data-testid="cartoon-status-summary">
+                <span>Cuts: <span className="text-foreground font-medium">{cartoonCutProgress.total}</span></span>
+                <span>Clean: <span className="text-foreground font-medium">{cartoonCutProgress.withClean}/{cartoonCutProgress.needClean}</span></span>
+                <span>Lettered: <span className="text-foreground font-medium">{cartoonCutProgress.withText}/{cartoonCutProgress.needClean}</span></span>
+                <span>Uploaded: <span className="text-foreground font-medium">{cartoonCutProgress.uploaded}/{cartoonCutProgress.total}</span></span>
+                {onViewProgress && (
+                  <button onClick={onViewProgress} className="ml-auto text-accent hover:underline" data-testid="status-view-progress">
+                    View progress →
+                  </button>
+                )}
+              </div>
+            )}
             {isCartoonPlot && <CartoonStepGuide checklist={cartoonChecklistData} />}
             {/* Genesis-as-Episode-1 cut summary (#422): discover + summarize
                 genesis.cuts.json so a writer sees its real cut/image state in the
