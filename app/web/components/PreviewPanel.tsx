@@ -1499,8 +1499,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 gets a cover before its first createStoryline. Reuses the same
                 validation/stale-clear as the published Edit Story panel; the
                 selected file is handed to the publish flow, which uploads it and
-                sets it on the storyline once it exists. */}
-            {isGenesis && (
+                sets it on the storyline once it exists.
+                #450: hidden in the genesis CUT WORKSPACE (Cuts sub-mode) so the
+                cut/lettering editor gets the height — the cover stays available
+                in the Opening-text/Preview view, Story Info, and the Publish page,
+                and the auto-detect effect still loads it for publish. */}
+            {isGenesis && !(activeTab === "edit" && genesisEditMode === "cuts") && (
               <div className="flex flex-col gap-1.5" data-testid="prepublish-cover">
                 <span className="text-xs font-medium text-foreground">Cover Image <span className="text-muted font-normal">(optional)</span></span>
                 {/* Cartoon cover readiness + requirements (#337): keep the cover
@@ -1589,7 +1593,11 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             {/* Cartoon Genesis prologue readiness checklist (#359). */}
             {renderGenesisReadiness()}
             <div className="flex items-center gap-2">
-              {(isGenesis) && (
+              {/* Genre/language are edited in Story Info for cartoon (#439/#450);
+                  the inline selects are fiction-only so the cartoon cut workspace
+                  isn't a metadata form. Cartoon publish still reads the persisted
+                  genre/language (seeded into these values from .story.json). */}
+              {isGenesis && contentType !== "cartoon" && (
                 <>
                   <select
                     value={selectedGenre}
@@ -1663,12 +1671,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               >
                 {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
               </button>
-              {isGenesis && !selectedGenre && (
+              {/* Cartoon edits these in Story Info, so point there instead of the
+                  hidden inline selects (#450); fiction keeps the inline guidance. */}
+              {isGenesis && contentType === "cartoon" && (!selectedGenre || !selectedLanguage) && (
+                <span className="text-amber-600 text-xs" data-testid="cartoon-metadata-needs-story-info">
+                  Set the genre and language in Story Info before publishing
+                </span>
+              )}
+              {isGenesis && contentType !== "cartoon" && !selectedGenre && (
                 <span className="text-amber-600 text-xs" data-testid="genre-needs-metadata">
                   Needs metadata — choose a genre before publishing
                 </span>
               )}
-              {isGenesis && selectedGenre && !selectedLanguage && (
+              {isGenesis && contentType !== "cartoon" && selectedGenre && !selectedLanguage && (
                 <span className="text-amber-600 text-xs" data-testid="language-needs-metadata">
                   Needs metadata — choose a language before publishing
                 </span>
@@ -1727,7 +1742,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 ))}
               </div>
             )}
-            {(isGenesis) && (
+            {/* Adult-content flag is edited in Story Info for cartoon (#450). */}
+            {isGenesis && contentType !== "cartoon" && (
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
                   <input
