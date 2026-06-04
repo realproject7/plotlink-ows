@@ -767,6 +767,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
           hasGenesis={selectedStory ? genesisStories.has(selectedStory) : false}
           onViewProgress={() => setSelectedFile(null)}
+          onOpenFile={(file) => selectedStory && handleSelectFile(selectedStory, file)}
         />
         )}
         {publishProgress && (

@@ -13,8 +13,8 @@ const PROGRESS: StoryProgress = {
   setup: { hasStructure: true, hasGenesis: true },
   cover: "missing",
   episodes: [
-    { file: "genesis.md", label: "Episode 1 / Genesis", kind: "genesis", title: "Awakening", state: "ready", summary: "Ready to publish", published: false, cuts: { total: 2, withClean: 2, exported: 2, uploaded: 2 } },
-    { file: "plot-01.md", label: "Episode 2", kind: "plot", title: null, state: "placeholder", summary: "Not started — no cuts planned yet", published: false, cuts: { total: 0, withClean: 0, exported: 0, uploaded: 0 } },
+    { file: "genesis.md", label: "Episode 1 / Genesis", kind: "genesis", title: "Awakening", state: "ready", summary: "Ready to publish", published: false, cuts: { total: 2, needClean: 2, withClean: 2, withText: 2, exported: 2, uploaded: 2 } },
+    { file: "plot-01.md", label: "Episode 2", kind: "plot", title: null, state: "placeholder", summary: "Not started — no cuts planned yet", published: false, cuts: { total: 0, needClean: 0, withClean: 0, withText: 0, exported: 0, uploaded: 0 } },
   ],
   summary: { episodes: 2, published: 0, readyToPublish: 1, placeholders: 1, blocked: 0 },
   nextAction: "Create or import a cover image for the story.",
@@ -72,5 +72,22 @@ describe("StoryProgressPanel (#418)", () => {
   it("shows a friendly error if progress cannot be loaded", async () => {
     render(<StoryProgressPanel storyName="missing" authFetch={makeAuthFetch(null)} onOpenFile={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/Could not load story progress/i)).toBeInTheDocument());
+  });
+
+  it("renders the workflow coach (and not the plain next-action line) when a coach is present (#429)", async () => {
+    const onOpenFile = vi.fn();
+    const withCoach: StoryProgress = {
+      ...PROGRESS,
+      coach: { stageLabel: "Final images ready", action: "Upload the final images", actionKind: "ui", prompt: null, uiAction: "upload", episodeFile: "genesis.md" },
+    };
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(withCoach)} onOpenFile={onOpenFile} />);
+
+    const coach = await screen.findByTestId("workflow-coach");
+    expect(coach).toHaveTextContent(/Upload the final images/);
+    // The cartoon coach supersedes the plain #423 next-action line.
+    expect(screen.queryByTestId("progress-next-action")).not.toBeInTheDocument();
+    // A UI action from the overview opens the episode it concerns.
+    fireEvent.click(screen.getByTestId("workflow-coach-do"));
+    expect(onOpenFile).toHaveBeenCalledWith("god-cell", "genesis.md");
   });
 });

@@ -8,6 +8,8 @@ import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CartoonStepGuide } from "./CartoonStepGuide";
 import { CutListPanel } from "./CutListPanel";
+import { WorkflowCoach } from "./WorkflowCoach";
+import type { CoachUiAction } from "@app-lib/cartoon-coach";
 import { classifyCartoonReadiness, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, summarizeCutProgress, previewFooterGuidance, type CartoonReadinessStage as CartoonStage, type CartoonChecklist, type CartoonCutProgress } from "@app-lib/cartoon-readiness";
 import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
@@ -74,6 +76,9 @@ interface PreviewPanelProps {
   hasGenesis?: boolean;
   // Deselect the file to reveal the story-level progress overview (#418).
   onViewProgress?: () => void;
+  // Open a sibling file in this story, so the workflow coach (#429) can route to
+  // the episode an action concerns (e.g. from structure.md to the active episode).
+  onOpenFile?: (file: string) => void;
 }
 
 interface FileData {
@@ -90,7 +95,7 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress }: PreviewPanelProps) {
+export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress, onOpenFile }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -377,10 +382,38 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         const data = await res.json().catch(() => ({}));
         setCartoonGenWarnings(data.warnings || []);
         await loadFile();
+        // Re-run readiness + reload the workflow coach so the next action moves
+        // off "Prepare the episode for publish" once the layout is built (#429).
+        setCutsRefreshKey((k) => k + 1);
       }
     } catch { /* ignore */ }
     setCartoonGenerating(false);
   }, [storyName, fileName, authFetch, loadFile]);
+
+  // Route a workflow-coach UI action to the right control (#429). When the
+  // action concerns a different episode than the open file (e.g. the coach on
+  // structure.md points at the active episode), open that file first — the coach
+  // there offers the same action in place. Otherwise reveal the control: the cut
+  // workspace for letter/export/upload/refresh, the Preview tab for publish (the
+  // writer still confirms the irreversible publish), or run Prepare directly.
+  const handleCoachAction = useCallback((action: CoachUiAction, episodeFile: string | null) => {
+    if (action === "view-progress") { onViewProgress?.(); return; }
+    if (episodeFile && episodeFile !== fileName) { onOpenFile?.(episodeFile); return; }
+    switch (action) {
+      case "open-cuts":
+      case "open-lettering":
+      case "upload":
+      case "refresh-assets":
+        setActiveTab("edit");
+        break;
+      case "generate-markdown":
+        handleGenerateMarkdown();
+        break;
+      case "publish":
+        setActiveTab("preview");
+        break;
+    }
+  }, [fileName, onViewProgress, onOpenFile, handleGenerateMarkdown]);
 
   // Handle cover image selection
   const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -932,6 +965,21 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </button>
         </div>
       </div>
+
+      {/* Persistent cartoon workflow coach (#429): one clear next action across
+          every cartoon file view, derived from real story/episode state. Sits
+          above the content so it stays visible on both the Preview and Edit
+          tabs. Fiction renders nothing (the coach is null), so fiction views are
+          unchanged. */}
+      {contentType === "cartoon" && storyName && fileName && (
+        <WorkflowCoach
+          storyName={storyName}
+          fileName={fileName}
+          authFetch={authFetch}
+          refreshKey={cutsRefreshKey}
+          onAction={handleCoachAction}
+        />
+      )}
 
       {/* Content area */}
       {activeTab === "preview" ? (

@@ -9,6 +9,7 @@
 // route reads the files and the panel just renders the result.
 
 import type { Cut } from "./cuts";
+import type { CartoonCoach } from "./cartoon-coach";
 import { classifyCartoonReadiness, summarizeCutProgress } from "./cartoon-readiness";
 
 export type EpisodeState =
@@ -31,8 +32,12 @@ export interface EpisodeProgress {
   /** One concise line — no raw validator text. */
   summary: string;
   published: boolean;
-  /** Cartoon cut progress; null for fiction. */
-  cuts: { total: number; withClean: number; exported: number; uploaded: number } | null;
+  /**
+   * Cartoon cut progress; null for fiction. `needClean`/`withText` count IMAGE
+   * cuts only (text panels are excluded), so the workflow coach (#429) can tell
+   * the clean-image stage from the lettering stage.
+   */
+  cuts: { total: number; needClean: number; withClean: number; withText: number; exported: number; uploaded: number } | null;
 }
 
 export interface StoryProgress {
@@ -62,6 +67,14 @@ export interface StoryProgress {
    * (#423), or null when the next step is a UI action (cover/publish) not an
    * agent task. */
   nextPrompt: string | null;
+  /**
+   * Persistent workflow coach (#429): the single next action derived from the
+   * current state, typed as an agent prompt or an in-app UI action. Attached by
+   * the route (it needs the focused file + on-disk asset hints); null for
+   * fiction. Absent when not computed (e.g. the pure builder), so existing
+   * consumers reading only nextAction/nextPrompt are unaffected.
+   */
+  coach?: CartoonCoach | null;
 }
 
 export interface EpisodeInput {
@@ -108,7 +121,7 @@ function cartoonEpisode(ep: EpisodeInput, contentType: "fiction" | "cartoon"): E
   const p = summarizeCutProgress(cuts);
   const published = isPublished(ep.status);
   const base = { file: ep.file, label, kind, title: ep.title, published,
-    cuts: { total: p.total, withClean: p.withClean, exported: p.exported, uploaded: p.uploaded } } as const;
+    cuts: { total: p.total, needClean: p.needClean, withClean: p.withClean, withText: p.withText, exported: p.exported, uploaded: p.uploaded } } as const;
 
   if (published) return { ...base, state: "published", summary: "Published to PlotLink" };
 
