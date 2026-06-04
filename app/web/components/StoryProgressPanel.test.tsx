@@ -42,6 +42,30 @@ const CARTOON_READY: StoryProgress = {
 // Same story, but the cover is missing — Story Info is the active gate (#444 RE1).
 const CARTOON_NEEDS_COVER: StoryProgress = { ...CARTOON_READY, cover: "missing" };
 
+// #462: Genesis is MID-PRODUCTION (clean images done, none lettered) and the
+// cover is missing. The episode production CTA must lead; the missing cover must
+// NOT take over as the current step.
+const letteringChecklist: CartoonChecklistStep[] = [
+  { key: "plan", label: "Plan cuts", status: "done", detail: "4 / 4 cuts" },
+  { key: "clean", label: "Create clean images", status: "done", detail: "4 / 4 cuts" },
+  { key: "letter", label: "Add speech bubbles & captions", status: "current", detail: "0 / 4 cuts" },
+  { key: "export", label: "Export final images", status: "todo", detail: "0 / 4 cuts" },
+  { key: "upload", label: "Upload final images", status: "todo", detail: "0 / 4 cuts" },
+  { key: "publish", label: "Publish to PlotLink", status: "todo", detail: null },
+];
+const CARTOON_MIDPROD_NEEDS_COVER: StoryProgress = {
+  ...CARTOON_READY,
+  cover: "missing",
+  episodes: [
+    { file: "genesis.md", label: "Episode 1 / Genesis", kind: "genesis", title: "Awakening", state: "in-progress", summary: "0 / 4 cuts have uploaded images", published: false, checklist: letteringChecklist, cuts: { total: 4, needClean: 4, withClean: 4, withText: 0, exported: 0, uploaded: 0 } },
+    { file: "plot-01.md", label: "Episode 2", kind: "plot", title: null, state: "placeholder", summary: "Not started — no cuts planned yet", published: false, checklist: [], cuts: { total: 0, needClean: 0, withClean: 0, withText: 0, exported: 0, uploaded: 0 } },
+  ],
+  coach: {
+    stageLabel: "Clean images ready", action: "Review cuts and start lettering",
+    actionKind: "ui", prompt: null, uiAction: "open-lettering", episodeFile: "genesis.md",
+  },
+};
+
 // Bible written but Genesis not yet written — the "Write the Genesis" gate (#444 RE2).
 const CARTOON_NO_GENESIS: StoryProgress = {
   name: "god-cell",
@@ -162,6 +186,29 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     const genesis = screen.getByTestId("workflow-section-3");
     expect(within(genesis).queryByTestId("section-cta")).toBeNull();
     expect(genesis).not.toHaveAttribute("data-status", "current");
+  });
+
+  // #462: a MID-PRODUCTION Genesis (clean done, none lettered) with a missing
+  // cover must lead with the episode production CTA, not the cover step.
+  it("leads with the episode production CTA over a missing cover while mid-production", async () => {
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_MIDPROD_NEEDS_COVER)} onOpenFile={vi.fn()} />);
+    await screen.findByTestId("story-progress-panel");
+
+    // Exactly one CTA, and it lives in the Genesis (Episode 1) section.
+    expect(screen.getAllByTestId("section-cta")).toHaveLength(1);
+    const genesis = screen.getByTestId("workflow-section-3");
+    expect(genesis).toHaveAttribute("data-status", "current");
+    expect(within(genesis).getByTestId("section-cta")).toHaveTextContent(/Review cuts and start lettering/i);
+
+    // Story Info is NOT the current step — the missing cover reads as a
+    // recommendation (needs-action), and the cover stays visible as "Missing".
+    const info = screen.getByTestId("workflow-section-1");
+    expect(info).not.toHaveAttribute("data-status", "current");
+    expect(within(info).queryByTestId("section-cta")).toBeNull();
+    expect(within(info).getByText(/Missing/)).toBeInTheDocument();
+    // The cover CTA / "add a cover" wording must not appear anywhere.
+    expect(screen.queryByTestId("story-info-cta")).toBeNull();
+    expect(screen.queryByText(/Add a cover image/i)).toBeNull();
   });
 
   // #444 RE2: with the bible written but Genesis not yet written, the
