@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findSuspicious, SUSPICIOUS_RULES } from "./package-hygiene.mjs";
+import { findSuspicious, SUSPICIOUS_RULES, requiredInstalledFiles } from "./package-hygiene.mjs";
 
 // #466: the release preflight must flag generated/local artifacts that must
 // never ship in the published package, and leave legitimate runtime files alone.
@@ -52,5 +52,28 @@ describe("package hygiene suspicious-file detection (#466)", () => {
   it("exposes a stable, non-empty rule set", () => {
     expect(SUSPICIOUS_RULES.length).toBeGreaterThanOrEqual(5);
     for (const r of SUSPICIOUS_RULES) expect(r.re).toBeInstanceOf(RegExp);
+  });
+
+  // #466 (re1): the smoke test must also require the postinstall prerequisites
+  // (the Prisma schema), derived from the actual postinstall command, so a
+  // files[] regression that drops them is caught — even with --ignore-scripts.
+  it("derives required install files incl. the bin and the postinstall Prisma schema", () => {
+    const required = requiredInstalledFiles({
+      bin: { "plotlink-ows": "./bin/plotlink-ows.js" },
+      scripts: { postinstall: "prisma generate --schema app/prisma/schema.prisma" },
+    });
+    expect(required).toContain("package.json");
+    expect(required).toContain("bin/plotlink-ows.js"); // leading ./ stripped
+    expect(required).toContain("app/server.ts");
+    expect(required).toContain("app/web/dist/index.html");
+    expect(required).toContain("app/prisma/schema.prisma"); // the postinstall prerequisite
+  });
+
+  it("handles a string bin, an = schema form, and no postinstall", () => {
+    expect(requiredInstalledFiles({ bin: "bin/x.js" })).toContain("bin/x.js");
+    expect(requiredInstalledFiles({ scripts: { postinstall: "prisma generate --schema=db/schema.prisma" } }))
+      .toContain("db/schema.prisma");
+    // No postinstall → no schema requirement, but still the runtime entrypoints.
+    expect(requiredInstalledFiles({})).toEqual(["package.json", "app/server.ts", "app/web/dist/index.html"]);
   });
 });

@@ -26,7 +26,7 @@ import { readFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSuspicious } from "./package-hygiene.mjs";
+import { findSuspicious, requiredInstalledFiles } from "./package-hygiene.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -115,10 +115,13 @@ try {
   const install = run("npm", ["install", tgzPath, "--ignore-scripts", "--no-audit", "--no-fund", "--no-save"], { cwd: tmp });
   if (install.code !== 0) throw new Error("`npm install <tarball>` failed in the temp project");
   const installed = join(tmp, "node_modules", pkg.name);
-  const required = ["package.json", "bin/plotlink-ows.js", "app/server.ts", "app/web/dist/index.html"];
+  // Includes the postinstall prerequisite (the Prisma schema) derived from the
+  // actual postinstall command, so dropping it from `files` fails here even
+  // though the install ran with --ignore-scripts (#466, re1).
+  const required = requiredInstalledFiles(pkg);
   const missing = required.filter((f) => !existsSync(join(installed, f)));
-  if (missing.length) fail(`installed tarball is missing required runtime file(s): ${missing.join(", ")}`);
-  else ok("tarball installs cleanly; bin + runtime entrypoints are present");
+  if (missing.length) fail(`installed tarball is missing required runtime/postinstall file(s): ${missing.join(", ")}`);
+  else ok(`tarball installs cleanly; bin + runtime + postinstall prerequisites present (${required.length} checked)`);
   const check = run(process.execPath, ["--check", join(installed, "bin/plotlink-ows.js")]);
   if (check.code !== 0) fail("bin/plotlink-ows.js failed `node --check` (syntax error)");
   else ok("bin/plotlink-ows.js passes node --check");

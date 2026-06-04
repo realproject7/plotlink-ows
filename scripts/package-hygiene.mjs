@@ -26,3 +26,21 @@ export function findSuspicious(paths) {
   }
   return out;
 }
+
+/**
+ * The files a freshly-installed package MUST contain to function: the bin(s),
+ * the app entrypoints, AND every file the install LIFECYCLE references — notably
+ * the `--schema <path>` the `postinstall` runs `prisma generate` against (#466,
+ * re1). The smoke test asserts these are present, so a `files`-allowlist
+ * regression that drops a postinstall prerequisite fails the preflight instead
+ * of silently breaking a real `npm install` of the published tarball.
+ */
+export function requiredInstalledFiles(pkg) {
+  const required = ["package.json", "app/server.ts", "app/web/dist/index.html"];
+  const binPaths = typeof pkg.bin === "string" ? [pkg.bin] : Object.values(pkg.bin ?? {});
+  for (const b of binPaths) if (b) required.push(String(b).replace(/^\.?\//, ""));
+  // Every `--schema <path>` referenced by the postinstall lifecycle.
+  const postinstall = pkg.scripts?.postinstall ?? "";
+  for (const m of postinstall.matchAll(/--schema[= ]+(\S+)/g)) required.push(m[1]);
+  return [...new Set(required)];
+}
