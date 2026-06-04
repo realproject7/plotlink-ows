@@ -82,3 +82,42 @@ export function imageAssetIssue(storyDir: string, relPath: string): string | nul
 export function isValidImageAsset(storyDir: string, relPath: string): boolean {
   return imageAssetIssue(storyDir, relPath) === null;
 }
+
+/**
+ * True when a relative asset path points to a real PNG image on disk (#441).
+ * PNG is NOT a publishable clean format — but it is a normal intermediate that
+ * the writer converts to WebP/JPEG, so detection treats it as a conversion step
+ * rather than a hard "unsupported extension" error. Same traversal guards as
+ * `imageAssetIssue`; deliberately does NOT gate on the 1MB size limit (the
+ * browser conversion compresses, so an oversize PNG is still convertible).
+ */
+export function pngAssetExists(storyDir: string, relPath: string): boolean {
+  if (path.isAbsolute(relPath)) return false;
+  if (relPath.split(/[/\\]/).includes("..")) return false;
+
+  const assetsRoot = path.resolve(storyDir, "assets");
+  const abs = path.resolve(storyDir, relPath);
+  if (abs !== assetsRoot && !abs.startsWith(assetsRoot + path.sep)) return false;
+
+  if (!fs.existsSync(abs)) return false;
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(abs);
+  } catch {
+    return false;
+  }
+  if (!stat.isFile()) return false;
+
+  try {
+    const fd = fs.openSync(abs, "r");
+    try {
+      const head = Buffer.alloc(16);
+      const read = fs.readSync(fd, head, 0, 16, 0);
+      return sniffImageType(head.subarray(0, read)) === "png";
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}

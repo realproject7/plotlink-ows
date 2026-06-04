@@ -31,7 +31,39 @@ describe("diagnoseCutAssets (#427)", () => {
     // The missing cut names the exact path + reason.
     expect(diags[4].issue).toMatch(/Cut 5: clean image "assets\/genesis\/cut-05-clean\.png" — the file is missing/);
     // Summary tallies.
-    expect(summarizeAssetDiagnostics(diags)).toEqual({ planned: 1, missing: 1, cleanReady: 1, finalReady: 1, uploaded: 1 });
+    expect(summarizeAssetDiagnostics(diags)).toEqual({ planned: 1, needsConversion: 0, missing: 1, cleanReady: 1, finalReady: 1, uploaded: 1 });
+  });
+
+  // #441: a PNG clean image is a friendly "needs-conversion" step, not a red
+  // unsupported-extension error.
+  it("classifies a recorded PNG clean image as needs-conversion with the convertible path", () => {
+    const cuts = [cut({ id: 1, cleanImagePath: "assets/genesis/cut-01-clean.png" })];
+    // assetIssue rejects the .png (publish-strict), but pngClean reports it convertible.
+    const diags = diagnoseCutAssets(cuts, () => "Unsupported extension .png", () => "assets/genesis/cut-01-clean.png");
+    expect(diags[0].state).toBe("needs-conversion");
+    expect(diags[0].convertiblePng).toBe("assets/genesis/cut-01-clean.png");
+    // The raw unsupported-extension reason is kept as a hide-able technical detail.
+    expect(diags[0].issue).toMatch(/Unsupported extension \.png/);
+    expect(summarizeAssetDiagnostics(diags).needsConversion).toBe(1);
+  });
+
+  it("classifies an UNRECORDED on-disk PNG (no cleanImagePath) as needs-conversion", () => {
+    const diags = diagnoseCutAssets([cut({ id: 2 })], issuer([]), () => "assets/genesis/cut-02-clean.png");
+    expect(diags[0].state).toBe("needs-conversion");
+    expect(diags[0].convertiblePng).toBe("assets/genesis/cut-02-clean.png");
+    expect(diags[0].issue).toBeNull();
+  });
+
+  it("a text panel is never needs-conversion even if pngClean returns a path", () => {
+    const diags = diagnoseCutAssets([cut({ id: 3, kind: "text", background: "#101820" })], issuer([]), () => "assets/genesis/cut-03-clean.png");
+    expect(diags[0].state).toBe("planned");
+    expect(diags[0].convertiblePng).toBeNull();
+  });
+
+  it("a recorded invalid path with NO convertible PNG stays 'missing'", () => {
+    const diags = diagnoseCutAssets([cut({ id: 4, cleanImagePath: "assets/genesis/cut-04-clean.webp" })], issuer([]), () => null);
+    expect(diags[0].state).toBe("missing");
+    expect(diags[0].convertiblePng).toBeNull();
   });
 
   it("an uploaded cut stays 'uploaded' even when its local files are gone (content is on IPFS)", () => {

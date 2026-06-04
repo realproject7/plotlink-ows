@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
-import { AssetImage } from "./asset-image";
+import { AssetImage, assetUrl } from "./asset-image";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
@@ -136,6 +136,9 @@ function CutRow({
   staleMessages,
   onRepairStale,
   repairing,
+  conversionPng,
+  onConvert,
+  converting,
   rowRef,
 }: {
   cut: Cut;
@@ -152,6 +155,10 @@ function CutRow({
   staleMessages: string[];
   onRepairStale: () => void;
   repairing: boolean;
+  /** When set, this cut has a PNG clean image at this path awaiting conversion (#441). */
+  conversionPng: string | null;
+  onConvert: (cutId: number, pngPath: string) => Promise<boolean>;
+  converting: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,11 +169,23 @@ function CutRow({
   // #403: show the Codex generated-image cache picker so a writer imports a
   // generated PNG into this cut without hunting through a hidden folder.
   const [showCodexPicker, setShowCodexPicker] = useState(false);
+  const [convertingThis, setConvertingThis] = useState(false);
   const status = getCutStatus(cut);
   // A recorded cleanImagePath/finalImagePath whose file is missing/invalid (#302):
   // surface it precisely rather than letting the field-based status claim the cut
   // is image-ready.
   const hasStale = staleMessages.length > 0;
+  // A PNG clean image awaiting conversion (#441) is a normal step, not an error —
+  // it takes precedence over the stale/missing framing for this cut.
+  const needsConversion = !!conversionPng;
+
+  const handleConvertThis = useCallback(async () => {
+    if (!conversionPng) return;
+    setConvertingThis(true);
+    await onConvert(cut.id, conversionPng);
+    setConvertingThis(false);
+    onUpdated();
+  }, [conversionPng, onConvert, cut.id, onUpdated]);
 
   // Returns true on a successful upload so callers (e.g. the Codex import picker)
   // can close themselves only when the clean image was actually recorded.
@@ -227,8 +246,11 @@ function CutRow({
         <span className="truncate text-xs text-foreground flex-1">
           {cut.description || "No description"}
         </span>
-        <span className={`text-[10px] flex-shrink-0 ${hasStale ? "text-error" : STATUS_COLOR[status]}`}>
-          {hasStale ? "Image missing" : STATUS_LABEL[status]}
+        <span
+          className={`text-[10px] flex-shrink-0 ${needsConversion ? "text-amber-700" : hasStale ? "text-error" : STATUS_COLOR[status]}`}
+          data-testid={needsConversion ? `cut-status-needs-conversion-${cut.id}` : undefined}
+        >
+          {needsConversion ? "Needs conversion" : hasStale ? "Image missing" : STATUS_LABEL[status]}
         </span>
       </button>
 
@@ -238,7 +260,26 @@ function CutRow({
               path but the file is missing/invalid. Show the precise reason and a
               repair action that clears the stale clean AND final fields back to
               null (valid paths and uploaded URLs are preserved). */}
-          {hasStale && (
+          {/* PNG clean image awaiting conversion (#441): offer the conversion
+              rather than the stale-path "Clear" repair (which would discard the
+              draft art). The raw unsupported-extension reason stays hidden in the
+              Convert artwork banner's technical details. */}
+          {needsConversion && (
+            <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 space-y-1" data-testid={`needs-conversion-${cut.id}`}>
+              <p className="text-[11px] text-amber-800">
+                This cut’s artwork is a PNG. Convert it to WebP so it can be lettered and published.
+              </p>
+              <button
+                onClick={handleConvertThis}
+                disabled={convertingThis || converting}
+                data-testid={`convert-cut-${cut.id}`}
+                className="px-2 py-1 text-[11px] border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                {convertingThis ? "Converting…" : "Convert image"}
+              </button>
+            </div>
+          )}
+          {hasStale && !needsConversion && (
             <div className="mt-2 rounded border border-error/40 bg-error/5 p-2 space-y-1" data-testid={`stale-asset-${cut.id}`}>
               {staleMessages.map((m, i) => (
                 <p key={i} className="text-[11px] text-error">{m}</p>
@@ -431,6 +472,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   });
   const [syncing, setSyncing] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [convertResult, setConvertResult] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [detected, setDetected] = useState<Set<number>>(new Set());
   // cutId → precise stale-path messages (#302), from detect-clean-images.
@@ -611,6 +654,48 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     }
     setSyncing(false);
   }, [authFetch, storyName, plotFile, loadCuts, loadDetect, loadDiagnostics]);
+
+  // Convert one cut's PNG clean image to a publishable WebP/JPEG (#441): fetch
+  // the PNG asset, convert + compress it in the browser (same path as a manual
+  // upload), and persist via the existing upload-clean route, which records the
+  // new cleanImagePath. Returns true on success. Publish stays strict — the route
+  // only accepts WebP/JPEG ≤1MB, so conversion is the safe bridge from a draft PNG.
+  const convertCut = useCallback(async (cutId: number, pngPath: string): Promise<boolean> => {
+    try {
+      const res = await authFetch(assetUrl(storyName, pngPath));
+      if (!res.ok) return false;
+      const blob = await res.blob();
+      const compliant = await importImageToCompliantBlob(new File([blob], "clean.png", { type: blob.type || "image/png" }));
+      const ext = compliant.type === "image/jpeg" ? "jpg" : "webp";
+      const formData = new FormData();
+      formData.append("file", new File([compliant], `clean.${ext}`, { type: compliant.type }));
+      const up = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/upload-clean/${cutId}`, { method: "POST", body: formData });
+      return up.ok;
+    } catch {
+      return false;
+    }
+  }, [authFetch, storyName, plotFile]);
+
+  // "Convert all artwork" (#441): batch-convert every cut flagged needs-conversion.
+  const convertAll = useCallback(async (jobs: { cutId: number; pngPath: string }[]) => {
+    setConverting(true);
+    setConvertResult(null);
+    let done = 0;
+    const failed: number[] = [];
+    for (const job of jobs) {
+      // Sequential on purpose: avoid hammering browser canvas conversion + the
+      // upload-clean write all at once for a 10-cut episode.
+      const ok = await convertCut(job.cutId, job.pngPath);
+      if (ok) done++; else failed.push(job.cutId);
+    }
+    await refreshAssets();
+    setConverting(false);
+    setConvertResult(
+      failed.length === 0
+        ? `Converted ${done} image${done === 1 ? "" : "s"} to WebP`
+        : `Converted ${done}; ${failed.length} failed (Cut ${failed.join(", ")}) — try Convert image on each`,
+    );
+  }, [convertCut, refreshAssets]);
 
   // Guided "Finish episode" orchestration (#414): upload every exported final
   // image (paced under the rate limit, #413/#288), then prepare the publish
@@ -841,6 +926,16 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     cutsFile.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid) ||
     (uploadStepDone && !episodeState.markdownReady);
 
+  // PNG clean images awaiting conversion (#441): a friendly, batch-able step, not
+  // a red unsupported-extension dump. Built from the disk-validated diagnostics.
+  const conversionJobs = (assetDiagnostics ?? [])
+    .filter((d) => d.state === "needs-conversion" && d.convertiblePng)
+    .map((d) => ({ cutId: d.cutId, pngPath: d.convertiblePng as string }));
+  const conversionByCut = new Map(conversionJobs.map((j) => [j.cutId, j.pngPath]));
+  const conversionIssues = (assetDiagnostics ?? [])
+    .filter((d) => d.state === "needs-conversion" && d.issue)
+    .map((d) => d.issue as string);
+
   return (
     <div className="h-full min-h-[22rem] flex flex-col overflow-hidden" data-testid="cut-list-panel">
       {/* Header with stats */}
@@ -955,6 +1050,39 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {syncResult}
         </div>
       )}
+      {/* Convert artwork step (#441, spec §8): PNG clean images are a normal
+          drafting intermediate, surfaced as a friendly batch conversion rather
+          than red "Unsupported extension" errors. The raw reasons stay available
+          under a collapsed "Technical details" disclosure. */}
+      {conversionJobs.length > 0 && (
+        <div className="px-3 py-2 border-b border-amber-500/40 bg-amber-500/10 text-[11px] flex-shrink-0" data-testid="convert-artwork">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-amber-700" data-testid="convert-artwork-count">
+              {conversionJobs.length} PNG image{conversionJobs.length === 1 ? "" : "s"} found
+            </span>
+            <button
+              onClick={() => convertAll(conversionJobs)}
+              disabled={converting}
+              data-testid="convert-all-btn"
+              className="ml-auto px-2 py-0.5 border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              {converting ? "Converting…" : "Convert all to WebP"}
+            </button>
+          </div>
+          <p className="mt-1 text-[10px] text-muted">
+            PNG artwork is fine while drafting. Convert it before lettering/export so PlotLink can publish it safely.
+          </p>
+          {convertResult && <p className="mt-1 text-[10px] text-muted" data-testid="convert-result">{convertResult}</p>}
+          {conversionIssues.length > 0 && (
+            <details className="mt-1" data-testid="convert-technical-details">
+              <summary className="text-[10px] text-muted cursor-pointer">Technical details</summary>
+              <ul className="mt-1 ml-3 list-disc text-[10px] text-muted">
+                {conversionIssues.map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
       {/* Read-only per-cut asset state validated against disk (#427): a compact
           state tally + a precise per-cut reason when a recorded path is broken,
           so "files exist but aren't shown" / a typoed path is a clear diagnostic
@@ -965,7 +1093,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         return (
           <div className="px-3 py-1.5 border-b border-border bg-surface/40 text-[10px] flex-shrink-0" data-testid="asset-diagnostics">
             <span className="text-muted" data-testid="asset-diag-summary">
-              Assets: {s.uploaded} uploaded · {s.finalReady} final · {s.cleanReady} clean · {s.planned} planned{s.missing > 0 ? ` · ${s.missing} missing` : ""}
+              Assets: {s.uploaded} uploaded · {s.finalReady} final · {s.cleanReady} clean · {s.planned} planned{s.needsConversion > 0 ? ` · ${s.needsConversion} needs conversion` : ""}{s.missing > 0 ? ` · ${s.missing} missing` : ""}
             </span>
             {missing.length > 0 && (
               <ul className="mt-1 ml-3 list-disc text-error" data-testid="asset-diag-issues">
@@ -1002,7 +1130,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
             expanded={expandedCut === cut.id}
             onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
             authFetch={authFetch}
-            onUpdated={() => { loadCuts(); loadDetect(); }}
+            onUpdated={() => { loadCuts(); loadDetect(); loadDiagnostics(); }}
             onOpenEditor={() => setEditingCutId(cut.id)}
             detectedLocalClean={detected.has(cut.id)}
             onSyncClean={syncCleanImages}
@@ -1010,6 +1138,9 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
             staleMessages={staleByCut.get(cut.id) ?? []}
             onRepairStale={repairStalePaths}
             repairing={repairing}
+            conversionPng={conversionByCut.get(cut.id) ?? null}
+            onConvert={convertCut}
+            converting={converting}
             rowRef={(el) => { if (el) rowRefs.current.set(cut.id, el); else rowRefs.current.delete(cut.id); }}
           />
         ))}

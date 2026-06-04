@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
-import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent, act, within } from "@testing-library/react";
 import { CutListPanel } from "./CutListPanel";
 import { installObjectUrlStub, MOCK_BLOB_URL } from "./asset-test-utils";
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "@app-lib/overlays";
@@ -941,6 +941,47 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
       const after = fn.mock.calls.filter((c) => String(c[0]).includes("/asset-diagnostics")).length;
       expect(after).toBeGreaterThan(before);
     });
+  });
+
+  // #441: a PNG clean image is a friendly conversion step, not a red error.
+  it("shows a Convert artwork step for PNG clean images instead of red unsupported-extension errors", async () => {
+    const fn = vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          diagnostics: [
+            { cutId: 1, kind: "image", state: "needs-conversion", issue: 'Cut 1: clean image "assets/genesis/cut-01-clean.png" — Unsupported extension .png', convertiblePng: "assets/genesis/cut-01-clean.png" },
+            { cutId: 2, kind: "image", state: "clean-ready", issue: null, convertiblePng: null },
+          ],
+          summary: { planned: 0, needsConversion: 1, missing: 0, cleanReady: 1, finalReady: 0, uploaded: 0 },
+        }) });
+      }
+      if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "genesis", cuts: [
+        makeCut({ id: 1, cleanImagePath: "assets/genesis/cut-01-clean.png" }),
+        makeCut({ id: 2, cleanImagePath: "assets/genesis/cut-02-clean.webp" }),
+      ] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+
+    // Friendly banner with a count + batch CTA, not a red dump.
+    const banner = await screen.findByTestId("convert-artwork");
+    expect(within(banner).getByTestId("convert-artwork-count")).toHaveTextContent("1 PNG image found");
+    expect(within(banner).getByTestId("convert-all-btn")).toBeInTheDocument();
+    // The raw unsupported-extension reason is hidden under Technical details.
+    expect(within(banner).getByTestId("convert-technical-details")).toHaveTextContent(/Unsupported extension \.png/);
+    // The summary counts it as needs-conversion, NOT missing.
+    expect(screen.getByTestId("asset-diag-summary")).toHaveTextContent("1 needs conversion");
+    expect(screen.queryByTestId("asset-diag-issues")).not.toBeInTheDocument();
+
+    // Per-cut: a "Needs conversion" badge, and expanding offers "Convert image".
+    const badge = screen.getByTestId("cut-status-needs-conversion-1");
+    expect(badge).toHaveTextContent("Needs conversion");
+    fireEvent.click(badge.closest("button")!);
+    expect(screen.getByTestId("needs-conversion-1")).toBeInTheDocument();
+    expect(screen.getByTestId("convert-cut-1")).toBeInTheDocument();
+    // A PNG cut must NOT show the red "Clear stale path" repair box.
+    expect(screen.queryByTestId("stale-asset-1")).not.toBeInTheDocument();
   });
 
   it("clears the stale diagnostics banner on a file switch whose diagnostics request fails (@re1)", async () => {
