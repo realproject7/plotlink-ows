@@ -16,14 +16,19 @@ const genesisChecklist: CartoonChecklistStep[] = [
   { key: "publish", label: "Publish to PlotLink", status: "current", detail: null },
 ];
 
-// Cartoon story: Genesis (Episode 1) is the active step (coach targets it),
-// plot-01 (Episode 2) is a not-started placeholder.
-const CARTOON: StoryProgress = {
+const publishGenesisCoach: StoryProgress["coach"] = {
+  stageLabel: "Ready to publish", action: "Publish Episode 1 / Genesis to PlotLink",
+  actionKind: "ui", prompt: null, uiAction: "publish", episodeFile: "genesis.md",
+};
+
+// Cartoon story, fully set up (cover present): Genesis (Episode 1) is the active
+// step; plot-01 (Episode 2) is a not-started placeholder.
+const CARTOON_READY: StoryProgress = {
   name: "god-cell",
   contentType: "cartoon",
   metadata: { title: "신의 세포", language: "Korean", genre: "Science Fiction", isNsfw: false, contentType: "cartoon" },
   setup: { hasStructure: true, hasGenesis: true },
-  cover: "missing",
+  cover: "present",
   episodes: [
     { file: "genesis.md", label: "Episode 1 / Genesis", kind: "genesis", title: "Awakening", state: "ready", summary: "Ready to publish", published: false, checklist: genesisChecklist, cuts: { total: 2, needClean: 2, withClean: 2, withText: 2, exported: 2, uploaded: 2 } },
     { file: "plot-01.md", label: "Episode 2", kind: "plot", title: null, state: "placeholder", summary: "Not started — no cuts planned yet", published: false, checklist: [], cuts: { total: 0, needClean: 0, withClean: 0, withText: 0, exported: 0, uploaded: 0 } },
@@ -31,7 +36,27 @@ const CARTOON: StoryProgress = {
   summary: { episodes: 2, published: 0, readyToPublish: 1, placeholders: 1, blocked: 0 },
   nextAction: "Publish Episode 1 / Genesis.",
   nextPrompt: null,
-  coach: { stageLabel: "Ready to publish", action: "Publish Episode 1 / Genesis to PlotLink", actionKind: "ui", prompt: null, uiAction: "publish", episodeFile: "genesis.md" },
+  coach: publishGenesisCoach,
+};
+
+// Same story, but the cover is missing — Story Info is the active gate (#444 RE1).
+const CARTOON_NEEDS_COVER: StoryProgress = { ...CARTOON_READY, cover: "missing" };
+
+// Bible written but Genesis not yet written — the "Write the Genesis" gate (#444 RE2).
+const CARTOON_NO_GENESIS: StoryProgress = {
+  name: "god-cell",
+  contentType: "cartoon",
+  metadata: { title: "신의 세포", language: "Korean", genre: "Science Fiction", isNsfw: false, contentType: "cartoon" },
+  setup: { hasStructure: true, hasGenesis: false },
+  cover: "missing",
+  episodes: [],
+  summary: { episodes: 0, published: 0, readyToPublish: 0, placeholders: 0, blocked: 0 },
+  nextAction: "Ask the agent to write the Genesis (Episode 1) opening.",
+  nextPrompt: "Write the Genesis (Episode 1) opening for this cartoon…",
+  coach: {
+    stageLabel: "Story bible ready", action: "Write the Genesis (Episode 1) opening",
+    actionKind: "agent", prompt: "Write the Genesis (Episode 1) opening for this cartoon…", uiAction: null, episodeFile: "genesis.md",
+  },
 };
 
 const FICTION: StoryProgress = {
@@ -49,7 +74,7 @@ const FICTION: StoryProgress = {
   nextPrompt: null,
 };
 
-function makeAuthFetch(progress: StoryProgress | null = CARTOON) {
+function makeAuthFetch(progress: StoryProgress | null = CARTOON_READY) {
   return vi.fn((url: string) => {
     if (url.endsWith("/progress")) {
       return Promise.resolve({ ok: progress != null, status: progress ? 200 : 404, json: () => Promise.resolve(progress) });
@@ -70,7 +95,7 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(screen.getByTestId("workflow-section-4")).toHaveTextContent("Episode 2");
   });
 
-  it("places exactly one next-action CTA, inside the active (current) section", async () => {
+  it("places exactly one next-action CTA, inside the active (current) episode section", async () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
@@ -78,8 +103,8 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(screen.getAllByTestId("section-cta")).toHaveLength(1);
     expect(screen.getAllByTestId("workflow-coach")).toHaveLength(1);
 
-    // The active step is Genesis (coach targets genesis.md) → the CTA lives in
-    // section 3, not in Story Info / Whitepaper / Episode 2.
+    // The active step is Genesis (coach targets genesis.md, cover present) → the
+    // CTA lives in section 3, not in Story Info / Whitepaper / Episode 2.
     const genesisSection = screen.getByTestId("workflow-section-3");
     expect(within(genesisSection).getByTestId("workflow-coach")).toHaveTextContent(/Publish/);
     expect(genesisSection).toHaveAttribute("data-status", "current");
@@ -95,17 +120,9 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(onOpenFile).toHaveBeenCalledWith("god-cell", "genesis.md");
   });
 
-  it("shows per-step checklist items and a Missing cover row in Story Info", async () => {
+  it("shows per-step checklist items in the Genesis section", async () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
-
-    const info = screen.getByTestId("workflow-section-1");
-    expect(info).toHaveAttribute("data-status", "needs-action"); // cover missing
-    expect(info).toHaveTextContent("Public title");
-    expect(info).toHaveTextContent(/Cover image/);
-    expect(info).toHaveTextContent(/Missing/);
-
-    // The Genesis section shows the production checklist labels.
     const genesis = screen.getByTestId("workflow-section-3");
     expect(genesis).toHaveTextContent("Opening text");
     expect(genesis).toHaveTextContent("Create clean images");
@@ -126,6 +143,40 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(ep2).toHaveAttribute("data-status", "not-started");
     expect(ep2).toHaveTextContent("Cut plan");
     expect(ep2).toHaveTextContent("Clean artwork");
+  });
+
+  // #444 RE1: when Story Info (cover/metadata) is incomplete and Genesis is
+  // otherwise ready, the single CTA must be in Define Story Info, not Genesis.
+  it("puts the single CTA in Story Info when the cover is missing (not in the ready Genesis)", async () => {
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_NEEDS_COVER)} onOpenFile={vi.fn()} />);
+    await screen.findByTestId("story-progress-panel");
+
+    expect(screen.getAllByTestId("section-cta")).toHaveLength(1);
+    const info = screen.getByTestId("workflow-section-1");
+    expect(info).toHaveAttribute("data-status", "current");
+    expect(within(info).getByTestId("section-cta")).toHaveTextContent(/cover image/i);
+    expect(within(info).getByTestId("story-info-cta")).toBeInTheDocument();
+    expect(within(info).getByText(/Missing/)).toBeInTheDocument();
+
+    // The ready Genesis must NOT hold the CTA, nor read as the current step.
+    const genesis = screen.getByTestId("workflow-section-3");
+    expect(within(genesis).queryByTestId("section-cta")).toBeNull();
+    expect(genesis).not.toHaveAttribute("data-status", "current");
+  });
+
+  // #444 RE2: with the bible written but Genesis not yet written, the
+  // "Write the Genesis" CTA must still render (in an always-shown Genesis stub).
+  it("keeps the Write-the-Genesis CTA when structure is done but genesis is missing", async () => {
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_NO_GENESIS)} onOpenFile={vi.fn()} />);
+    await screen.findByTestId("story-progress-panel");
+
+    expect(screen.getAllByTestId("section-cta")).toHaveLength(1);
+    // Whitepaper is complete; the Genesis (Episode 1) section is the current step.
+    expect(screen.getByTestId("workflow-section-2")).toHaveAttribute("data-status", "done");
+    const genesis = screen.getByTestId("workflow-section-3");
+    expect(genesis).toHaveTextContent("Episode 1 / Genesis");
+    expect(genesis).toHaveAttribute("data-status", "current");
+    expect(within(genesis).getByTestId("workflow-coach")).toHaveTextContent(/Write the Genesis/i);
   });
 
   it("shows a friendly error if progress cannot be loaded", async () => {
