@@ -9,6 +9,7 @@ import { importImageToCompliantBlob, isCompliantImage } from "../lib/import-imag
 import { CodexImportPicker } from "./CodexImportPicker";
 import { FinishEpisodePanel } from "./FinishEpisodePanel";
 import { cartoonChecklist, checkMarkdownReadiness } from "@app-lib/cartoon-readiness";
+import { summarizeAssetDiagnostics, type CutAssetDiagnostic } from "@app-lib/cut-asset-diagnostics";
 
 interface Overlay {
   id: string;
@@ -439,6 +440,10 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   // claims completion from unverified cut-plan fields while detection is pending
   // or after it failed.
   const [detectConfirmed, setDetectConfirmed] = useState(false);
+  // Read-only per-cut asset diagnostics validated against disk (#427): the real
+  // state (planned/missing/clean-ready/final-ready/uploaded) + precise issues.
+  const [assetDiagnostics, setAssetDiagnostics] = useState<CutAssetDiagnostic[] | null>(null);
+  const [rescanning, setRescanning] = useState(false);
   // #371: cut whose row should be scrolled into view after a Preview→Edit deep
   // link. Applied once its row has rendered (see the scroll effect below).
   const [scrollTargetCutId, setScrollTargetCutId] = useState<number | null>(null);
@@ -550,6 +555,29 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     }
   }, [authFetch, storyName, plotFile]);
 
+  // Read-only per-cut asset state validated against disk (#427). Best-effort.
+  const loadDiagnostics = useCallback(async () => {
+    try {
+      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/asset-diagnostics`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAssetDiagnostics(Array.isArray(data.diagnostics) ? data.diagnostics : null);
+    } catch { /* diagnostics are optional */ }
+  }, [authFetch, storyName, plotFile]);
+
+  // "Refresh assets / Check generated images" (#427): a read-only rescan that
+  // re-reads the cut plan, re-detects local clean files, and re-classifies each
+  // cut's asset state against disk — so a writer can notice agent-generated images
+  // without restarting. Never mutates, uploads, or publishes (unlike Sync).
+  const refreshAssets = useCallback(async () => {
+    setRescanning(true);
+    try {
+      await Promise.all([loadCuts(), loadDetect(), loadDiagnostics()]);
+    } finally {
+      setRescanning(false);
+    }
+  }, [loadCuts, loadDetect, loadDiagnostics]);
+
   const syncCleanImages = useCallback(async () => {
     setSyncing(true);
     setSyncResult(null);
@@ -572,12 +600,13 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         setSyncResult(parts.length > 0 ? parts.join(", ") : "No new clean images");
         await loadCuts();
         await loadDetect();
+        await loadDiagnostics();
       }
     } catch {
       setSyncResult("Sync failed");
     }
     setSyncing(false);
-  }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
+  }, [authFetch, storyName, plotFile, loadCuts, loadDetect, loadDiagnostics]);
 
   // Guided "Finish episode" orchestration (#414): upload every exported final
   // image (paced under the rate limit, #413/#288), then prepare the publish
@@ -726,7 +755,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   useEffect(() => {
     loadCuts();
     loadDetect();
-  }, [loadCuts, loadDetect]);
+    loadDiagnostics();
+  }, [loadCuts, loadDetect, loadDiagnostics]);
 
   if (loading) {
     return <div className="p-4 text-sm text-muted">Loading cuts...</div>;
@@ -847,6 +877,15 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {addingPanel ? "Adding…" : "Add narration/text panel"}
         </button>
         <button
+          onClick={refreshAssets}
+          disabled={rescanning}
+          className="px-2 py-0.5 border border-border text-muted rounded hover:border-accent hover:text-accent disabled:opacity-50"
+          data-testid="refresh-assets-btn"
+          title="Re-check the story folder for agent-generated images and report each cut's asset state — read only, nothing is uploaded or published"
+        >
+          {rescanning ? "Checking…" : "Refresh assets"}
+        </button>
+        <button
           onClick={syncCleanImages}
           disabled={syncing}
           className="px-2 py-0.5 border border-accent/30 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
@@ -912,6 +951,26 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {syncResult}
         </div>
       )}
+      {/* Read-only per-cut asset state validated against disk (#427): a compact
+          state tally + a precise per-cut reason when a recorded path is broken,
+          so "files exist but aren't shown" / a typoed path is a clear diagnostic
+          rather than a generic publish warning. */}
+      {assetDiagnostics && assetDiagnostics.length > 0 && (() => {
+        const s = summarizeAssetDiagnostics(assetDiagnostics);
+        const missing = assetDiagnostics.filter((d) => d.state === "missing");
+        return (
+          <div className="px-3 py-1.5 border-b border-border bg-surface/40 text-[10px] flex-shrink-0" data-testid="asset-diagnostics">
+            <span className="text-muted" data-testid="asset-diag-summary">
+              Assets: {s.uploaded} uploaded · {s.finalReady} final · {s.cleanReady} clean · {s.planned} planned{s.missing > 0 ? ` · ${s.missing} missing` : ""}
+            </span>
+            {missing.length > 0 && (
+              <ul className="mt-1 ml-3 list-disc text-error" data-testid="asset-diag-issues">
+                {missing.map((d) => <li key={d.cutId}>{d.issue}</li>)}
+              </ul>
+            )}
+          </div>
+        );
+      })()}
       {/* Guided Finish-episode flow (#414): writer-language step status, one primary
           "Finish episode" action that uploads finals then prepares the publish
           markdown in order, and any blockers grouped by the step that fixes them —

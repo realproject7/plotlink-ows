@@ -895,3 +895,51 @@ describe("CutListPanel stale bubble-renderer warning (#381)", () => {
     expect(screen.queryByTestId("stale-bubble-export-warning")).not.toBeInTheDocument();
   });
 });
+
+describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
+  // Route-aware authFetch: cuts file, detect (none), and asset-diagnostics with a
+  // missing cut. The `.md` GET (episode state) and anything else returns {}.
+  function diagAuthFetch(diagnostics: unknown[], summary: Record<string, number>) {
+    return vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ diagnostics, summary }) });
+      }
+      if (url.includes("/detect-clean-images")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      }
+      if (url.includes("/cuts/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "genesis", cuts: [
+          makeCut({ id: 1, cleanImagePath: "assets/genesis/cut-01-clean.webp" }),
+          makeCut({ id: 2, cleanImagePath: "assets/genesis/cut-02-clean.webp" }),
+        ] }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+  }
+
+  it("shows the per-cut asset state tally and a precise missing diagnostic, plus a Refresh assets action", async () => {
+    const fn = diagAuthFetch(
+      [
+        { cutId: 1, kind: "image", state: "clean-ready", issue: null },
+        { cutId: 2, kind: "image", state: "missing", issue: 'Cut 2: clean image "assets/genesis/cut-02-clean.webp" — the file is missing' },
+      ],
+      { planned: 0, missing: 1, cleanReady: 1, finalReady: 0, uploaded: 0 },
+    );
+    render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+
+    const diag = await screen.findByTestId("asset-diagnostics");
+    expect(screen.getByTestId("asset-diag-summary")).toHaveTextContent("1 clean");
+    expect(screen.getByTestId("asset-diag-summary")).toHaveTextContent("1 missing");
+    // Precise per-cut reason, not a generic publish warning.
+    expect(screen.getByTestId("asset-diag-issues")).toHaveTextContent(/Cut 2: clean image .* the file is missing/);
+    expect(diag).toBeInTheDocument();
+
+    // The read-only Refresh assets action re-runs the rescan (asset-diagnostics fetched again).
+    const before = fn.mock.calls.filter((c) => String(c[0]).includes("/asset-diagnostics")).length;
+    fireEvent.click(screen.getByTestId("refresh-assets-btn"));
+    await waitFor(() => {
+      const after = fn.mock.calls.filter((c) => String(c[0]).includes("/asset-diagnostics")).length;
+      expect(after).toBeGreaterThan(before);
+    });
+  });
+});

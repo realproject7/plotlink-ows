@@ -206,4 +206,35 @@ describe("stale cartoon asset paths (#302)", () => {
     // The real file at the normalized target is NOT deleted by the repair.
     expect(fs.existsSync(path.join(storyDir, "assets/evil.webp"))).toBe(true);
   });
+
+  // #427: read-only per-cut asset diagnostics — for genesis.cuts.json too.
+  it("GET asset-diagnostics classifies each Genesis cut against disk (planned/clean-ready/missing/uploaded)", async () => {
+    const storyDir = path.join(tmpDir, "god-cell");
+    fs.mkdirSync(storyDir, { recursive: true });
+    const cf = createCutsFile("genesis", 4);
+    cf.cuts[0].cleanImagePath = "assets/genesis/cut-01-clean.webp"; // present → clean-ready
+    cf.cuts[1].cleanImagePath = "assets/genesis/cut-02-clean.webp"; // recorded but absent → missing
+    cf.cuts[2].cleanImagePath = "assets/genesis/cut-03-clean.webp"; cf.cuts[2].uploadedUrl = "https://x/3"; // uploaded
+    // cut 4 has no path → planned
+    writeCutsFile(storyDir, "genesis", cf);
+    writeAsset(storyDir, "assets/genesis/cut-01-clean.webp"); // only cut 1's file exists
+
+    const res = await app.request("/api/stories/god-cell/cuts/genesis/asset-diagnostics");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const byId = Object.fromEntries(body.diagnostics.map((d: { cutId: number; state: string; issue: string | null }) => [d.cutId, d]));
+    expect(byId[1].state).toBe("clean-ready");
+    expect(byId[2].state).toBe("missing");
+    expect(byId[2].issue).toMatch(/cut-02-clean\.webp/);
+    expect(byId[3].state).toBe("uploaded");
+    expect(byId[4].state).toBe("planned");
+    expect(body.summary).toMatchObject({ cleanReady: 1, missing: 1, uploaded: 1, planned: 1 });
+  });
+
+  it("GET asset-diagnostics 404s for a missing story / missing cuts file", async () => {
+    expect((await app.request("/api/stories/none/cuts/genesis/asset-diagnostics")).status).toBe(404);
+    const storyDir = path.join(tmpDir, "no-cuts");
+    fs.mkdirSync(storyDir, { recursive: true });
+    expect((await app.request("/api/stories/no-cuts/cuts/genesis/asset-diagnostics")).status).toBe(404);
+  });
 });

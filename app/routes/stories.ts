@@ -5,6 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { buildStoryProgress } from "../lib/story-progress";
+import { diagnoseCutAssets, summarizeAssetDiagnostics } from "../lib/cut-asset-diagnostics";
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
 import { syncCleanImages, cleanImageCandidates, sniffImageType, cleanImageBytesMatchMime, findStaleAssetPaths, clearStaleAssetPaths, type SniffedType } from "../lib/clean-image-sync";
@@ -780,6 +781,40 @@ stories.get("/:name/cuts/:plotFile/detect-clean-images", (c) => {
   );
 
   return c.json({ detected, stale });
+});
+
+/**
+ * GET /api/stories/:name/cuts/:plotFile/asset-diagnostics — read-only per-cut
+ * asset state rescan (#427).
+ *
+ * Classifies each cut's REAL asset state against the local story folder —
+ * planned / missing / clean-ready / final-ready / uploaded — with a precise
+ * per-cut reason when a recorded path doesn't resolve (so "files exist but
+ * aren't displayed" or "a typoed path" become a clear diagnostic instead of a
+ * generic publish warning). Works for genesis.cuts.json and plot-NN.cuts.json
+ * equally. Never mutates, uploads, or publishes anything.
+ */
+stories.get("/:name/cuts/:plotFile/asset-diagnostics", (c) => {
+  const name = safeName(c.req.param("name"));
+  const plotFile = safeName(c.req.param("plotFile"));
+  if (!name || !plotFile) return c.json({ error: "Invalid path" }, 400);
+  const storyDir = path.join(STORIES_DIR, name);
+
+  if (!fs.existsSync(storyDir) || !fs.statSync(storyDir).isDirectory()) {
+    return c.json({ error: "Story not found" }, 404);
+  }
+
+  let cutsFile;
+  try {
+    cutsFile = readCutsFile(storyDir, plotFile);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  if (!cutsFile) return c.json({ error: "Cuts file not found" }, 404);
+
+  const diagnostics = diagnoseCutAssets(cutsFile.cuts, (rel) => imageAssetIssue(storyDir, rel));
+  const summary = summarizeAssetDiagnostics(diagnostics);
+  return c.json({ diagnostics, summary });
 });
 
 /**
