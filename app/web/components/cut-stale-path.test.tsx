@@ -56,8 +56,9 @@ describe("CutListPanel stale asset path surfacing (#302)", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => expect(screen.getByText("Stale cut")).toBeInTheDocument());
-    // Collapsed header surfaces the missing state instead of "Clean ready".
-    expect(screen.getByText("Image missing")).toBeInTheDocument();
+    // The card surfaces the missing state as "Needs image" (#440), never "Ready
+    // for lettering"; the precise repair stays under Open details.
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs image");
 
     fireEvent.click(screen.getByText("Stale cut"));
     await waitFor(() => expect(screen.getByTestId("stale-asset-1")).toBeInTheDocument());

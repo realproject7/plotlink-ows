@@ -97,29 +97,39 @@ function getCutStatus(cut: Cut): CutStatus {
   return "missing";
 }
 
-const STATUS_LABEL: Record<CutStatus, string> = {
-  missing: "No image",
-  clean: "Clean ready",
-  lettered: "Lettered",
-  uploaded: "Uploaded",
-  text: "Text panel",
+// Creator-facing production-board status for a cut card (#440). One clear label
+// per cut + the single primary human action, instead of internal field names.
+type BoardTone = "muted" | "amber" | "green" | "accent";
+const BOARD_TONE_TEXT: Record<BoardTone, string> = {
+  muted: "text-muted", amber: "text-amber-700", green: "text-green-700", accent: "text-accent",
+};
+const BOARD_TONE_DOT: Record<BoardTone, string> = {
+  muted: "bg-muted/40", amber: "bg-amber-500", green: "bg-green-600", accent: "bg-accent",
 };
 
-const STATUS_COLOR: Record<CutStatus, string> = {
-  missing: "text-muted",
-  clean: "text-green-700",
-  lettered: "text-amber-700",
-  uploaded: "text-green-700",
-  text: "text-accent",
-};
+type BoardStatusKey = "uploaded" | "exported" | "convert" | "text" | "review" | "letter" | "needs-image";
+interface BoardStatus { key: BoardStatusKey; label: string; tone: BoardTone }
 
-const STATUS_DOT: Record<CutStatus, string> = {
-  missing: "bg-muted/40",
-  clean: "bg-green-600",
-  lettered: "bg-amber-500",
-  uploaded: "bg-green-600",
-  text: "bg-accent",
-};
+/**
+ * Map a cut's real state to one creator-facing board status (#440). `.png` clean
+ * images are "Needs conversion" (#441), never a red error; a recorded-but-missing
+ * path reads as "Needs image" (re-add the art) with the precise repair kept in
+ * Details. Precedence follows the pipeline: uploaded → exported → convert →
+ * letter/review → needs image.
+ */
+function boardStatus(cut: Cut, needsConversion: boolean, hasStale: boolean): BoardStatus {
+  if (cut.uploadedCid || cut.uploadedUrl) return { key: "uploaded", label: "Uploaded", tone: "green" };
+  if (cut.finalImagePath) return { key: "exported", label: "Exported", tone: "green" };
+  if (needsConversion) return { key: "convert", label: "Needs conversion", tone: "amber" };
+  if (isTextPanel(cut)) return { key: "text", label: "Ready for captions", tone: "accent" };
+  if (hasStale) return { key: "needs-image", label: "Needs image", tone: "muted" };
+  if (cut.cleanImagePath) {
+    return (cut.overlays?.length ?? 0) > 0
+      ? { key: "review", label: "Needs review", tone: "amber" }
+      : { key: "letter", label: "Ready for lettering", tone: "green" };
+  }
+  return { key: "needs-image", label: "Needs image", tone: "muted" };
+}
 
 function CutRow({
   cut,
@@ -230,29 +240,76 @@ function CutRow({
     }
   }, [authFetch, storyName, plotFile, cut.id, onUpdated]);
 
+  // Creator-facing board status + the single primary action for this cut (#440).
+  const board = boardStatus(cut, needsConversion, hasStale);
+  // A viewable thumbnail: the recorded clean image (the asset route serves PNG
+  // too, so a draft PNG previews) or the unrecorded convertible PNG.
+  const thumbPath = cut.cleanImagePath ?? conversionPng ?? null;
+  const primary: { label: string; onClick: () => void; testid: string } | null =
+    board.key === "convert" ? { label: convertingThis ? "Converting…" : "Convert image", onClick: handleConvertThis, testid: `card-convert-${cut.id}` }
+    : board.key === "letter" ? { label: "Add speech bubbles", onClick: onOpenEditor, testid: `card-letter-${cut.id}` }
+    : board.key === "review" ? { label: "Review cut", onClick: onOpenEditor, testid: `card-review-${cut.id}` }
+    : board.key === "text" ? { label: "Add captions", onClick: onOpenEditor, testid: `card-letter-${cut.id}` }
+    : board.key === "needs-image" ? { label: "Add artwork", onClick: onToggle, testid: `card-addart-${cut.id}` }
+    : null; // exported / uploaded — the next action is the episode-level upload/publish
+
   return (
     <div
       ref={rowRef}
       data-cut-row={cut.id}
       className={`border rounded ${expanded ? "border-accent/30" : "border-border"}`}
     >
-      <button
-        onClick={onToggle}
-        className="w-full px-3 py-2 text-left flex items-center gap-2 text-sm hover:bg-surface"
-      >
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[status]}`} />
-        <span className="font-mono text-xs text-muted">#{cut.id}</span>
-        <span className="font-mono text-[10px] text-muted">{cut.shotType}</span>
-        <span className="truncate text-xs text-foreground flex-1">
-          {cut.description || "No description"}
-        </span>
-        <span
-          className={`text-[10px] flex-shrink-0 ${needsConversion ? "text-amber-700" : hasStale ? "text-error" : STATUS_COLOR[status]}`}
-          data-testid={needsConversion ? `cut-status-needs-conversion-${cut.id}` : undefined}
+      {/* Card head — always visible: status, identity, thumbnail, one primary
+          action, plus an "Open details" toggle for the technical controls (#440). */}
+      <div className="px-3 py-2 space-y-2" data-testid={`cut-card-${cut.id}`}>
+        <div className="flex items-center gap-2 text-sm">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${BOARD_TONE_DOT[board.tone]}`} />
+          <span className="font-medium text-xs text-foreground">Cut {String(cut.id).padStart(2, "0")}</span>
+          <span className="font-mono text-[10px] text-muted">· {cut.shotType}</span>
+          <span className={`ml-auto text-[10px] font-medium flex-shrink-0 ${BOARD_TONE_TEXT[board.tone]}`} data-testid={`cut-card-status-${cut.id}`}>
+            {board.label}
+          </span>
+        </div>
+        {thumbPath ? (
+          <AssetImage
+            storyName={storyName}
+            assetPath={thumbPath}
+            authFetch={authFetch}
+            alt={`Cut ${cut.id} artwork`}
+            className="w-full max-h-44 object-contain rounded border border-border bg-white"
+          />
+        ) : (
+          <div className="w-full h-20 rounded border border-dashed border-border bg-surface/40 flex items-center justify-center text-[10px] text-muted" data-testid={`cut-card-noart-${cut.id}`}>
+            {isTextPanel(cut) ? "Text panel — no artwork needed" : "No artwork yet"}
+          </div>
+        )}
+        <button
+          onClick={onToggle}
+          data-testid={`cut-desc-${cut.id}`}
+          className="block w-full text-left text-[11px] text-muted hover:text-foreground"
         >
-          {needsConversion ? "Needs conversion" : hasStale ? "Image missing" : STATUS_LABEL[status]}
-        </span>
-      </button>
+          {cut.description || "No description"}
+        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {primary && (
+            <button
+              onClick={primary.onClick}
+              disabled={board.key === "convert" && (convertingThis || converting)}
+              data-testid={primary.testid}
+              className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim disabled:opacity-50"
+            >
+              {primary.label}
+            </button>
+          )}
+          <button
+            onClick={onToggle}
+            data-testid={`cut-details-${cut.id}`}
+            className="px-2.5 py-1 text-[11px] rounded border border-border text-muted hover:border-accent hover:text-accent"
+          >
+            {expanded ? "Hide details" : "Open details"}
+          </button>
+        </div>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t border-border">
@@ -295,19 +352,8 @@ function CutRow({
             </div>
           )}
 
-          {/* Clean image preview — loaded through authFetch since the asset
-              route is behind requireAuth (a raw <img src> can't send the token). */}
-          {cut.cleanImagePath && (
-            <div className="mt-2">
-              <AssetImage
-                storyName={storyName}
-                assetPath={cut.cleanImagePath}
-                authFetch={authFetch}
-                alt={`Cut ${cut.id} clean`}
-                className="w-full max-h-48 object-contain rounded border border-border bg-white"
-              />
-            </div>
-          )}
+          {/* The clean/artwork thumbnail now lives in the always-visible card
+              head (#440); Details holds the technical controls below. */}
 
           {/* Clean image: copy generation prompt + upload the generated file.
               Text/interstitial panels need no clean image (#351), so this whole
@@ -936,10 +982,41 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     .filter((d) => d.state === "needs-conversion" && d.issue)
     .map((d) => d.issue as string);
 
+  // Creator-facing episode header + progress summary (#440). Counts the human
+  // milestones, not internal fields: artwork found (any clean image incl. a draft
+  // PNG), converted (publishable WebP/JPEG), lettered (bubbles placed/exported),
+  // uploaded. PNG-only cuts read as "artwork found" but not yet "converted".
+  const episodeLabel = fileName === "genesis.md"
+    ? "Genesis / Episode 1"
+    : `Episode ${parseInt(plotFile.match(/\d+/)?.[0] ?? "0", 10) + 1}`;
+  const episodeTitle = typeof (cutsFile as { title?: unknown }).title === "string" ? (cutsFile as { title?: string }).title : null;
+  const imageCuts = cutsFile.cuts.filter((c) => !isTextPanel(c));
+  const boardSummary = {
+    cuts: cutsFile.cuts.length,
+    artwork: imageCuts.filter((c) => c.cleanImagePath || conversionByCut.has(c.id)).length,
+    converted: imageCuts.filter((c) => c.cleanImagePath && /\.(webp|jpe?g)$/i.test(c.cleanImagePath)).length,
+    lettered: cutsFile.cuts.filter((c) => (c.overlays?.length ?? 0) > 0 || !!c.finalImagePath).length,
+    uploaded: cutsFile.cuts.filter((c) => c.uploadedCid || c.uploadedUrl).length,
+  };
+
   return (
     <div className="h-full min-h-[22rem] flex flex-col overflow-hidden" data-testid="cut-list-panel">
-      {/* Header with stats */}
-      <div className="px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[10px] flex-shrink-0">
+      {/* Episode header + creator-facing progress summary (#440). */}
+      <div className="px-3 py-2 border-b border-border flex-shrink-0" data-testid="cut-board-header">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-serif text-foreground truncate">{episodeLabel}</span>
+          {episodeTitle && <span className="text-muted truncate">· {episodeTitle}</span>}
+        </div>
+        <div className="mt-0.5 text-[10px] text-muted" data-testid="cut-board-summary">
+          {boardSummary.cuts} cuts · {boardSummary.artwork} artwork found · {boardSummary.converted} converted · {boardSummary.lettered} lettered · {boardSummary.uploaded} uploaded
+        </div>
+      </div>
+      {/* Lower-level / manual controls, collapsed by default so the board stays
+          focused on per-cut actions (#440). The guided Finish flow + per-cut
+          primary actions are the main path; these stay for power users. */}
+      <details className="border-b border-border flex-shrink-0" data-testid="cut-advanced">
+      <summary className="px-3 py-1.5 text-[10px] text-muted cursor-pointer hover:text-foreground">Technical details</summary>
+      <div className="px-3 py-2 flex flex-wrap items-center gap-2 text-[10px]">
         <span className="font-mono text-muted">{cutsFile.cuts.length} cuts</span>
         {stats.missing > 0 && <span className="text-muted">{stats.missing} missing</span>}
         {stats.clean > 0 && <span className="text-green-700">{stats.clean} clean</span>}
@@ -1002,6 +1079,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
           {uploadProgress || "Upload & Prepare for Publish"}
         </button>
       </div>
+      </details>
       {/* Plain-language workflow + text-panel explainer (#360) so a non-technical
           writer understands the order of operations and what a text panel is. */}
       <div
