@@ -13,6 +13,7 @@ import {
   detectOverlappingOverlays,
   isOverlayOutOfBounds,
   createOverlay,
+  comfortableOverlaySize,
   bubbleLayoutOptionsForOverlay,
   balloonRadiusForOverlay,
   type Overlay,
@@ -214,11 +215,41 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     return () => observer.disconnect();
   }, [updateImageBounds]);
 
+  // Size an overlay so ordinary narration/dialogue lines don't overflow the box
+  // the instant they're added (#452). With the loaded fonts + image metrics it
+  // grows the height (at a comfortable on-image width) until the text fits at the
+  // default font; without measurement it falls back to a generous default that
+  // fits ordinary lines, instead of the tiny create-default. The writer can still
+  // resize freely afterward, and the overflow warning stays useful if they shrink it.
+  const fittedSize = useCallback((o: Overlay): { width: number; height: number } => {
+    const comfortable = comfortableOverlaySize(o.type, o.x, o.y);
+    const width = comfortable.width;
+    const maxH = Math.max(0.08, 1 - o.y);
+    if (!o.text || !fontsReady || imageBounds.width <= 0) {
+      return comfortable;
+    }
+    const fontFamily = o.type === "sfx" ? displayFontFamily : bodyFontFamily;
+    const wPx = toPixel(width, imageBounds.width);
+    let height = o.type === "sfx" ? 0.08 : 0.12;
+    for (let i = 0; i < 24; i++) {
+      const h = Math.min(height, maxH);
+      const hPx = toPixel(h, imageBounds.height);
+      const layout = layoutBubbleText(
+        measureWidth(fontFamily), o.text, wPx, hPx,
+        bubbleLayoutOptionsForOverlay({ ...o, width, height: h }, imageBounds.height || 300, wPx, hPx),
+      );
+      if (!layout.overflow || h >= maxH) return { width, height: h };
+      height += 0.03;
+    }
+    return { width, height: Math.min(height, maxH) };
+  }, [fontsReady, imageBounds, measureWidth, bodyFontFamily, displayFontFamily]);
+
   const addOverlay = useCallback((type: OverlayType) => {
     const o = createOverlay(type, 0.1 + Math.random() * 0.3, 0.1 + Math.random() * 0.3);
-    setOverlays((prev) => [...prev, o]);
-    setSelectedId(o.id);
-  }, []);
+    const sized: Overlay = { ...o, ...fittedSize(o) };
+    setOverlays((prev) => [...prev, sized]);
+    setSelectedId(sized.id);
+  }, [fittedSize]);
 
   // Insert a line from the cut's cuts.json script (#336) as a prefilled overlay,
   // so the writer never has to hand-copy dialogue/narration/SFX out of the JSON.
@@ -229,9 +260,10 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
       text: line.text,
       ...(line.type === "speech" && line.speaker ? { speaker: line.speaker } : {}),
     };
-    setOverlays((prev) => [...prev, filled]);
-    setSelectedId(filled.id);
-  }, []);
+    const sized: Overlay = { ...filled, ...fittedSize(filled) };
+    setOverlays((prev) => [...prev, sized]);
+    setSelectedId(sized.id);
+  }, [fittedSize]);
 
   const updateOverlay = useCallback((id: string, changes: Partial<Overlay>) => {
     setOverlays((prev) => prev.map((o) => o.id === id ? { ...o, ...changes } : o));
@@ -851,6 +883,17 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
                   data-testid="inspector-text"
                 />
               </label>
+
+              {/* One-click resize so a long line that overflows can be fitted
+                  without hand-dragging the box (#452). */}
+              <button
+                onClick={() => updateOverlay(selectedOverlay.id, fittedSize(selectedOverlay))}
+                data-testid="inspector-fit-text"
+                className="w-full px-2 py-1 text-[11px] border border-border rounded hover:border-accent hover:text-accent"
+                title="Resize this overlay so its text fits without overflowing"
+              >
+                Fit box to text
+              </button>
 
               <div className="space-y-1.5 rounded border border-border/70 p-2" data-testid="inspector-typography">
                 <div className="flex items-center justify-between gap-2">

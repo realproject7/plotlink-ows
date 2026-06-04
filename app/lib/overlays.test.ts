@@ -3,6 +3,7 @@ import {
   toPixel,
   toNorm,
   createOverlay,
+  comfortableOverlaySize,
   speechTailPoints,
   balloonPathD,
   balloonOutline,
@@ -88,6 +89,30 @@ describe("createOverlay", () => {
     const a = createOverlay("speech");
     const b = createOverlay("speech");
     expect(a.id).not.toBe(b.id);
+  });
+});
+
+describe("comfortableOverlaySize (#452)", () => {
+  it("gives narration/dialogue a roomier box than the create-default so ordinary lines don't immediately overflow", () => {
+    const narration = comfortableOverlaySize("narration", 0.1, 0.1);
+    expect(narration).toEqual({ width: 0.5, height: 0.2 });
+    expect(comfortableOverlaySize("speech", 0.1, 0.1)).toEqual({ width: 0.5, height: 0.2 });
+    // Roomier than createOverlay's minimal 0.25 × 0.12.
+    const created = createOverlay("narration");
+    expect(narration.width).toBeGreaterThan(created.width);
+    expect(narration.height).toBeGreaterThan(created.height);
+  });
+
+  it("keeps SFX compact", () => {
+    expect(comfortableOverlaySize("sfx", 0.1, 0.1)).toEqual({ width: 0.3, height: 0.1 });
+  });
+
+  it("clamps so the box stays on the image from (x, y)", () => {
+    const near = comfortableOverlaySize("narration", 0.7, 0.9);
+    expect(near.width).toBeCloseTo(0.3, 6);
+    expect(near.height).toBeCloseTo(0.1, 6);
+    // A near-edge origin still yields a usable minimum box.
+    expect(comfortableOverlaySize("narration", 0.98, 0.98)).toEqual({ width: 0.15, height: 0.06 });
   });
 });
 
