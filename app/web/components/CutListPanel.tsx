@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage, assetUrl } from "./asset-image";
-import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
+import { buildCodexTaskPrompt, buildLetteringPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
 import { withRateLimitRetry, createUploadThrottle, type RetryDeps } from "../lib/upload-retry";
@@ -190,6 +190,10 @@ function CutRow({
   // generated PNG into this cut without hunting through a hidden folder.
   const [showCodexPicker, setShowCodexPicker] = useState(false);
   const [convertingThis, setConvertingThis] = useState(false);
+  // Lettering is a first-class step (#442): an intentional Manual vs AI-draft
+  // choice per cut, surfaced on the card (not hidden under Edit).
+  const [letteringMode, setLetteringMode] = useState<"manual" | "ai">("manual");
+  const [letteringCopied, setLetteringCopied] = useState(false);
   const status = getCutStatus(cut);
   // A recorded cleanImagePath/finalImagePath whose file is missing/invalid (#302):
   // surface it precisely rather than letting the field-based status claim the cut
@@ -255,9 +259,22 @@ function CutRow({
   // A viewable thumbnail: the recorded clean image (the asset route serves PNG
   // too, so a draft PNG previews) or the unrecorded convertible PNG.
   const thumbPath = cut.cleanImagePath ?? conversionPng ?? null;
+  // A cut sitting at the lettering step (#442): clean art is ready, nothing is
+  // exported/uploaded yet, and it isn't blocked on convert/stale. These get the
+  // first-class Manual/AI-draft lettering choice instead of a single button.
+  const bubblesPlaced = cut.overlays?.length ?? 0;
+  const atLetteringStage =
+    !isTextPanel(cut) && !!cut.cleanImagePath && !cut.finalImagePath &&
+    !cut.uploadedCid && !cut.uploadedUrl && !hasStale && !needsConversion;
+
+  const copyLetteringPrompt = useCallback(() => {
+    navigator.clipboard?.writeText(buildLetteringPrompt(cut as unknown as LibCut, plotFile));
+    setLetteringCopied(true);
+    setTimeout(() => setLetteringCopied(false), 2000);
+  }, [cut, plotFile]);
+
   const primary: { label: string; onClick: () => void; testid: string } | null =
     board.key === "convert" ? { label: convertingThis ? "Converting…" : "Convert image", onClick: handleConvertThis, testid: `card-convert-${cut.id}` }
-    : board.key === "letter" ? { label: "Add speech bubbles", onClick: onOpenEditor, testid: `card-letter-${cut.id}` }
     : board.key === "review" ? { label: "Review cut", onClick: onOpenEditor, testid: `card-review-${cut.id}` }
     : board.key === "text" ? { label: "Add captions", onClick: onOpenEditor, testid: `card-letter-${cut.id}` }
     : board.key === "needs-image" ? { label: "Add artwork", onClick: onToggle, testid: `card-addart-${cut.id}` }
@@ -300,8 +317,52 @@ function CutRow({
         >
           {cut.description || "No description"}
         </button>
+        {/* Lettering is a first-class, visible step (#442): an intentional
+            Manual vs AI-draft choice on the card, then the matching CTA. */}
+        {atLetteringStage && (
+          <div className="space-y-1" data-testid={`lettering-${cut.id}`}>
+            <div className="text-[10px] font-medium text-muted uppercase tracking-wider">Lettering</div>
+            <label className="flex items-center gap-1.5 text-[11px] text-foreground">
+              <input
+                type="radio" name={`lettering-mode-${cut.id}`} checked={letteringMode === "manual"}
+                onChange={() => setLetteringMode("manual")} data-testid={`lettering-mode-manual-${cut.id}`}
+              />
+              Manual — I place bubbles myself
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] text-foreground">
+              <input
+                type="radio" name={`lettering-mode-${cut.id}`} checked={letteringMode === "ai"}
+                onChange={() => setLetteringMode("ai")} data-testid={`lettering-mode-ai-${cut.id}`}
+              />
+              AI draft — ask the agent to place initial bubbles
+            </label>
+            {letteringMode === "ai" && (
+              <p className="text-[10px] text-muted">
+                Paste it to your agent, then review the draft bubbles here and export the final cut.
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 flex-wrap">
-          {primary && (
+          {atLetteringStage ? (
+            letteringMode === "manual" ? (
+              <button
+                onClick={onOpenEditor}
+                data-testid={`add-bubbles-${cut.id}`}
+                className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
+              >
+                {bubblesPlaced > 0 ? "Review lettering" : "Add speech bubbles"}
+              </button>
+            ) : (
+              <button
+                onClick={copyLetteringPrompt}
+                data-testid={`copy-lettering-${cut.id}`}
+                className="px-2.5 py-1 text-[11px] font-medium rounded border border-accent/40 text-accent hover:bg-accent/5"
+              >
+                {letteringCopied ? "Copied!" : "Copy AI lettering prompt"}
+              </button>
+            )
+          ) : primary ? (
             <button
               onClick={primary.onClick}
               disabled={board.key === "convert" && (convertingThis || converting)}
@@ -310,7 +371,7 @@ function CutRow({
             >
               {primary.label}
             </button>
-          )}
+          ) : null}
           <button
             onClick={onToggle}
             data-testid={`cut-details-${cut.id}`}
