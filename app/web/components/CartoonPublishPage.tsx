@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress } from "@app-lib/story-progress";
+import { cartoonGenesisReadiness, classifyCartoonReadiness, groupCartoonIssues } from "@app-lib/cartoon-readiness";
+import type { Cut } from "@app-lib/cuts";
+import { derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 
 interface CartoonPublishPageProps {
   storyName: string;
@@ -42,6 +45,14 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // Diagnostics inputs for the active episode (#461): the migrated publish-title,
+  // genesis-readiness, and grouped-issues panels that used to live in the episode
+  // view. The episode's markdown content + cut plan + (genesis) structure.md drive
+  // the same pure helpers PreviewPanel used, so the diagnostics read identically.
+  const [activeContent, setActiveContent] = useState<string | null>(null);
+  const [activeCuts, setActiveCuts] = useState<Cut[] | null>(null);
+  const [activeEpisodeTitle, setActiveEpisodeTitle] = useState<string | null>(null);
+  const [structureContent, setStructureContent] = useState<string | null>(null);
 
   // Load the imported Genesis cover (assets/cover.webp) as a File so the publish
   // flow attaches it on createStoryline — the same auto-detect the episode used to
@@ -79,6 +90,64 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
     load();
     return () => { cancelled = true; };
   }, [storyName, authFetch, refreshKey]);
+
+  // The active episode file to diagnose: first unpublished (Genesis first).
+  const activeFile = progress?.episodes?.find((e) => !e.published)?.file ?? null;
+  const activeIsGenesis = activeFile === "genesis.md";
+
+  // Reset the per-episode diagnostics state DURING RENDER whenever the active
+  // episode (or refresh) changes, so a stale episode's content/cuts/structure
+  // never leak beside another and the publish gate doesn't read prior data while
+  // the new fetch is in flight (#461). Reset-during-render (via a loaded-key
+  // useState, mirroring WorkflowCoach) avoids the setState-in-effect cascade the
+  // ESLint rule flags. The effect below only performs the async fetch + assigns.
+  const diagKey = JSON.stringify([activeFile ?? "", refreshKey]);
+  const [loadedDiagKey, setLoadedDiagKey] = useState<string | null>(null);
+  if (loadedDiagKey !== diagKey) {
+    setLoadedDiagKey(diagKey);
+    setActiveContent(null);
+    setActiveCuts(null);
+    setActiveEpisodeTitle(null);
+    setStructureContent(null);
+  }
+
+  // Fetch the active episode's markdown + cut plan (+ structure.md for Genesis)
+  // so the migrated diagnostics can recompute with the same helpers PreviewPanel
+  // used (#461). Best-effort: missing cuts (404) ⇒ null.
+  useEffect(() => {
+    if (!activeFile) return;
+    let cancelled = false;
+    const plotKey = activeFile.replace(/\.md$/, "");
+    (async () => {
+      try {
+        const reqs: Promise<Response>[] = [
+          authFetch(`/api/stories/${storyName}/${activeFile}`),
+          authFetch(`/api/stories/${storyName}/cuts/${plotKey}`),
+        ];
+        if (activeIsGenesis) reqs.push(authFetch(`/api/stories/${storyName}/structure.md`));
+        const [fileRes, cutsRes, structRes] = await Promise.all(reqs);
+        if (cancelled) return;
+        setActiveContent(fileRes.ok ? (await fileRes.json()).content ?? "" : "");
+        if (cutsRes.ok) {
+          const cutsData = await cutsRes.json();
+          if (cancelled) return;
+          setActiveCuts(Array.isArray(cutsData.cuts) ? cutsData.cuts : []);
+          setActiveEpisodeTitle(typeof cutsData.title === "string" ? cutsData.title : null);
+        } else {
+          setActiveCuts(null);
+          setActiveEpisodeTitle(null);
+        }
+        if (activeIsGenesis && structRes) {
+          setStructureContent(structRes.ok ? (await structRes.json())?.content ?? null : null);
+        } else {
+          setStructureContent(null);
+        }
+      } catch {
+        if (!cancelled) { setActiveContent(""); setActiveCuts(null); setActiveEpisodeTitle(null); setStructureContent(null); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeFile, activeIsGenesis, storyName, authFetch, refreshKey]);
 
   if (loading) {
     return <div className="h-full flex items-center justify-center text-muted text-sm" data-testid="publish-page-loading">Loading publish readiness…</div>;
@@ -123,7 +192,41 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
   const isGenesisActive = active.file === "genesis.md";
   const metaReady = !isGenesisActive || (!!genre && !!language);
   const isPublishing = !!publishingFile && publishingFile === active.file;
-  const canPublish = ready && metaReady && !isPublishing && !!onPublish;
+
+  // ── Migrated episode diagnostics (#461) ──────────────────────────────────
+  // The same pure helpers PreviewPanel used, now driven by the active episode's
+  // fetched markdown/cuts/structure. Computed only once the content is loaded so
+  // a still-loading panel doesn't flash a false "raw title" block.
+  const diagLoaded = activeContent !== null;
+  // #358: the exact public title this episode will publish with, plus its block
+  // states (raw filename, or — for plots — only a generic "Episode NN" fallback).
+  const resolvedPublishTitle = diagLoaded
+    ? derivePublishTitle({
+        fileName: active.file,
+        fileContent: activeContent ?? "",
+        storySlug: storyName,
+        structureContent,
+        contentType: "cartoon",
+        episodeTitle: activeEpisodeTitle,
+      })
+    : null;
+  const rawTitleBlocked = !!resolvedPublishTitle && isRawFilenameTitle(resolvedPublishTitle, active.file);
+  const episodeTitleMissing = !isGenesisActive && diagLoaded
+    && !hasExplicitEpisodeTitle({ fileContent: activeContent ?? "", episodeTitle: activeEpisodeTitle });
+  const titleBlocked = rawTitleBlocked || episodeTitleMissing;
+  // #359: cartoon Genesis prologue readiness (blockers disable publish).
+  const genesisReadiness = isGenesisActive && diagLoaded ? cartoonGenesisReadiness(activeContent ?? "") : null;
+  const genesisBlocked = !!genesisReadiness && genesisReadiness.blockers.length > 0;
+  // #360: grouped publish-readiness issues for a blocked plot (shown only when
+  // there are issues).
+  const readinessReport = !isGenesisActive && diagLoaded && activeCuts !== null
+    ? classifyCartoonReadiness(activeContent ?? "", activeCuts)
+    : null;
+  const cartoonIssues = readinessReport && readinessReport.stage === "error" ? readinessReport.issues : [];
+
+  // The diagnostics also gate publish (mirror PreviewPanel's titleBlocked /
+  // genesisBlocked), so a raw title / weak Genesis can't publish from here either.
+  const canPublish = ready && metaReady && !titleBlocked && !genesisBlocked && !isPublishing && !!onPublish;
 
   const handlePublish = async () => {
     if (!canPublish || !onPublish) return;
@@ -150,6 +253,82 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
           </li>
         ))}
       </ul>
+
+      {/* Migrated episode diagnostics (#461): the publish title (#358), Genesis
+          prologue readiness (#359), and grouped publish issues (#360) that used
+          to render in the episode action bar — same helpers, same data-testids. */}
+      {resolvedPublishTitle && (
+        <div
+          className="mt-4 flex flex-col gap-0.5 max-w-xl"
+          data-testid="publish-title-preview"
+          data-raw={rawTitleBlocked ? "true" : "false"}
+          data-blocked={titleBlocked ? "true" : "false"}
+        >
+          <span className="text-[11px] text-foreground">
+            <span className="font-medium">{isGenesisActive ? "Story title" : "Episode title"}:</span>{" "}
+            <span className={titleBlocked ? "text-error font-medium" : "text-foreground"}>{resolvedPublishTitle}</span>
+          </span>
+          {rawTitleBlocked ? (
+            <span className="text-[10px] text-error" data-testid="publish-title-raw-error">
+              This would publish as a raw filename. {isGenesisActive
+                ? "Add a real “# Title” heading to genesis.md"
+                : "Set a title in the cut plan (or add a “# Title” to the episode)"} before publishing.
+            </span>
+          ) : episodeTitleMissing ? (
+            <span className="text-[10px] text-error" data-testid="publish-title-episode-required">
+              “{resolvedPublishTitle}” is a generic placeholder, not a reader-facing title, so it can’t be published. Set a real episode title in the cut plan (or add a “# Title” to the episode) — e.g. “Episode 01 — The Couple Coupon” — before publishing.
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      {genesisReadiness && (
+        <div
+          className="mt-4 flex flex-col gap-1 rounded border border-border bg-surface/50 p-2 max-w-xl"
+          data-testid="cartoon-genesis-readiness"
+          data-blocked={genesisBlocked ? "true" : "false"}
+        >
+          <span className="text-[11px] font-medium text-foreground">Story opening (Prologue)</span>
+          <span className="text-[10px] text-muted" data-testid="genesis-readiness-hint">
+            Genesis is the first thing readers see. Write it as the story opening/prologue, not a synopsis — set up the premise and stakes, then bridge into Episode 01.
+          </span>
+          {genesisReadiness.blockers.map((b, i) => (
+            <span key={`b-${i}`} className="text-[10px] text-error" data-testid="genesis-readiness-blocker">{b}</span>
+          ))}
+          {genesisReadiness.warnings.map((w, i) => (
+            <span key={`w-${i}`} className="text-[10px] text-amber-600" data-testid="genesis-readiness-warning">{w}</span>
+          ))}
+        </div>
+      )}
+
+      {cartoonIssues.length > 0 && (
+        <div
+          className="mt-4 flex flex-col gap-2 rounded-xl border border-error/30 bg-error/5 px-3 py-3 max-w-xl"
+          data-testid="cartoon-publish-issues"
+        >
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-error px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Before publish</span>
+            <span className="text-xs font-medium text-foreground">Finish these workflow steps</span>
+          </div>
+          {groupCartoonIssues(cartoonIssues).map((g) => (
+            <div
+              key={g.key}
+              className="rounded-lg border border-error/15 bg-background/70 px-2.5 py-2"
+              data-testid={`cartoon-issue-group-${g.key}`}
+            >
+              <span className="text-[11px] font-medium text-foreground">{g.title}</span>
+            </div>
+          ))}
+          <details className="text-[10px] text-muted" data-testid="cartoon-technical-details">
+            <summary className="cursor-pointer select-none">Technical details</summary>
+            <ul className="mt-1 ml-3 list-disc">
+              {cartoonIssues.map((issue, i) => (
+                <li key={i} className="font-mono break-words">{issue}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-col gap-2 max-w-xl">
         {!coverDone && (
@@ -197,6 +376,12 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
         ) : !metaReady ? (
           <p className="text-[11px] text-amber-700" data-testid="publish-needs-metadata">
             Set the genre and language in Story Info before publishing.
+          </p>
+        ) : titleBlocked || genesisBlocked ? (
+          <p className="text-[11px] text-error" data-testid="publish-title-blocked-reason">
+            {genesisBlocked
+              ? "Fix the Story opening issues above before publishing."
+              : "Set a real reader-facing title above before publishing."}
           </p>
         ) : null}
         {publishError && (

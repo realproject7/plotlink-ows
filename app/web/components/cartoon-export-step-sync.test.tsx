@@ -2,10 +2,13 @@ import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import { installObjectUrlStub } from "./asset-test-utils";
 
-// #343: after a lettering export writes finalImagePath/exportedAt, the global
-// Episode steps panel (in PreviewPanel) must refresh in lockstep with the cut
-// cards (in the embedded CutListPanel) — it previously stayed at
-// "Export final images (0 / 1 cut)" because PreviewPanel never re-fetched cuts.
+// #343: after a lettering export writes finalImagePath/exportedAt, the cut
+// workspace must reflect it in lockstep with the cut cards.
+//
+// #461: the global Episode steps panel was removed from the cartoon episode view
+// (publish/production checklist moved to the Publish tab + FinishEpisodePanel), so
+// this now asserts the export completes and the cut board reflects the exported
+// cut — the workspace-level sync that survives the migration.
 beforeAll(() => {
   installObjectUrlStub();
   global.ResizeObserver = class {
@@ -57,15 +60,15 @@ function makeStatefulFetch() {
   return { fetch, state };
 }
 
-describe("cartoon export → Episode steps sync (#343)", () => {
-  it("advances the Episode export step from 0/1 to 1/1 after a lettering export", async () => {
+describe("cartoon export → cut workspace sync (#343)", () => {
+  it("exports the cut and reflects the exported final in the workspace", async () => {
     vi.doMock("./export-cut", () => ({
       exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
       ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
     }));
     try {
       const { PreviewPanel } = await import("./PreviewPanel");
-      const { fetch } = makeStatefulFetch();
+      const { fetch, state } = makeStatefulFetch();
       render(
         <PreviewPanel
           storyName="story"
@@ -77,12 +80,8 @@ describe("cartoon export → Episode steps sync (#343)", () => {
         />,
       );
 
-      // Episode steps: export is the current step at 0 / 1 before exporting.
-      await waitFor(() => expect(screen.getByTestId("cartoon-step-export")).toHaveAttribute("data-status", "current"));
-      expect(screen.getByTestId("cartoon-step-export-detail")).toHaveTextContent("0 / 1 cut");
-
       // Open the cut editor: Edit tab → expand cut → Open editor.
-      fireEvent.click(screen.getByText("Edit"));
+      fireEvent.click(await screen.findByRole("button", { name: /^Edit/ }));
       fireEvent.click(await screen.findByText("Opening shot"));
       fireEvent.click(await screen.findByText("Open editor"));
 
@@ -93,11 +92,15 @@ describe("cartoon export → Episode steps sync (#343)", () => {
       act(() => { fireEvent.load(img); });
       await act(async () => { fireEvent.click(screen.getByTestId("export-btn")); });
 
-      // The Episode steps panel refreshes: export now done at 1 / 1, upload next.
-      await waitFor(() => expect(screen.getByTestId("cartoon-step-export")).toHaveAttribute("data-status", "done"));
-      expect(screen.getByTestId("cartoon-step-export-detail")).toHaveTextContent("1 / 1 cut");
-      expect(screen.getByTestId("cartoon-step-upload")).toHaveAttribute("data-status", "current");
-      expect(screen.getByTestId("cartoon-next-step")).toHaveTextContent(/upload the exported final images/i);
+      // The export wrote the final image, and the workspace re-fetched cuts (the
+      // post-export sync), so the cut plan reflects the now-exported cut.
+      await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/export-final/"), expect.objectContaining({ method: "POST" })));
+      expect(state.cut.finalImagePath).toBe("assets/plot-01/cut-01-final.webp");
+      // A cuts GET re-fetch fires after the export to resync the workspace.
+      await waitFor(() => {
+        const cutsGets = fetch.mock.calls.filter((c) => String(c[0]).includes("/cuts/") && (!(c[1] as RequestInit | undefined)?.method || ((c[1] as RequestInit).method ?? "GET").toUpperCase() === "GET"));
+        expect(cutsGets.length).toBeGreaterThan(1);
+      });
     } finally {
       vi.doUnmock("./export-cut");
     }

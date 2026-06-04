@@ -852,6 +852,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           hasGenesis={selectedStory ? genesisStories.has(selectedStory) : false}
           onViewProgress={() => setSelectedFile(null)}
           onOpenFile={(file) => selectedStory && handleSelectFile(selectedStory, file)}
+          onViewPublish={() => setCartoonView("publish")}
         />
         )}
         {publishProgress && (

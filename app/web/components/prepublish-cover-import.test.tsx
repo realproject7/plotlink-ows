@@ -56,12 +56,15 @@ async function renderDraft(authFetch: ReturnType<typeof makeAuthFetch>) {
       onPublish={vi.fn()}
       publishingFile={null}
       walletAddress={WALLET}
-      contentType="cartoon"
+      contentType="fiction"
     />,
   );
   await screen.findByTestId("prepublish-cover");
 }
 
+// #461: the pre-publish cover picker (with the Codex-image import) renders for
+// FICTION genesis only now. The import wiring is content-type agnostic, so these
+// tests run on a fiction genesis (unchanged behavior).
 describe("PreviewPanel cover import (#301)", () => {
   it("converts a PNG, saves it via import-cover, and loads it as the cover", async () => {
     mockConvert.mockResolvedValue(new Blob([new Uint8Array(3000)], { type: "image/webp" }));

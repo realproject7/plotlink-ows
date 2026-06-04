@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { installObjectUrlStub } from "./asset-test-utils";
 
 // #450: the cartoon publish controls must not duplicate Story Info metadata —
@@ -36,22 +36,40 @@ function makeAuthFetch() {
 }
 
 describe("cartoon publish controls are free of Story Info metadata (#450)", () => {
-  it("removes the genre/language selects and the adult-content flag, pointing the writer to Story Info", async () => {
+  // #461: the cartoon episode has no inline publish controls at all now — no
+  // genre/language selects, no adult-content flag, no inline publish button, and
+  // no cover picker. The publish action + cover live on the Publish tab, metadata
+  // on Story Info. The episode shows the compact "Review publish checklist" CTA.
+  it("shows no inline publish controls on the cartoon episode — only the Review-publish CTA", async () => {
     render(
       <PreviewPanel
         storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
         onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
+        onViewPublish={vi.fn()}
       />,
     );
-    await waitFor(() => expect(screen.getByRole("button", { name: "Publish to PlotLink" })).toBeInTheDocument());
-    // Story Info metadata controls are gone from the cartoon publish surface.
+    await screen.findByTestId("cartoon-review-publish");
+    expect(screen.queryByText("Publish to PlotLink")).not.toBeInTheDocument();
     expect(screen.queryByTestId("publish-genre-select")).not.toBeInTheDocument();
     expect(screen.queryByTestId("publish-language-select")).not.toBeInTheDocument();
     expect(screen.queryByText("This story contains adult content (18+)")).not.toBeInTheDocument();
-    // …and the writer is pointed at Story Info instead of inline selects.
-    expect(screen.getByTestId("cartoon-metadata-needs-story-info")).toBeInTheDocument();
-    // The cover-at-publish control is retained (also editable in Story Info).
-    expect(screen.getByTestId("prepublish-cover")).toBeInTheDocument();
+    expect(screen.queryByTestId("cartoon-metadata-needs-story-info")).not.toBeInTheDocument();
+    // The cover-at-publish picker is gone from the episode (it moved to the
+    // Publish tab / Story Info).
+    expect(screen.queryByTestId("prepublish-cover")).not.toBeInTheDocument();
+  });
+
+  it("routes the cartoon episode's Review-publish CTA to the Publish tab", async () => {
+    const onViewPublish = vi.fn();
+    render(
+      <PreviewPanel
+        storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
+        onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
+        onViewPublish={onViewPublish}
+      />,
+    );
+    fireEvent.click(await screen.findByTestId("cartoon-review-publish"));
+    expect(onViewPublish).toHaveBeenCalledTimes(1);
   });
 
   it("keeps fiction's inline genre/language selects unchanged", async () => {
@@ -67,41 +85,8 @@ describe("cartoon publish controls are free of Story Info metadata (#450)", () =
     expect(screen.queryByTestId("cartoon-metadata-needs-story-info")).not.toBeInTheDocument();
   });
 
-  it("hides the cover picker in the genesis cut workspace (Cuts mode), keeping it in Opening-text/Preview", async () => {
-    render(
-      <PreviewPanel
-        storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
-        onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
-      />,
-    );
-    // Preview tab (default): the cover picker is available.
-    expect(await screen.findByTestId("prepublish-cover")).toBeInTheDocument();
-
-    // Enter the cut workspace: Edit tab → Cuts sub-mode. The cover picker is gone,
-    // so the cut/lettering editor gets the height.
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.click(await screen.findByTestId("genesis-edit-mode-cuts"));
-    await waitFor(() => expect(screen.queryByTestId("prepublish-cover")).not.toBeInTheDocument());
-
-    // Back to the Opening-text view: the cover picker returns.
-    fireEvent.click(screen.getByTestId("genesis-edit-mode-text"));
-    expect(await screen.findByTestId("prepublish-cover")).toBeInTheDocument();
-  });
-
-  it("keeps the cartoon publish action working, reading the persisted genre/language", async () => {
-    const onPublish = vi.fn().mockResolvedValue(true);
-    render(
-      <PreviewPanel
-        storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
-        onPublish={onPublish as never} publishingFile={null} walletAddress={WALLET}
-        contentType="cartoon" genre="Science Fiction" language="Korean"
-      />,
-    );
-    const btn = await screen.findByRole("button", { name: "Publish to PlotLink" });
-    await waitFor(() => expect(btn).not.toBeDisabled());
-    fireEvent.click(btn);
-    await waitFor(() => expect(onPublish).toHaveBeenCalledTimes(1));
-    expect(onPublish.mock.calls[0][2]).toBe("Science Fiction");
-    expect(onPublish.mock.calls[0][3]).toBe("Korean");
-  });
+  // #461: the cartoon publish action (reading persisted genre/language) and the
+  // cover-at-publish control moved to the Publish tab — see CartoonPublishPage.test
+  // ("publishes a ready episode via onPublish from the Publish tab"). The cartoon
+  // episode no longer hosts either, so those PreviewPanel cases were removed here.
 });

@@ -29,7 +29,11 @@ function makeAuthFetch(coverAsset: Record<string, unknown> | null) {
   });
 }
 
-function renderGenesis(authFetch: ReturnType<typeof makeAuthFetch>, contentType: "cartoon" | "fiction" = "cartoon") {
+// #461: the pre-publish cover picker now renders for FICTION genesis only. The
+// detected/will-upload/import-warning status UI is content-type agnostic, so
+// these tests run on a fiction genesis (the picker behavior is unchanged). The
+// cartoon-only "no generated cover" guidance moved off the episode entirely.
+function renderGenesis(authFetch: ReturnType<typeof makeAuthFetch>, contentType: "cartoon" | "fiction" = "fiction") {
   render(
     <PreviewPanel
       storyName="my-story"
@@ -39,9 +43,10 @@ function renderGenesis(authFetch: ReturnType<typeof makeAuthFetch>, contentType:
       publishingFile={null}
       walletAddress={WALLET}
       contentType={contentType}
+      onViewPublish={vi.fn()}
     />,
   );
-  return screen.findByTestId("prepublish-cover");
+  return contentType === "cartoon" ? screen.findByTestId("cartoon-review-publish") : screen.findByTestId("prepublish-cover");
 }
 
 describe("PreviewPanel cartoon cover status (#312)", () => {
@@ -80,11 +85,14 @@ describe("PreviewPanel cartoon cover status (#312)", () => {
     expect(screen.queryByTestId("prepublish-cover-detected")).not.toBeInTheDocument();
   });
 
-  it("shows a clear no-cover action for a cartoon genesis with no generated cover", async () => {
-    const authFetch = makeAuthFetch(null); // { found: false }
-    await renderGenesis(authFetch);
-    expect(await screen.findByTestId("prepublish-cover-none")).toHaveTextContent("Import generated image");
-    expect(screen.queryByTestId("prepublish-cover-will-upload")).not.toBeInTheDocument();
+  // #461: the cartoon genesis episode no longer hosts the cover picker, so the
+  // cartoon-only "no generated cover" guidance is gone from the episode — the
+  // cover is managed on Story Info and auto-loaded on the Publish tab.
+  it("does not render the cover picker (or no-cover guidance) in the cartoon genesis episode", async () => {
+    const authFetch = makeAuthFetch(null);
+    await renderGenesis(authFetch, "cartoon");
+    expect(screen.queryByTestId("prepublish-cover")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("prepublish-cover-none")).not.toBeInTheDocument();
   });
 
   it("does NOT show the cartoon no-cover guidance for a fiction genesis", async () => {

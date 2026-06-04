@@ -42,37 +42,28 @@ function renderGenesis(authFetch: ReturnType<typeof makeAuthFetch>, contentType:
 }
 
 describe("cartoon cover readiness (#337)", () => {
-  it("shows a 'no cover yet' status and the cover requirements for a cartoon genesis", async () => {
-    await renderGenesis(makeAuthFetch());
-    const status = await screen.findByTestId("cartoon-cover-status");
-    expect(status).toHaveAttribute("data-state", "none");
-    expect(status).toHaveTextContent(/no cover yet/i);
-    const guidance = screen.getByTestId("cartoon-cover-guidance");
-    expect(guidance).toHaveTextContent(/WebP/);
-    expect(guidance).toHaveTextContent(/1MB/);
-    expect(guidance).toHaveTextContent(/600.?900/);
-    expect(guidance).toHaveTextContent(/AI text|unreadable/i);
-  });
-
-  it("advances to 'selected' after a valid cover is picked", async () => {
-    await renderGenesis(makeAuthFetch());
-    const input = screen.getByTestId("prepublish-cover-input") as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [new File([WEBP], "cover.webp", { type: "image/webp" })] } });
-    await waitFor(() =>
-      expect(screen.getByTestId("cartoon-cover-status")).toHaveAttribute("data-state", "selected"),
+  // #461: the cartoon episode (Genesis) view no longer hosts the pre-publish
+  // cover picker — the cover is managed on Story Info (see StoryInfoPage.test)
+  // and auto-loaded at publish on the Publish tab (see CartoonPublishPage). So a
+  // cartoon Genesis renders NO pre-publish cover picker or cover-status badge.
+  it("does not render the pre-publish cover picker in the cartoon genesis episode (#461)", async () => {
+    const authFetch = makeAuthFetch();
+    render(
+      <PreviewPanel
+        storyName="my-story"
+        fileName="genesis.md"
+        authFetch={authFetch}
+        onPublish={vi.fn()}
+        publishingFile={null}
+        walletAddress={WALLET}
+        contentType="cartoon"
+        onViewPublish={vi.fn()}
+      />,
     );
-  });
-
-  it("shows an 'invalid' status when a non-WebP/JPEG (or oversized) cover is picked", async () => {
-    await renderGenesis(makeAuthFetch());
-    const input = screen.getByTestId("prepublish-cover-input") as HTMLInputElement;
-    // PNG is not an allowed cover type → rejected before publish.
-    fireEvent.change(input, { target: { files: [new File([WEBP], "cover.png", { type: "image/png" })] } });
-    await waitFor(() =>
-      expect(screen.getByTestId("cartoon-cover-status")).toHaveAttribute("data-state", "invalid"),
-    );
-    // The inline validation error is shown too (before any publish attempt).
-    expect(screen.getByTestId("prepublish-cover-error")).toBeInTheDocument();
+    // The episode now offers the compact "Review publish checklist" CTA instead.
+    await screen.findByTestId("cartoon-review-publish");
+    expect(screen.queryByTestId("prepublish-cover")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cartoon-cover-status")).not.toBeInTheDocument();
   });
 
   it("does not show cartoon cover status for a fiction genesis", async () => {

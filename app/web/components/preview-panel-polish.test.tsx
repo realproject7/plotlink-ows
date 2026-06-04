@@ -55,22 +55,16 @@ function plotAuthFetch() {
 }
 
 describe("PreviewPanel bottom panel polish (#420)", () => {
-  it("collapses the long cover guidance behind a 'Cover tips' details toggle", async () => {
+  // #461: the cartoon genesis episode no longer hosts the cover picker / cover
+  // status badge (the cover moved to Story Info + the Publish tab). The compact
+  // per-cut production status summary below is production guidance and stays.
+  it("does not show the cover status badge in the cartoon genesis episode", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={genesisAuthFetch()}
-      onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" genre="Science Fiction" language="Korean" hasGenesis />);
+      onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" genre="Science Fiction" language="Korean" hasGenesis onViewPublish={vi.fn()} />);
 
-    // Concise status line is visible…
-    const status = await screen.findByTestId("cartoon-cover-status");
-    expect(status).toHaveTextContent(/no cover yet/i);
-    // …and the long spec is inside a collapsed <details> (still in the DOM).
-    const details = screen.getByTestId("cover-details");
-    expect(details.tagName.toLowerCase()).toBe("details");
-    expect(details).toHaveTextContent(/Cover tips/);
-    const guidance = screen.getByTestId("cartoon-cover-guidance");
-    expect(guidance).toHaveTextContent(/WebP/);
-    expect(guidance).toHaveTextContent(/1MB/);
-    // Collapsed by default.
-    expect((details as HTMLDetailsElement).open).toBe(false);
+    await screen.findByTestId("cartoon-review-publish");
+    expect(screen.queryByTestId("cartoon-cover-status")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cover-details")).not.toBeInTheDocument();
   });
 
   it("shows a compact cartoon production status summary with a View-progress link", async () => {
