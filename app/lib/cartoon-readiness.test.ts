@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, previewFooterGuidance, cartoonPublishVerdict } from "./cartoon-readiness";
+import { checkCartoonReadiness, checkMarkdownReadiness, checkExportSize, isCartoonPlanningStage, classifyCartoonReadiness, summarizeCutProgress, cartoonChecklist, cartoonGenesisReadiness, groupCartoonIssues, previewFooterGuidance, cartoonPublishVerdict, type CartoonCutProgress } from "./cartoon-readiness";
 import { FONT_REGISTRY } from "./fonts";
 import type { Cut } from "./cuts";
 
@@ -859,7 +859,8 @@ describe("cartoonPublishVerdict — possible vs recommended (#421)", () => {
 });
 
 describe("previewFooterGuidance (#422)", () => {
-  const base = { hasGenesis: false, isPublished: false, cutCount: null as number | null, uploadedCount: 0 };
+  const base = { hasGenesis: false, isPublished: false, cutCount: null as number | null };
+  const prog = (o: Partial<CartoonCutProgress>): CartoonCutProgress => ({ total: 4, needClean: 4, withClean: 0, withText: 0, exported: 0, uploaded: 0, ...o });
 
   it("fiction structure.md keeps the original outline line unchanged", () => {
     expect(previewFooterGuidance({ ...base, fileName: "structure.md", contentType: "fiction" }))
@@ -877,14 +878,29 @@ describe("previewFooterGuidance (#422)", () => {
     expect(exists).not.toBe(missing);
   });
 
-  it("cartoon genesis with no cuts suggests planning cuts; with cuts but no images suggests clean images", () => {
+  it("cartoon genesis with no cuts suggests planning cuts", () => {
     expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 0 }))
       .toMatch(/Plan its cuts/i);
-    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 4, uploadedCount: 0 }))
-      .toMatch(/no uploaded images yet — generate clean images/i);
-    // Genesis with uploaded images → no nudge (existing flow takes over).
-    expect(previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: 4, uploadedCount: 4 }))
-      .toBeNull();
+  });
+
+  // #451: the Genesis footer must advance by the real production stage — clean
+  // art → lettering → export → upload — not say "generate clean images" whenever
+  // nothing is uploaded.
+  it("advances the Genesis footer by production stage (clean → letter → export → upload)", () => {
+    const g = (p: CartoonCutProgress) =>
+      previewFooterGuidance({ ...base, fileName: "genesis.md", contentType: "cartoon", cutCount: p.total, cutProgress: p });
+    // No clean art yet → generate clean images.
+    expect(g(prog({ withClean: 0 }))).toMatch(/generate the clean images/i);
+    // Clean art present but not lettered → add speech bubbles, NOT "generate clean images".
+    const lettering = g(prog({ withClean: 4, withText: 0 }));
+    expect(lettering).toMatch(/clean art is ready.*speech bubbles/i);
+    expect(lettering).not.toMatch(/generate.*clean images/i);
+    // Lettered, not exported → export.
+    expect(g(prog({ withClean: 4, withText: 4, exported: 0 }))).toMatch(/export the final images/i);
+    // Exported, not uploaded → upload.
+    expect(g(prog({ withClean: 4, withText: 4, exported: 4, uploaded: 0 }))).toMatch(/upload them/i);
+    // Every cut uploaded → no footer nudge (publish controls take over).
+    expect(g(prog({ withClean: 4, withText: 4, exported: 4, uploaded: 4 }))).toBeNull();
   });
 
   it("a future-episode placeholder plot (empty cuts) says it hasn't been started", () => {

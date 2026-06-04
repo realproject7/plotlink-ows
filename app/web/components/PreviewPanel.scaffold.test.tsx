@@ -71,8 +71,11 @@ describe("PreviewPanel cartoon scaffold states (#422)", () => {
     );
     const summary = await screen.findByTestId("genesis-cuts-summary");
     expect(summary).toHaveTextContent(/2 planned/);
-    expect(summary).toHaveTextContent(/0 with uploaded images/);
-    expect(await screen.findByTestId("cartoon-not-started")).toHaveTextContent(/generate clean images/i);
+    // #451: the summary distinguishes clean / lettered / uploaded.
+    expect(summary).toHaveTextContent(/0 clean/);
+    expect(summary).toHaveTextContent(/0 uploaded/);
+    // No clean art yet → still nudges clean-image generation.
+    expect(await screen.findByTestId("cartoon-not-started")).toHaveTextContent(/generate the clean images/i);
   });
 
   it("a placeholder plot (empty cuts) reads as not-started, not a publish error, and publish is disabled", async () => {
