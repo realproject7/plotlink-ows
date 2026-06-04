@@ -387,3 +387,25 @@ describe("TerminalPanel fresh-spawn scrollback dedup (#453)", () => {
     expect(idbDeletes.keys).not.toContain("tidewright");
   });
 });
+
+describe("TerminalPanel redacts auth secrets in terminal output (#454)", () => {
+  function renderPanel(storyName: string) {
+    const renameRef = { current: null } as { current: ((o: string, n: string) => Promise<boolean>) | null };
+    return render(
+      <TerminalPanel token="t" storyName={storyName} authFetch={noopFetch} renameRef={renameRef} />,
+    );
+  }
+
+  it("masks an Authorization: Bearer token before writing it to the terminal", async () => {
+    renderPanel("god-cell");
+    await waitFor(() => expect(wsInstances.length).toBeGreaterThan(0));
+    const ws = wsInstances[wsInstances.length - 1];
+    act(() => { ws.readyState = 1; ws.onopen?.(); });
+
+    // Placeholder secret only — never a real token.
+    act(() => { ws.onmessage?.({ data: "Authorization: Bearer test-token-abcdef123456\r\n" }); });
+    const written = termSpy.writes.join("");
+    expect(written).toContain("Authorization: Bearer [REDACTED]");
+    expect(written).not.toContain("test-token-abcdef123456");
+  });
+});

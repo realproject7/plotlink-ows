@@ -5,6 +5,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { FRESH_SPAWN_SIGNAL } from "@app-lib/terminal-protocol";
+import { redactTerminalSecrets } from "@app-lib/terminal-redact";
 
 /** Story metadata persisted with a `_new_*` → real-folder rename (#295). */
 export interface RenameMeta {
@@ -238,7 +239,8 @@ export function TerminalPanel({ token, storyName, authFetch, onSelectStory, onDe
           return;
         }
       }
-      session.term.write(e.data);
+      // Mask obvious auth secrets before they reach the terminal / scrollback (#454).
+      session.term.write(typeof e.data === "string" ? redactTerminalSecrets(e.data) : e.data);
     };
 
     ws.onclose = (event) => {

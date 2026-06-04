@@ -16,6 +16,16 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("10,000 characters");
   });
 
+  // #454: the agent guidance must discourage printing auth secrets into the terminal.
+  it("includes security guidance against printing secrets (fiction + cartoon)", () => {
+    for (const out of [generateStoryInstructions("fiction"), generateStoryInstructions("cartoon")]) {
+      expect(out).toContain("never print secrets");
+      expect(out).toContain("OWS_PASSPHRASE");
+      expect(out).toMatch(/Authorization|Bearer/);
+      expect(out).toMatch(/do not print|Do NOT print/i);
+    }
+  });
+
   it("fiction output does not contain cartoon terms", () => {
     const out = generateStoryInstructions("fiction");
     expect(out).not.toContain("cuts.json");
