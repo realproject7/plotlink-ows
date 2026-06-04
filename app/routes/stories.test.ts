@@ -1290,8 +1290,12 @@ describe("GET /api/stories/:name/progress — story progress overview (#418)", (
     expect(plot.label).toBe("Episode 2");
     expect(plot.state).toBe("placeholder"); // empty cuts ⇒ not started, never ready
     expect(body.summary.placeholders).toBe(1);
-    // Cover missing ⇒ the next product step is to add a cover.
-    expect(body.nextAction).toMatch(/cover/i);
+    // #462: a mid-production episode (Genesis is planning, not publish-ready)
+    // leads over a missing cover — production is the primary next step; the
+    // missing cover stays visible as the `cover` state (asserted above), a
+    // publish-readiness recommendation, not the main action.
+    expect(body.nextAction).toMatch(/Episode 1 \/ Genesis/i);
+    expect(body.nextAction).not.toMatch(/cover/i);
   });
 
   it("404s for a missing story", async () => {

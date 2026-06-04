@@ -229,7 +229,16 @@ function CartoonWorkflowMap({
   const hasStructure = progress.setup.hasStructure;
   const hasGenesis = progress.setup.hasGenesis;
   const coverDone = progress.cover === "present";
-  const storyInfoIncomplete = !m.title || !m.language || !m.genre || !coverDone;
+  // Required publish metadata (title/language/genre) still hard-gates the active
+  // step. A missing COVER is a publish-readiness recommendation, NOT the primary
+  // step (#462) — it's kept out of the active-gate decision while an episode is
+  // mid-production, so the cut/lettering production CTA leads instead.
+  const metadataIncomplete = !m.title || !m.language || !m.genre;
+  const storyInfoIncomplete = metadataIncomplete || !coverDone;
+  // The active (first unpublished) episode and whether it still has production
+  // work to do (anything short of publish-ready).
+  const activeEp = progress.episodes.find((e) => !e.published) ?? null;
+  const productionPending = !!activeEp && activeEp.state !== "ready";
 
   // The SINGLE active gate, chosen in the same order buildStoryProgress derives
   // its next step (structure → genesis → story info/cover → active episode), so
@@ -243,7 +252,13 @@ function CartoonWorkflowMap({
   let activeKey: string | null;
   if (!hasStructure) activeKey = "whitepaper";
   else if (!hasGenesis) activeKey = "genesis.md";
-  else if (storyInfoIncomplete) activeKey = "story-info";
+  else if (metadataIncomplete) activeKey = "story-info";
+  // #462: a mid-production episode leads over a missing cover — the cut/lettering
+  // production CTA is the primary step. A missing cover only becomes the active
+  // step once the active episode's production is complete (no work pending),
+  // where it reads as the publish-readiness recommendation.
+  else if (productionPending && coach?.episodeFile) activeKey = coach.episodeFile;
+  else if (!coverDone) activeKey = "story-info";
   else activeKey = coach?.episodeFile ?? null;
 
   // The coach-driven CTA (setup prompts + episode actions), reused from the

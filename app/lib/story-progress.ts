@@ -197,14 +197,17 @@ export function buildStoryProgress(input: StoryProgressInput): StoryProgress {
     nextPrompt = cartoon
       ? "Write the Genesis (Episode 1) opening for this cartoon, then plan its cuts in genesis.cuts.json. Don't generate images yet."
       : "Write the Genesis (story hook) for this story.";
-  } else if (cartoon && input.cover === "missing") {
-    nextAction = "Create or import a cover image for the story.";
   } else {
     const ready = episodes.find((e) => !e.published && e.state === "ready");
     const working = episodes.find((e) => !e.published && (e.state === "planning" || e.state === "in-progress"));
     const draft = episodes.find((e) => !e.published && e.state === "draft");
     const placeholder = episodes.find((e) => !e.published && e.state === "placeholder");
-    if (ready) nextAction = `Publish ${ready.label}.`;
+    // #462: a missing cover is a publish-readiness recommendation, not the
+    // primary step. It leads only once the active episode's production is
+    // complete (the `ready` case, or nothing pending) — never while an episode is
+    // mid-production. So episode production leads over a missing cover.
+    const coverMissing = cartoon && input.cover === "missing";
+    if (ready) nextAction = coverMissing ? "Create or import a cover image for the story." : `Publish ${ready.label}.`;
     else if (working) nextAction = cartoon
       ? `Continue ${working.label}: ${working.summary.toLowerCase()}.`
       : `Review and publish ${working.label}.`;
@@ -212,7 +215,8 @@ export function buildStoryProgress(input: StoryProgressInput): StoryProgress {
     else if (placeholder) {
       nextAction = `Plan the cuts for ${placeholder.label} to start it.`;
       nextPrompt = `Plan the cuts for ${placeholder.label} in its cuts.json. Don't generate images, letter, upload, or publish yet.`;
-    } else if (episodes.length > 0 && published === episodes.length) nextAction = null; // all published
+    } else if (coverMissing) nextAction = "Create or import a cover image for the story.";
+    else if (episodes.length > 0 && published === episodes.length) nextAction = null; // all published
     else {
       nextAction = cartoon ? "Plan the next episode's cuts." : "Write the next chapter.";
       nextPrompt = cartoon ? "Plan the cuts for the next episode in a new cuts.json. Don't generate images yet." : "Write the next chapter.";
