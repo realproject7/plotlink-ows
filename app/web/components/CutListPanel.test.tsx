@@ -942,4 +942,28 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
       expect(after).toBeGreaterThan(before);
     });
   });
+
+  it("clears the stale diagnostics banner on a file switch whose diagnostics request fails (@re1)", async () => {
+    const fn = vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        if (url.includes("/cuts/genesis/")) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+            diagnostics: [{ cutId: 2, kind: "image", state: "missing", issue: "Cut 2: clean image missing" }],
+            summary: { planned: 0, missing: 1, cleanReady: 0, finalReady: 0, uploaded: 0 },
+          }) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) }); // plot-01 fails
+      }
+      if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      if (url.includes("/cuts/")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "x", cuts: [makeCut({ id: 2, cleanImagePath: "a.webp" })] }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+
+    const { rerender } = render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+    expect(await screen.findByTestId("asset-diagnostics")).toBeInTheDocument();
+
+    // Switch to a plot whose diagnostics request fails — the old banner must clear.
+    rerender(<CutListPanel storyName="god-cell" fileName="plot-01.md" authFetch={fn} />);
+    await waitFor(() => expect(screen.queryByTestId("asset-diagnostics")).not.toBeInTheDocument());
+  });
 });

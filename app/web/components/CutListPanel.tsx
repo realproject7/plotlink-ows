@@ -556,13 +556,17 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
   }, [authFetch, storyName, plotFile]);
 
   // Read-only per-cut asset state validated against disk (#427). Best-effort.
+  // Clear the prior plan's diagnostics in EVERY exit path (start, non-OK, catch)
+  // so a stale missing-path banner can never persist under a different cut plan
+  // when the new request fails/404s on a story/file switch (@re1).
   const loadDiagnostics = useCallback(async () => {
+    setAssetDiagnostics(null);
     try {
       const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/asset-diagnostics`);
-      if (!res.ok) return;
+      if (!res.ok) return; // stays cleared
       const data = await res.json();
       setAssetDiagnostics(Array.isArray(data.diagnostics) ? data.diagnostics : null);
-    } catch { /* diagnostics are optional */ }
+    } catch { /* stays cleared — diagnostics are optional */ }
   }, [authFetch, storyName, plotFile]);
 
   // "Refresh assets / Check generated images" (#427): a read-only rescan that
