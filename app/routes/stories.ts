@@ -198,6 +198,7 @@ function scanStory(storyDir: string, name: string): StoryInfo {
     // metadata" instead of a misleading English default.
     ...(language ? { language } : {}),
     ...(storyMeta.genre ? { genre: storyMeta.genre } : {}),
+    ...(typeof storyMeta.description === "string" ? { description: storyMeta.description } : {}),
     ...(storyMeta.isNsfw !== undefined ? { isNsfw: storyMeta.isNsfw } : {}),
     // Read-only passthrough. Absent when the story has no provider recorded
     // (legacy), so a legacy cartoon shows no provider and the client can offer
