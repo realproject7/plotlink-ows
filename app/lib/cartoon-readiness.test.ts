@@ -104,7 +104,9 @@ describe("checkMarkdownReadiness", () => {
 
   it("reports over 10K chars", () => {
     const md = "x".repeat(10001);
-    const { issues } = checkMarkdownReadiness(md, []);
+    // Use a real (1-cut) plan: a 0-cut plan now fails closed before the size
+    // check (#422), and the size limit applies to actual episodes anyway.
+    const { issues } = checkMarkdownReadiness(md, [makeCut()]);
     expect(issues.some((i) => i.includes("10,000"))).toBe(true);
   });
 
@@ -771,6 +773,14 @@ describe("groupCartoonIssues (#360)", () => {
 
   it("returns no groups for an empty issue list", () => {
     expect(groupCartoonIssues([])).toEqual([]);
+  });
+});
+
+describe("checkMarkdownReadiness — zero cuts fails closed (#422)", () => {
+  it("is never ready with an empty cut plan, even when the markdown has no other issue", () => {
+    const { ready, issues } = checkMarkdownReadiness("# Episode 2\n\nA clean placeholder.", []);
+    expect(ready).toBe(false);
+    expect(issues.some((i) => /no cuts planned yet/i.test(i))).toBe(true);
   });
 });
 

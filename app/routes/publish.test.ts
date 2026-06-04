@@ -92,6 +92,18 @@ describe("POST /api/publish/file cartoon readiness guard", () => {
     expect(data.error).toContain("cuts.json not found");
   });
 
+  it("fails closed: blocks a cartoon plot whose cuts.json has zero cuts (#422)", async () => {
+    const storyDir = setupCartoonStory();
+    // Empty placeholder cut plan + an instructional-but-unmatched placeholder
+    // plot-01.md must NOT be publishable via the direct API gate.
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 0));
+    const res = await post(publishBody({ content: "# Episode 2\n\nA future episode, not started yet." }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("not ready");
+    expect(data.issues.some((i: string) => i.includes("no cuts planned yet"))).toBe(true);
+  });
+
   it("blocks cartoon plot with awaiting-upload placeholder", async () => {
     const storyDir = setupCartoonStory();
     writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 1));

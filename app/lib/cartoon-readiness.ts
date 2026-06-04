@@ -118,6 +118,15 @@ export function checkMarkdownReadiness(
 ): { ready: boolean; issues: string[] } {
   const issues: string[] = [];
 
+  // Fail closed for an empty cut plan (#422). With zero cuts the per-cut loop
+  // below never runs and an instructional-but-unmatched placeholder plot-NN.md
+  // would otherwise report ready=true — letting a not-started episode publish a
+  // blank/placeholder page on-chain via the direct API gate. A 0-cut episode is
+  // never publishable.
+  if (cuts.length === 0) {
+    return { ready: false, issues: ["This episode has no cuts planned yet — plan and produce its cuts before publishing."] };
+  }
+
   for (let i = 0; i < cuts.length; i++) {
     const cut = cuts[i];
     const label = `Cut ${i + 1}`;
