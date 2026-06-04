@@ -5,6 +5,7 @@ import { STORIES_DIR } from "../lib/paths";
 import { writeStoryInstructions } from "../lib/generate-story-instructions";
 import { readCutsFile, writeCutsFile, validateCutsFile } from "../lib/cuts";
 import { buildStoryProgress } from "../lib/story-progress";
+import { deriveCartoonCoach } from "../lib/cartoon-coach";
 import { diagnoseCutAssets, summarizeAssetDiagnostics } from "../lib/cut-asset-diagnostics";
 import { CARTOON_BUBBLE_RENDERER_VERSION } from "../lib/overlays";
 import { mergeCartoonMarkdown } from "../lib/cartoon-markdown";
@@ -981,7 +982,30 @@ stories.get("/:name/progress", (c) => {
     episodes,
   });
 
-  return c.json(progress);
+  // Persistent workflow coach (#429): one next action for the current state.
+  // `?focus=<file>` makes it speak about the file the writer is viewing (so a
+  // future-episode placeholder reads as "plan this first"); without it the coach
+  // tracks the story's active episode. We also scan each cartoon episode for
+  // clean images that are on disk but not yet recorded in cuts.json, so the
+  // clean-image stage can offer "Refresh assets" instead of "Generate" (#427).
+  let coach = null;
+  if (info.contentType === "cartoon") {
+    const focusFile = c.req.query("focus") || null;
+    const undetectedCleanByFile: Record<string, number> = {};
+    for (const ep of episodes) {
+      if (!ep.cuts) continue;
+      let undetected = 0;
+      for (const cut of ep.cuts) {
+        if (cut.cleanImagePath !== null) continue;
+        const plotFile = ep.file.replace(/\.md$/, "");
+        if (cleanImageCandidates(plotFile, cut.id).some((rel) => isValidImageAsset(storyDir, rel))) undetected++;
+      }
+      if (undetected > 0) undetectedCleanByFile[ep.file] = undetected;
+    }
+    coach = deriveCartoonCoach(progress, { focusFile, undetectedCleanByFile });
+  }
+
+  return c.json({ ...progress, coach });
 });
 
 /**

@@ -1300,6 +1300,80 @@ describe("GET /api/stories/:name/progress — story progress overview (#418)", (
   });
 });
 
+describe("GET /api/stories/:name/progress — workflow coach (#429)", () => {
+  // Minimal valid WebP header so the undetected-clean scan accepts an on-disk file.
+  const WEBP = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00, 0x00, 0x00]);
+  let tmpDir: string;
+  let app: Hono;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "plotlink-coach-"));
+    testState.storiesDir = tmpDir;
+    app = new Hono();
+    app.route("/api/stories", storiesRoutes);
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  function seedCartoon(name: string): string {
+    const storyDir = path.join(tmpDir, name);
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, ".story.json"), JSON.stringify({ contentType: "cartoon" }));
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# Bible\n");
+    fs.writeFileSync(path.join(storyDir, "genesis.md"), "# Opening\n\nIt begins.");
+    return storyDir;
+  }
+
+  it("attaches a cartoon coach: planned-but-no-clean genesis ⇒ Generate clean images (agent)", async () => {
+    const storyDir = seedCartoon("god-cell");
+    writeCutsFile(storyDir, "genesis", createCutsFile("genesis", 2)); // cuts planned, no clean images
+
+    const body = await (await app.request("/api/stories/god-cell/progress")).json();
+    expect(body.coach).toBeTruthy();
+    expect(body.coach.actionKind).toBe("agent");
+    expect(body.coach.action).toBe("Generate clean images");
+    expect(body.coach.episodeFile).toBe("genesis.md");
+  });
+
+  it("?focus on a future-episode placeholder ⇒ 'Plan this episode first' (acceptance #3)", async () => {
+    const storyDir = seedCartoon("god-cell");
+    writeCutsFile(storyDir, "genesis", createCutsFile("genesis", 1));
+    fs.writeFileSync(path.join(storyDir, "plot-01.md"), "# Episode 2\n\nPlaceholder.");
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 0)); // empty ⇒ placeholder
+
+    const body = await (await app.request("/api/stories/god-cell/progress?focus=plot-01.md")).json();
+    expect(body.coach.action).toBe("Plan this episode first");
+    expect(body.coach.episodeFile).toBe("plot-01.md");
+  });
+
+  it("clean images on disk but unrecorded ⇒ coach offers Refresh assets, not Generate (acceptance #2)", async () => {
+    const storyDir = seedCartoon("god-cell");
+    writeCutsFile(storyDir, "genesis", createCutsFile("genesis", 1));
+    fs.writeFileSync(path.join(storyDir, "plot-01.md"), "# Episode 2\n");
+    writeCutsFile(storyDir, "plot-01", createCutsFile("plot-01", 2)); // 2 cuts, cleanImagePath null
+    // The agent generated the clean images on disk but they're not in cuts.json yet.
+    fs.mkdirSync(path.join(storyDir, "assets/plot-01"), { recursive: true });
+    fs.writeFileSync(path.join(storyDir, "assets/plot-01/cut-01-clean.webp"), WEBP);
+    fs.writeFileSync(path.join(storyDir, "assets/plot-01/cut-02-clean.webp"), WEBP);
+
+    const body = await (await app.request("/api/stories/god-cell/progress?focus=plot-01.md")).json();
+    expect(body.coach.actionKind).toBe("ui");
+    expect(body.coach.uiAction).toBe("refresh-assets");
+  });
+
+  it("fiction stories get no coach (coach: null) — fiction UX unchanged (acceptance #5)", async () => {
+    const storyDir = path.join(tmpDir, "novel");
+    fs.mkdirSync(storyDir, { recursive: true });
+    fs.writeFileSync(path.join(storyDir, ".story.json"), JSON.stringify({ contentType: "fiction" }));
+    fs.writeFileSync(path.join(storyDir, "structure.md"), "# Outline\n");
+    fs.writeFileSync(path.join(storyDir, "genesis.md"), "# Hook\n");
+
+    const body = await (await app.request("/api/stories/novel/progress")).json();
+    expect(body.coach).toBeNull();
+    // The #423 next-action line is still present for fiction.
+    expect(body.nextAction).toBeTruthy();
+  });
+});
+
 describe("POST /api/stories/create — guided New Story setup (#423)", () => {
   let tmpDir: string;
   let app: Hono;

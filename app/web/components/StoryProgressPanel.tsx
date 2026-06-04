@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeState } from "@app-lib/story-progress";
+import { WorkflowCoachView } from "./WorkflowCoach";
 
 interface StoryProgressPanelProps {
   storyName: string;
@@ -108,8 +109,20 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
         </div>
       </div>
 
-      {/* Single product-level next step + a copy-paste prompt for the agent (#423). */}
-      {progress.nextAction && (
+      {/* Persistent cartoon workflow coach (#429): one stage label + one primary
+          next action. For cartoon stories it supersedes the plain next-action
+          line below; fiction has no coach, so it keeps the #423 line unchanged.
+          UI actions from the overview open the relevant episode so the writer
+          lands where the action lives. */}
+      {progress.coach ? (
+        <WorkflowCoachView
+          coach={progress.coach}
+          onAction={(action, episodeFile) => {
+            if (action === "view-progress") return; // already here
+            if (episodeFile) onOpenFile(storyName, episodeFile);
+          }}
+        />
+      ) : progress.nextAction && (
         <div className="px-4 py-2 border-b border-accent/30 bg-accent/5 text-xs space-y-1.5" data-testid="progress-next-action">
           <div>
             <span className="font-medium text-foreground">Next: </span>
