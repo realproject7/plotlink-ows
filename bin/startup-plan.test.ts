@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planStartup } from "./startup-plan.cjs";
+import { planStartup, shouldAutoOpen } from "./startup-plan.cjs";
 
 // #470 (EPIC #465): the CLI start path must enforce the runtime/build-time
 // boundary. An installed package (no source checkout) ships only runtime deps +
@@ -45,5 +45,24 @@ describe("startup boundary planner (#470)", () => {
       expect(planStartup({ isSourceCheckout: true, depsInstalled: true, distBuilt: false }))
         .toEqual({ install: false, build: true, error: null });
     });
+  });
+});
+
+// #481 (EPIC #465): normal startup auto-opens the local app, but the
+// non-interactive release start smoke / preflight set PLOTLINK_OWS_NO_OPEN=1 so
+// a publish check never pops a browser tab on the operator machine.
+describe("browser auto-open guard (#481)", () => {
+  it("auto-opens by default (env var unset)", () => {
+    expect(shouldAutoOpen({})).toBe(true);
+  });
+
+  it("does NOT auto-open when PLOTLINK_OWS_NO_OPEN=1", () => {
+    expect(shouldAutoOpen({ PLOTLINK_OWS_NO_OPEN: "1" })).toBe(false);
+  });
+
+  it("only the exact string '1' disables it (other values still open)", () => {
+    expect(shouldAutoOpen({ PLOTLINK_OWS_NO_OPEN: "0" })).toBe(true);
+    expect(shouldAutoOpen({ PLOTLINK_OWS_NO_OPEN: "" })).toBe(true);
+    expect(shouldAutoOpen({ PLOTLINK_OWS_NO_OPEN: "true" })).toBe(true);
   });
 });
