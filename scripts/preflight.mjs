@@ -150,6 +150,18 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+// 5) Prod-only START smoke — packed tarball install + real server boot (#479)
+// ---------------------------------------------------------------------------
+section("Prod-only start smoke (packed tarball install + boot)");
+if (process.env.PREFLIGHT_SKIP_START_SMOKE === "1") {
+  warn("start smoke SKIPPED via PREFLIGHT_SKIP_START_SMOKE=1 — a skipped run is NOT publish-safe; re-run without it before publishing.");
+} else {
+  const startSmoke = run(process.execPath, [join(root, "scripts", "start-smoke.mjs")], { stdio: ["ignore", "inherit", "inherit"] });
+  if (startSmoke.code !== 0) fail("prod-only start smoke failed — the packed tarball did not install+boot+serve (see output above).");
+  else ok("packed tarball installs prod-only and the server serves /api/auth/status + / (the prebuilt web UI)");
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 section("Preflight summary");

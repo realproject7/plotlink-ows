@@ -31,6 +31,9 @@ export const REQUIRED_PACK_FILES = [
   // if a future exclusion drops it (#470).
   "bin/startup-plan.cjs",
   "app/server.ts",
+  // Imported by app/server.ts at boot to locate the local Prisma CLI for the
+  // startup `db push` (#479).
+  "app/lib/prisma-cli.ts",
   "app/prisma/schema.prisma",
   "app/web/dist/index.html",
   // Root-lib file the server runtime imports at boot (publish route →
