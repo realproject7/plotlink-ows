@@ -26,7 +26,8 @@ import { agentRoutes } from "./routes/agent";
 import { codexImagesRoutes } from "./routes/codex-images";
 import { initDb } from "./db";
 import { generateClaudeMd } from "./lib/generate-claude-md";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { resolvePrismaCli } from "./lib/prisma-cli";
 import fs from "fs";
 
 const __dirname = __dirnamePre;
@@ -134,12 +135,35 @@ async function start() {
   // Generate/update ~/.plotlink-ows/CLAUDE.md for agent discovery
   generateClaudeMd();
 
-  // Run Prisma db push to ensure schema is up to date
+  // Bring the local SQLite schema up to date. SQLite creates the DB file but NOT
+  // its parent directory, so ensure ~/.plotlink-ows/data exists first (#479) —
+  // a fresh prod-only install has no data dir yet, and `db push` would fail with
+  // an opaque "unable to open database file" otherwise. (paths.ts also mkdirs it
+  // on import; this is the explicit guarantee right before SQLite setup.)
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   const schemaPath = path.join(__dirname, "prisma", "schema.prisma");
-  execSync(`npx prisma db push --schema ${schemaPath} --skip-generate`, {
-    stdio: "inherit",
-    env: { ...process.env, DATABASE_URL },
-  });
+  try {
+    // Invoke the locally-resolved Prisma CLI via `node` (NOT `npx prisma`, which
+    // resolves against the cwd and would try to download prisma from the network
+    // in a packed prod-only install started from an unexpected cwd, or offline).
+    const prismaCli = resolvePrismaCli(__dirname);
+    execFileSync(process.execPath, [prismaCli, "db", "push", "--schema", schemaPath, "--skip-generate"], {
+      stdio: "inherit",
+      cwd: path.dirname(__dirname), // package root, so relative resolutions are stable
+      env: { ...process.env, DATABASE_URL },
+    });
+  } catch (err) {
+    // Surface a useful diagnostic instead of a raw execFileSync stack (#479).
+    const home = os.homedir();
+    const redact = (s: string) => s.split(home).join("~");
+    console.error("\n  ✗ Database setup failed (prisma db push).");
+    console.error(`    schema:   ${redact(schemaPath)}`);
+    console.error(`    database: ${redact(DATABASE_URL)}`);
+    console.error(`    reason:   ${err instanceof Error ? err.message : String(err)}`);
+    console.error("    This usually means a corrupted install (missing the 'prisma' runtime");
+    console.error("    dependency or its query engine). Reinstall with: npx plotlink-ows@latest\n");
+    process.exit(1);
+  }
 
   // Initialize database connection
   await initDb();

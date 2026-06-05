@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "1.2.91",
+  "version": "1.2.92",
   "packageManager": "npm@10.9.8",
   "engines": {
     "node": "20.x",
@@ -64,6 +64,7 @@
     "app:build": "vite build --config app/vite.config.ts",
     "app:start": "tsx app/server.ts",
     "preflight": "node scripts/preflight.mjs",
+    "smoke:start": "node scripts/start-smoke.mjs",
     "prepublishOnly": "npm run app:build",
     "postinstall": "prisma generate --schema app/prisma/schema.prisma",
     "prisma:local": "prisma generate --schema app/prisma/schema.prisma && prisma db push --schema app/prisma/schema.prisma",
