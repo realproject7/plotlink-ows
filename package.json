@@ -7,7 +7,7 @@
     "npm": "10.x"
   },
   "bin": {
-    "plotlink-ows": "./bin/plotlink-ows.js"
+    "plotlink-ows": "bin/plotlink-ows.js"
   },
   "files": [
     "bin/",
