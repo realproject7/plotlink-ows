@@ -31,9 +31,12 @@ export const REQUIRED_PACK_FILES = [
   // if a future exclusion drops it (#470).
   "bin/startup-plan.cjs",
   "app/server.ts",
-  // Imported by app/server.ts at boot to locate the local Prisma CLI for the
-  // startup `db push` (#479).
-  "app/lib/prisma-cli.ts",
+  // Imported by app/server.ts at boot to apply the local SQLite schema without
+  // the native Prisma schema-engine (#484).
+  "app/lib/apply-schema.ts",
+  // The committed DDL apply-schema reads at startup — the installed app applies
+  // this instead of running `prisma db push` (#484).
+  "app/prisma/schema.sql",
   "app/prisma/schema.prisma",
   "app/web/dist/index.html",
   // Root-lib file the server runtime imports at boot (publish route →

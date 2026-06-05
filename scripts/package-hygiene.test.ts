@@ -97,8 +97,9 @@ describe("package hygiene suspicious-file detection (#466)", () => {
     expect(REQUIRED_PACK_FILES).toContain("lib/genres.ts");
     // #470: the bin requires this start-path helper at runtime.
     expect(REQUIRED_PACK_FILES).toContain("bin/startup-plan.cjs");
-    // #479: server.ts imports this at boot to locate the Prisma CLI.
-    expect(REQUIRED_PACK_FILES).toContain("app/lib/prisma-cli.ts");
+    // #484: server.ts applies this committed DDL at boot (no schema-engine).
+    expect(REQUIRED_PACK_FILES).toContain("app/lib/apply-schema.ts");
+    expect(REQUIRED_PACK_FILES).toContain("app/prisma/schema.sql");
   });
 
   it("exposes a stable, non-empty rule set", () => {

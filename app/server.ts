@@ -24,10 +24,9 @@ import { storiesRoutes } from "./routes/stories";
 import { settingsRoutes } from "./routes/settings";
 import { agentRoutes } from "./routes/agent";
 import { codexImagesRoutes } from "./routes/codex-images";
-import { initDb } from "./db";
+import { db, initDb } from "./db";
 import { generateClaudeMd } from "./lib/generate-claude-md";
-import { execFileSync } from "child_process";
-import { resolvePrismaCli } from "./lib/prisma-cli";
+import { loadSchemaStatements } from "./lib/apply-schema";
 import fs from "fs";
 
 const __dirname = __dirnamePre;
@@ -135,38 +134,36 @@ async function start() {
   // Generate/update ~/.plotlink-ows/CLAUDE.md for agent discovery
   generateClaudeMd();
 
-  // Bring the local SQLite schema up to date. SQLite creates the DB file but NOT
-  // its parent directory, so ensure ~/.plotlink-ows/data exists first (#479) —
-  // a fresh prod-only install has no data dir yet, and `db push` would fail with
-  // an opaque "unable to open database file" otherwise. (paths.ts also mkdirs it
-  // on import; this is the explicit guarantee right before SQLite setup.)
+  // Bring the local SQLite schema up to date WITHOUT the native Prisma
+  // schema-engine. `prisma db push` spawns a platform-specific schema-engine
+  // binary that fails to start in some packed prod-only installs (#484, EPIC
+  // #465: an empty "Schema engine error:" on macOS arm64). Instead we apply the
+  // committed DDL (app/prisma/schema.sql, generated from schema.prisma) through
+  // the Prisma client's library query engine — the same engine the app already
+  // uses for every query, so if the app runs at all, schema setup runs too.
+  // SQLite creates the DB file but NOT its parent dir, so ensure
+  // ~/.plotlink-ows/data exists first (a fresh prod-only install has none).
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  const schemaPath = path.join(__dirname, "prisma", "schema.prisma");
+  const schemaSqlPath = path.join(__dirname, "prisma", "schema.sql");
   try {
-    // Invoke the locally-resolved Prisma CLI via `node` (NOT `npx prisma`, which
-    // resolves against the cwd and would try to download prisma from the network
-    // in a packed prod-only install started from an unexpected cwd, or offline).
-    const prismaCli = resolvePrismaCli(__dirname);
-    execFileSync(process.execPath, [prismaCli, "db", "push", "--schema", schemaPath, "--skip-generate"], {
-      stdio: "inherit",
-      cwd: path.dirname(__dirname), // package root, so relative resolutions are stable
-      env: { ...process.env, DATABASE_URL },
-    });
+    await initDb(); // connect the client (library query engine; no schema-engine)
+    // Statements are CREATE TABLE/INDEX IF NOT EXISTS, so this is idempotent and
+    // safe to run on every startup against an existing database.
+    for (const statement of loadSchemaStatements(schemaSqlPath)) {
+      await db.$executeRawUnsafe(statement);
+    }
   } catch (err) {
-    // Surface a useful diagnostic instead of a raw execFileSync stack (#479).
+    // Surface a useful diagnostic instead of a raw stack (#479/#484).
     const home = os.homedir();
     const redact = (s: string) => s.split(home).join("~");
-    console.error("\n  ✗ Database setup failed (prisma db push).");
-    console.error(`    schema:   ${redact(schemaPath)}`);
+    console.error("\n  ✗ Database setup failed (applying schema.sql).");
+    console.error(`    schema:   ${redact(schemaSqlPath)}`);
     console.error(`    database: ${redact(DATABASE_URL)}`);
     console.error(`    reason:   ${err instanceof Error ? err.message : String(err)}`);
-    console.error("    This usually means a corrupted install (missing the 'prisma' runtime");
-    console.error("    dependency or its query engine). Reinstall with: npx plotlink-ows@latest\n");
+    console.error("    This usually means a corrupted install (missing the generated Prisma");
+    console.error("    client/query engine or schema.sql). Reinstall with: npx plotlink-ows@latest\n");
     process.exit(1);
   }
-
-  // Initialize database connection
-  await initDb();
 
   const port = Number(process.env.APP_PORT) || 7777;
   const server = serve({ fetch: app.fetch, port }, (info) => {
