@@ -94,6 +94,8 @@ describe("package hygiene suspicious-file detection (#466)", () => {
     expect(REQUIRED_PACK_FILES).toContain("app/prisma/schema.prisma");
     // #469: the root-lib file the server imports at boot must be packed.
     expect(REQUIRED_PACK_FILES).toContain("lib/genres.ts");
+    // #470: the bin requires this start-path helper at runtime.
+    expect(REQUIRED_PACK_FILES).toContain("bin/startup-plan.cjs");
   });
 
   it("exposes a stable, non-empty rule set", () => {

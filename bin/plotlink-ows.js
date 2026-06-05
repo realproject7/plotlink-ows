@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // PlotLink OWS — CLI Wizard
-// Zero external dependencies — Node builtins only
+// Zero external dependencies — Node builtins + one in-package helper only.
 
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 const { execSync, spawn } = require("child_process");
 const crypto = require("crypto");
+const { planStartup } = require("./startup-plan.cjs");
 
 const CONFIG_DIR = path.join(require("os").homedir(), ".plotlink-ows");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
@@ -203,6 +204,19 @@ async function cmdInit() {
   process.exit(0);
 }
 
+// Are the runtime dependencies resolvable? Resolve a known runtime dep rather
+// than probing `PROJECT_DIR/node_modules` directly — under a global (`-g`)
+// install the package's deps are hoisted to a sibling `node_modules`, so that
+// directory may not exist even though the deps resolve fine up the tree.
+function runtimeDepsInstalled() {
+  try {
+    require.resolve("tsx", { paths: [PROJECT_DIR] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function cmdStart() {
   const config = readConfig();
   if (!config) {
@@ -211,16 +225,34 @@ function cmdStart() {
     process.exit(1);
   }
 
-  // Ensure deps installed
-  if (!fs.existsSync(path.join(PROJECT_DIR, "node_modules"))) {
-    log("Installing dependencies...");
+  // Runtime/build-time boundary (#470, EPIC #465): an installed package ships
+  // prebuilt assets and only runtime deps, so the start path must NOT run a web
+  // build or `npm install` here — that would fetch the build toolchain from the
+  // network (an unexpected rebuild on a user's machine). Only a source checkout
+  // (detected by `src/`, which is never in the published tarball) may build.
+  // Missing assets in an installed package mean a corrupted install.
+  const plan = planStartup({
+    isSourceCheckout: fs.existsSync(path.join(PROJECT_DIR, "src")),
+    depsInstalled: runtimeDepsInstalled(),
+    distBuilt: fs.existsSync(path.join(PROJECT_DIR, "app", "web", "dist", "index.html")),
+  });
+
+  if (plan.error) {
+    const what = plan.error === "deps"
+      ? "Runtime dependencies are missing (node_modules)"
+      : "Prebuilt web assets are missing (app/web/dist)";
+    error(`${what} — this looks like a corrupted install.`);
+    log("Reinstall and try again:");
+    log("  \x1b[1mnpx plotlink-ows@latest\x1b[0m        (or)");
+    log("  \x1b[1mnpm install -g plotlink-ows@latest\x1b[0m");
+    process.exit(1);
+  }
+  if (plan.install) {
+    log("Installing dependencies (source checkout)...");
     execSync("npm install", { cwd: PROJECT_DIR, stdio: "inherit" });
   }
-
-  // Ensure frontend is built
-  const distDir = path.join(PROJECT_DIR, "app", "web", "dist");
-  if (!fs.existsSync(distDir)) {
-    log("Building frontend...");
+  if (plan.build) {
+    log("Building frontend (source checkout)...");
     execSync("npx vite build --config app/vite.config.ts", { cwd: PROJECT_DIR, stdio: "inherit" });
   }
 
