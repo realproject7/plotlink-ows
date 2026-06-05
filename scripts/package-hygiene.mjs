@@ -39,6 +39,38 @@ export const REQUIRED_PACK_FILES = [
   "lib/genres.ts",
 ];
 
+// The published OWS CLI runtime install path (`dependencies`). EPIC #465 keeps
+// this set MINIMAL — only packages the CLI actually loads at runtime (the server
+// in `app/`, the `bin/` wizard, and the runtime helpers in `lib/`). Web-app
+// (`src/`), build-time, and direct-upload-only packages belong in
+// `devDependencies` (see DEPENDENCIES.md): React/Vite/etc. (#469) and
+// `@aws-sdk/client-s3` (#471 — OWS uploads go through the PlotLink API, so the
+// S3/Filebase client is web-app-only). A new entry here must be a genuine OWS
+// runtime import; add it consciously (and document it) rather than by accident.
+export const ALLOWED_RUNTIME_DEPS = [
+  "@hono/node-server",
+  "@open-wallet-standard/core",
+  "@prisma/client",
+  "@supabase/supabase-js",
+  "dotenv",
+  "hono",
+  "node-pty",
+  "prisma",
+  "tsx",
+  "viem",
+  "ws",
+];
+
+/**
+ * Runtime `dependencies` that are NOT in the OWS runtime allowlist — i.e. a
+ * web-app/build-time/upload-only package that leaked into the published install
+ * path (#471, EPIC #465). An empty array means the install path is clean.
+ */
+export function findRuntimeDepLeaks(pkg) {
+  const allowed = new Set(ALLOWED_RUNTIME_DEPS);
+  return Object.keys(pkg.dependencies ?? {}).filter((d) => !allowed.has(d));
+}
+
 /** Return the REQUIRED_PACK_FILES that are NOT in the packed path list. */
 export function findMissingRequired(paths) {
   const set = new Set(paths);

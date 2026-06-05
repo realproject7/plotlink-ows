@@ -26,7 +26,6 @@ or the CLI (`bin/`). These install with `npx plotlink-ows`:
 | `viem` | chain reads/writes + signing |
 | `ws` | terminal WebSocket relay |
 | `node-pty` | Claude/Codex terminal sessions |
-| `@aws-sdk/client-s3` | Filebase (IPFS) uploads (`lib/filebase.ts`) |
 | `@open-wallet-standard/core` | OWS wallet |
 | `@supabase/supabase-js` | indexing reads |
 | `dotenv` | loads `~/.plotlink-ows/.env` |
@@ -51,7 +50,7 @@ Used only by the `src/` Next.js site (plotlink.xyz), never by the OWS CLI:
 `next`, `eslint-config-next`, `wagmi`, `@rainbow-me/rainbowkit`,
 `@tanstack/react-query`, `ox`, `@farcaster/miniapp-node`,
 `@farcaster/miniapp-sdk`, `@farcaster/miniapp-wagmi-connector`,
-`@vercel/analytics`.
+`@vercel/analytics`, `@aws-sdk/client-s3` (moved here in #471 — see below).
 
 ## Test-only — `devDependencies`
 
@@ -74,6 +73,37 @@ CLI. It only appears in a full dev checkout because the web app builds here.
 deps into a separate workspace, e.g. `packages/web`) removes the warning from the
 root install entirely. That's a larger structural change (out of #469's "smallest
 safe change" scope) — tracked here rather than rushed.
+
+## Direct Filebase/S3 isolation (#471)
+
+`@aws-sdk/client-s3` was a runtime `dependency`, but the **OWS CLI runtime never
+uploads to S3/Filebase directly** — it publishes through the PlotLink API.
+
+Direct Filebase/S3 paths, mapped and classified:
+
+| Path | Uses S3/Filebase | Used by | Classification |
+|---|---|---|---|
+| `lib/filebase.ts` (`getFilebaseClient`/`uploadToIPFS`/`uploadWithRetry`) | `@aws-sdk/client-s3` directly | imported only by `src/app/api/upload/route.ts` (the PlotLink web app's server-side upload endpoint) | **web-app only** — `lib/` is not packed (`files` ships only `lib/ows/` + `lib/genres.ts`) |
+| `packages/cli/src/sdk/ipfs.ts` | `@aws-sdk/client-s3` directly | the old `plotlink-cli` (`client.ts`/`index.ts`) | **legacy CLI only** — the OWS server imports only `packages/cli/src/sdk/abi.ts` (a leaf, zero imports), never `ipfs`/`client`/`index` |
+| `app/lib/publish.ts` `uploadToIPFS` / `uploadCoverImage` / `uploadPlotImage` | **no** — `fetch(${PLOTLINK_URL}/api/upload*)` | OWS runtime (cartoon + fiction publish) | **OWS runtime, PlotLink API** (signed) — the proven upload/publish flow, unchanged |
+
+So `@aws-sdk/client-s3` is moved to `devDependencies` (web-app + legacy-CLI build),
+dropping it from the published OWS install path. The OWS publish flows continue to
+use the PlotLink API endpoints; `app/routes/publish.test.ts` already asserts the
+published payload contains no `filebase` reference, and `findRuntimeDepLeaks`
+(preflight + tests) now guards the runtime `dependencies` allowlist so neither
+`@aws-sdk/client-s3` nor any other web-app/upload-only package can silently
+re-enter the install path.
+
+**Residual (documented, not yet removed):** `packages/cli/src/sdk/ipfs.ts` still
+ships in the tarball (the whole `packages/` tree is packed) and `import`s
+`@aws-sdk/client-s3`, which is no longer installed in a production install. This
+is **safe** because the OWS runtime never loads that module (only `abi.ts`), and
+a prod-only boot smoke confirms the server starts without `@aws-sdk/client-s3`.
+**Follow-up plan:** trim `packages/cli` to just the ABI the OWS runtime needs (or
+complete the workspace split), so the legacy upload SDK is neither shipped nor a
+latent undeclared-dep — tracked rather than rushed (out of #471's "smallest safe
+change" scope, and removing CLI functionality needs separate approval).
 
 ## Runtime vs build-time boundary (#470)
 

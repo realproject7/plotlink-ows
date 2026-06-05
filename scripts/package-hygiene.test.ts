@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { findSuspicious, SUSPICIOUS_RULES, requiredInstalledFiles, findMissingRequired, REQUIRED_PACK_FILES } from "./package-hygiene.mjs";
+import { readFileSync } from "node:fs";
+import { findSuspicious, SUSPICIOUS_RULES, requiredInstalledFiles, findMissingRequired, REQUIRED_PACK_FILES, findRuntimeDepLeaks, ALLOWED_RUNTIME_DEPS } from "./package-hygiene.mjs";
 
 // #466: the release preflight must flag generated/local artifacts that must
 // never ship in the published package, and leave legitimate runtime files alone.
@@ -124,5 +125,34 @@ describe("package hygiene suspicious-file detection (#466)", () => {
       .toContain("db/schema.prisma");
     // No postinstall → no schema requirement, but still the runtime entrypoints.
     expect(requiredInstalledFiles({})).toEqual(["package.json", "app/server.ts", "app/web/dist/index.html"]);
+  });
+});
+
+// #471 (EPIC #465): the published CLI runtime install path (`dependencies`) must
+// stay minimal — web-app/build/upload-only packages belong in devDependencies.
+// `@aws-sdk/client-s3` is the #471 case: OWS uploads go through the PlotLink API
+// (app/lib/publish.ts → /api/upload*), so the S3/Filebase client is web-app-only.
+describe("runtime dependency boundary (#471)", () => {
+  it("flags a web-app/upload-only package that leaked into runtime dependencies", () => {
+    expect(findRuntimeDepLeaks({ dependencies: { hono: "*", "@aws-sdk/client-s3": "*", react: "*" } }))
+      .toEqual(["@aws-sdk/client-s3", "react"]);
+  });
+
+  it("passes when dependencies are all in the OWS runtime allowlist", () => {
+    const deps = Object.fromEntries(ALLOWED_RUNTIME_DEPS.map((d) => [d, "*"]));
+    expect(findRuntimeDepLeaks({ dependencies: deps })).toEqual([]);
+  });
+
+  it("tolerates an absent dependencies block", () => {
+    expect(findRuntimeDepLeaks({})).toEqual([]);
+  });
+
+  it("the real package.json keeps @aws-sdk/client-s3 out of the runtime install path", () => {
+    // vitest runs from the repo root; read the real manifest from there.
+    const pkg = JSON.parse(readFileSync(`${process.cwd()}/package.json`, "utf8"));
+    expect(Object.keys(pkg.dependencies)).not.toContain("@aws-sdk/client-s3");
+    expect(Object.keys(pkg.devDependencies)).toContain("@aws-sdk/client-s3");
+    // And no other web-app/build/upload-only package has leaked into runtime deps.
+    expect(findRuntimeDepLeaks(pkg)).toEqual([]);
   });
 });
