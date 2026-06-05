@@ -26,7 +26,7 @@ import { readFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSuspicious, findMissingRequired, requiredInstalledFiles } from "./package-hygiene.mjs";
+import { findSuspicious, findMissingRequired, requiredInstalledFiles, findRuntimeDepLeaks } from "./package-hygiene.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -75,6 +75,17 @@ try {
   else ok("no high/critical production vulnerabilities");
 } catch {
   warn("could not parse `npm audit` output (offline, or registry unreachable) — re-run with network access before publishing.");
+}
+
+// ---------------------------------------------------------------------------
+// 2b) Runtime dependency boundary (#471, EPIC #465)
+// ---------------------------------------------------------------------------
+section("Runtime dependency boundary (dependencies allowlist)");
+const leaks = findRuntimeDepLeaks(pkg);
+if (leaks.length) {
+  fail(`web-app/build/upload-only package(s) in runtime 'dependencies' (move to devDependencies, or add to ALLOWED_RUNTIME_DEPS if genuinely a runtime import): ${leaks.join(", ")}`);
+} else {
+  ok(`runtime 'dependencies' match the OWS allowlist (${Object.keys(pkg.dependencies ?? {}).length} pkgs; no web-app/S3/build leaks)`);
 }
 
 // ---------------------------------------------------------------------------

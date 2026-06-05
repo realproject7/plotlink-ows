@@ -1,6 +1,6 @@
 {
   "name": "plotlink-ows",
-  "version": "1.2.90",
+  "version": "1.2.91",
   "packageManager": "npm@10.9.8",
   "engines": {
     "node": "20.x",
@@ -72,7 +72,6 @@
     "release:major": "npm version major && git push origin main --follow-tags && VERSION=$(node -p 'require(\"./package.json\").version') && gh release create \"v$VERSION\" --generate-notes --latest && npm publish"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1009.0",
     "@hono/node-server": "^1.19.14",
     "@open-wallet-standard/core": "^1.2.4",
     "@prisma/client": "^6.19.3",
@@ -86,6 +85,7 @@
     "ws": "^8.20.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1009.0",
     "@farcaster/miniapp-node": "^0.1.13",
     "@farcaster/miniapp-sdk": "^0.3.0",
     "@farcaster/miniapp-wagmi-connector": "^2.0.0",
