@@ -26,6 +26,10 @@ export const REQUIRED_PACK_FILES = [
   "README.md",
   "LICENSE",
   "bin/plotlink-ows.js",
+  // The bin requires this in-package helper at runtime (start-path boundary
+  // planner); `files` ships all of `bin/`, but listing it here fails preflight
+  // if a future exclusion drops it (#470).
+  "bin/startup-plan.cjs",
   "app/server.ts",
   "app/prisma/schema.prisma",
   "app/web/dist/index.html",

@@ -75,10 +75,38 @@ deps into a separate workspace, e.g. `packages/web`) removes the warning from th
 root install entirely. That's a larger structural change (out of #469's "smallest
 safe change" scope) — tracked here rather than rushed.
 
+## Runtime vs build-time boundary (#470)
+
+#469 split the *dependency lists*; #470 makes the **start path** honour that split
+so an installed CLI never reaches for build-time tooling it doesn't have.
+
+The contract:
+
+- **Runtime deps install with the package; build tooling does not.** Build tooling
+  (`vite`, `tailwindcss`, `react`, …) is `devDependencies`, so it is **absent**
+  from `npm install -g plotlink-ows` / `npx plotlink-ows`.
+- **The web UI is prebuilt and shipped.** `prepublishOnly` runs `app:build`, and
+  `app/web/dist` is committed + packed. The runtime serves the static `dist`; it
+  never builds it.
+- **The start path must not build or `npm install` on a user's machine.**
+  `bin/plotlink-ows.js` start logic (`bin/startup-plan.cjs`, unit-tested) only
+  runs a build/install in a **source checkout** — detected by `src/`, which is
+  never in the published `files` allowlist. In an installed package, missing
+  `node_modules` or `app/web/dist` is treated as a **corrupted install** (clear
+  error + reinstall hint), *not* a trigger to fetch the toolchain from the
+  network. The deps probe uses `require.resolve` (not a `node_modules/` dir
+  check) so hoisted global (`-g`) installs aren't misread as broken.
+- **Prisma generation is deterministic and install-time.** The `postinstall`
+  runs `prisma generate --schema app/prisma/schema.prisma` once at install; the
+  schema is shipped (and preflight-required). The runtime imports the generated
+  `@prisma/client` and never regenerates at start.
+
 ## Guards
 
-`npm run preflight` (#466) verifies `lib/genres.ts` and the other required
-runtime files are in the packed tarball, and a packed-tarball install smoke test
-confirms `npx plotlink-ows` installs and the bin/runtime entrypoints are present.
-A manual prod-only boot test (`npm pack` → install with prod deps only → run the
-server) confirms the CLI starts with `dependencies` alone.
+`npm run preflight` (#466) verifies `lib/genres.ts`, `bin/startup-plan.cjs`, and
+the other required runtime files are in the packed tarball, and a packed-tarball
+install smoke test confirms `npx plotlink-ows` installs and the bin/runtime
+entrypoints are present. The start-path boundary policy itself is unit-tested in
+`bin/startup-plan.test.ts`. A manual prod-only boot test (`npm pack` → install
+with prod deps only → run the server) confirms the CLI starts with
+`dependencies` alone — no build, no extra install.
