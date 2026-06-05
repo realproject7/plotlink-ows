@@ -92,6 +92,8 @@ describe("package hygiene suspicious-file detection (#466)", () => {
     expect(findMissingRequired(["package.json", "bin/plotlink-ows.js"])).toContain("app/web/dist/index.html");
     expect(REQUIRED_PACK_FILES).toContain("LICENSE");
     expect(REQUIRED_PACK_FILES).toContain("app/prisma/schema.prisma");
+    // #469: the root-lib file the server imports at boot must be packed.
+    expect(REQUIRED_PACK_FILES).toContain("lib/genres.ts");
   });
 
   it("exposes a stable, non-empty rule set", () => {

@@ -29,6 +29,10 @@ export const REQUIRED_PACK_FILES = [
   "app/server.ts",
   "app/prisma/schema.prisma",
   "app/web/dist/index.html",
+  // Root-lib file the server runtime imports at boot (publish route →
+  // `../../lib/genres`); `files` packs only `lib/ows/`, so it must be listed
+  // explicitly or the published CLI fails to start (#469).
+  "lib/genres.ts",
 ];
 
 /** Return the REQUIRED_PACK_FILES that are NOT in the packed path list. */
