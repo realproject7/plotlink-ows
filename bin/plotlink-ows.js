@@ -7,7 +7,7 @@ const path = require("path");
 const readline = require("readline");
 const { execSync, spawn } = require("child_process");
 const crypto = require("crypto");
-const { planStartup } = require("./startup-plan.cjs");
+const { planStartup, shouldAutoOpen } = require("./startup-plan.cjs");
 
 const CONFIG_DIR = path.join(require("os").homedir(), ".plotlink-ows");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
@@ -258,13 +258,18 @@ function cmdStart() {
 
   const port = config.port || 7777;
 
-  // Auto-open browser after a short delay
-  setTimeout(() => {
-    try {
-      const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
-      execSync(`${openCmd} http://localhost:${port}`, { stdio: "ignore" });
-    } catch { /* ignore */ }
-  }, 2000);
+  // Auto-open browser after a short delay. Skipped for non-interactive runs
+  // (the release start smoke / preflight set PLOTLINK_OWS_NO_OPEN=1) so a publish
+  // check never pops a browser tab on the operator machine (#481). Normal
+  // `npx plotlink-ows` startup is unaffected.
+  if (shouldAutoOpen(process.env)) {
+    setTimeout(() => {
+      try {
+        const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
+        execSync(`${openCmd} http://localhost:${port}`, { stdio: "ignore" });
+      } catch { /* ignore */ }
+    }, 2000);
+  }
 
   // Run server in foreground with visible logs
   const server = spawn("npx", ["tsx", "app/server.ts"], {

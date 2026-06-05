@@ -39,4 +39,20 @@ function planStartup({ isSourceCheckout, depsInstalled, distBuilt }) {
   return { install: false, build: false, error: null };
 }
 
-module.exports = { planStartup };
+/**
+ * Decide whether `start` should auto-open the local app in a browser (#481).
+ *
+ * Normal `npx plotlink-ows` startup auto-opens for convenience. Non-interactive
+ * release checks (the packed start smoke / `npm run preflight`) set
+ * `PLOTLINK_OWS_NO_OPEN=1` so they never pop a browser tab on the operator
+ * machine. Only the exact string "1" disables it; any other value keeps the
+ * default open behavior.
+ *
+ * @param {Record<string, string | undefined>} env  a process.env-shaped object
+ * @returns {boolean}
+ */
+function shouldAutoOpen(env) {
+  return env.PLOTLINK_OWS_NO_OPEN !== "1";
+}
+
+module.exports = { planStartup, shouldAutoOpen };

@@ -74,7 +74,9 @@ try {
   const binPath = join(installed, "bin", "plotlink-ows.js");
   child = spawn(process.execPath, [binPath], {
     cwd: installed,
-    env: { ...process.env, HOME: home, USERPROFILE: home, APP_PORT: String(PORT) },
+    // PLOTLINK_OWS_NO_OPEN=1 stops the bin auto-opening a browser during this
+    // non-interactive release check (#481); normal `npx plotlink-ows` is unaffected.
+    env: { ...process.env, HOME: home, USERPROFILE: home, APP_PORT: String(PORT), PLOTLINK_OWS_NO_OPEN: "1" },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true, // own process group, so we can kill the bin AND its server child
   });
