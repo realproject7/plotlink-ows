@@ -1,31 +1,59 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  act,
+} from "@testing-library/react";
 import { useState, useCallback } from "react";
 import { getContentTypeForPublish } from "../lib/publish-helpers";
 
 afterEach(cleanup);
 
-function TestPublishComponent({ authFetch }: { authFetch: (url: string, opts?: RequestInit) => void }) {
-  const [storyContentTypes, setStoryContentTypes] = useState<Record<string, string>>({});
+function TestPublishComponent({
+  authFetch,
+}: {
+  authFetch: (url: string, opts?: RequestInit) => void;
+}) {
+  const [storyContentTypes, setStoryContentTypes] = useState<
+    Record<string, string>
+  >({});
 
-  const handlePublish = useCallback((storyName: string, storylineId: number | undefined) => {
-    const ct = getContentTypeForPublish(storyContentTypes, storyName, storylineId);
-    const payload = { storyName, ...(ct ? { contentType: ct } : {}) };
-    authFetch("/api/publish/file", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  }, [authFetch, storyContentTypes]);
+  const handlePublish = useCallback(
+    (storyName: string, storylineId: number | undefined) => {
+      const ct = getContentTypeForPublish(
+        storyContentTypes,
+        storyName,
+        storylineId,
+      );
+      const payload = { storyName, ...(ct ? { contentType: ct } : {}) };
+      authFetch("/api/publish/file", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    [authFetch, storyContentTypes],
+  );
 
   return (
     <div>
-      <button onClick={() => setStoryContentTypes({ "cartoon-story": "cartoon" })} data-testid="set-cartoon">
+      <button
+        onClick={() => setStoryContentTypes({ "cartoon-story": "cartoon" })}
+        data-testid="set-cartoon"
+      >
         Set Cartoon
       </button>
-      <button onClick={() => handlePublish("cartoon-story", undefined)} data-testid="publish-genesis">
+      <button
+        onClick={() => handlePublish("cartoon-story", undefined)}
+        data-testid="publish-genesis"
+      >
         Publish Genesis
       </button>
-      <button onClick={() => handlePublish("cartoon-story", 42)} data-testid="publish-plot">
+      <button
+        onClick={() => handlePublish("cartoon-story", 42)}
+        data-testid="publish-plot"
+      >
         Publish Plot
       </button>
     </div>
@@ -42,7 +70,7 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
     );
 
     const handlePublishMatch = source.match(
-      /const handlePublish = useCallback\([\s\S]*?\}, \[([^\]]+)\]\)/,
+      /const handlePublish = useCallback\([\s\S]*?\n\s*\},\s*\n\s*\[([\s\S]*?)\],\s*\n\s*\);/,
     );
     expect(handlePublishMatch).toBeTruthy();
     const deps = handlePublishMatch![1];
@@ -57,7 +85,10 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
   it("derives the publish title via derivePublishTitle and reads structure.md for genesis", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "StoriesPage.tsx"),
+      "utf-8",
+    );
     expect(source).toContain("derivePublishTitle");
     // genesis fetches structure.md so its title can stand in for a missing H1.
     expect(source).toMatch(/genesis\.md[\s\S]*?structure\.md/);
@@ -71,12 +102,17 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
   it("reads the cut-plan episode title for a cartoon plot publish", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "StoriesPage.tsx"),
+      "utf-8",
+    );
     // Fetches cuts.json for a cartoon plot to read its title.
     expect(source).toMatch(/cartoon[\s\S]*?\/cuts\//);
     expect(source).toContain("episodeTitle");
     // Passes contentType + episodeTitle into the title derivation.
-    expect(source).toMatch(/derivePublishTitle\(\{[\s\S]*?contentType[\s\S]*?episodeTitle[\s\S]*?\}\)/);
+    expect(source).toMatch(
+      /derivePublishTitle\(\{[\s\S]*?contentType[\s\S]*?episodeTitle[\s\S]*?\}\)/,
+    );
   });
 
   // #332: handlePublish must guard against minting a duplicate chainPlot for a
@@ -85,10 +121,15 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
   it("guards plot publish against duplicate chainPlot via shouldBlockDuplicatePlotPublish", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const source = fs.readFileSync(path.resolve(__dirname, "StoriesPage.tsx"), "utf-8");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "StoriesPage.tsx"),
+      "utf-8",
+    );
     expect(source).toContain("shouldBlockDuplicatePlotPublish(fileData)");
     // The guard returns early before reaching the publish SSE call.
-    const guardIdx = source.indexOf("shouldBlockDuplicatePlotPublish(fileData)");
+    const guardIdx = source.indexOf(
+      "shouldBlockDuplicatePlotPublish(fileData)",
+    );
     const publishIdx = source.indexOf('authFetch("/api/publish/file"');
     expect(guardIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(publishIdx);
@@ -100,7 +141,10 @@ describe("StoriesPage.handlePublish dependency array (source guard)", () => {
   it("gates the Retry Publish button behind an explicit duplicate-risk confirm", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const source = fs.readFileSync(path.resolve(__dirname, "PreviewPanel.tsx"), "utf-8");
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "PreviewPanel.tsx"),
+      "utf-8",
+    );
     const btnIdx = source.indexOf('data-testid="retry-publish-btn"');
     expect(btnIdx).toBeGreaterThan(-1);
     // Its onClick window.confirm warns about a duplicate/second chapter.
@@ -120,7 +164,9 @@ describe("publish callback boundary (stale closure regression)", () => {
     const firstPayload = JSON.parse(authFetch.mock.calls[0][1].body);
     expect(firstPayload.contentType).toBeUndefined();
 
-    act(() => { fireEvent.click(screen.getByTestId("set-cartoon")); });
+    act(() => {
+      fireEvent.click(screen.getByTestId("set-cartoon"));
+    });
 
     fireEvent.click(screen.getByTestId("publish-genesis"));
     expect(authFetch).toHaveBeenCalledTimes(2);
@@ -132,7 +178,9 @@ describe("publish callback boundary (stale closure regression)", () => {
     const authFetch = vi.fn();
     render(<TestPublishComponent authFetch={authFetch} />);
 
-    act(() => { fireEvent.click(screen.getByTestId("set-cartoon")); });
+    act(() => {
+      fireEvent.click(screen.getByTestId("set-cartoon"));
+    });
     fireEvent.click(screen.getByTestId("publish-plot"));
 
     const payload = JSON.parse(authFetch.mock.calls[0][1].body);
@@ -161,7 +209,9 @@ describe("handlePublish preflight balance gate (#375 source guard)", () => {
     expect(preIdx).toBeGreaterThan(-1);
     expect(fileIdx).toBeGreaterThan(preIdx);
     // The block path sets the durable error and returns before "Publishing...".
-    const blockIdx = source.indexOf("setPublishError(formatPreflightBlock(pre))");
+    const blockIdx = source.indexOf(
+      "setPublishError(formatPreflightBlock(pre))",
+    );
     const publishingIdx = source.indexOf('setPublishProgress("Publishing...")');
     expect(blockIdx).toBeGreaterThan(-1);
     expect(blockIdx).toBeLessThan(publishingIdx);
@@ -197,7 +247,9 @@ describe("handlePublish public-title verification (#379 source guard)", () => {
     expect(source).toContain("/api/publish/public-title?");
     expect(source).not.toContain("plotlink.xyz/api/storyline/");
     // Only for cartoon publishes.
-    expect(source).toMatch(/publishContentType === "cartoon" && data\.storylineId/);
+    expect(source).toMatch(
+      /publishContentType === "cartoon" && data\.storylineId/,
+    );
     // The verification CALL runs after the on-chain `done` event (post-index).
     // (lastIndexOf skips the import line so we measure the call site.)
     const doneIdx = source.indexOf('data.step === "done"');
@@ -209,7 +261,11 @@ describe("handlePublish public-title verification (#379 source guard)", () => {
   it("surfaces the failure as the durable publish-block error (kept visible for #211)", async () => {
     const source = await readSource();
     // A failed verdict becomes a durable error, not a transient progress line.
-    expect(source).toMatch(/titleVerifyWarning = publicTitleWarning\(verdict\)/);
-    expect(source).toMatch(/if \(titleVerifyWarning\) setPublishError\(titleVerifyWarning\)/);
+    expect(source).toMatch(
+      /titleVerifyWarning = publicTitleWarning\(verdict\)/,
+    );
+    expect(source).toMatch(
+      /if \(titleVerifyWarning\) setPublishError\(titleVerifyWarning\)/,
+    );
   });
 });
