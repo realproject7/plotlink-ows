@@ -27,9 +27,7 @@ import {
   overlaysSignature,
   type ScriptLine,
 } from "@app-lib/lettering-status";
-import { textPanelDimensions } from "@app-lib/cuts";
-import { buildLetteringPrompt } from "@app-lib/cartoon-prompt";
-import type { Cut as LibCut } from "@app-lib/cuts";
+import { textPanelDimensions, type CutAiDraft } from "@app-lib/cuts";
 import { useAuthedAsset } from "./asset-image";
 
 function toPixel(norm: number, size: number): number {
@@ -69,13 +67,17 @@ interface Cut {
   kind?: "image" | "text";
   background?: string;
   aspectRatio?: string;
+  aiDraft?: CutAiDraft | null;
 }
 
 interface LetteringEditorProps {
   storyName: string;
   cut: Cut;
   plotFile: string;
-  onSave: (overlays: Overlay[]) => void | Promise<void>;
+  onSave: (
+    overlays: Overlay[],
+    aiDraft?: CutAiDraft | null,
+  ) => void | Promise<void>;
   onClose: () => void;
   onExported?: () => void;
   language?: string;
@@ -222,7 +224,6 @@ export function LetteringEditor({
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [aiCopied, setAiCopied] = useState(false);
   const [imageBounds, setImageBounds] = useState({
     x: 0,
     y: 0,
@@ -486,22 +487,24 @@ export function LetteringEditor({
   const handleSave = useCallback(async () => {
     setSaveError(null);
     try {
-      await onSave(overlays);
+      const currentSig = overlaysSignature(overlays);
+      const nextAiDraft =
+        cut.aiDraft?.status === "generated" &&
+        currentSig !== (cut.aiDraft.baseSig ?? "")
+          ? {
+              ...cut.aiDraft,
+              status: "edited" as const,
+              updatedAt: new Date().toISOString(),
+            }
+          : (cut.aiDraft ?? undefined);
+      await onSave(overlays, nextAiDraft ?? null);
       if (returnOnSave) onClose();
     } catch (err) {
       setSaveError(
         err instanceof Error ? err.message : "Failed to save overlays",
       );
     }
-  }, [overlays, onSave, onClose, returnOnSave]);
-
-  const copyAiDraftPrompt = useCallback(() => {
-    navigator.clipboard?.writeText(
-      buildLetteringPrompt(cut as unknown as LibCut, plotFile),
-    );
-    setAiCopied(true);
-    setTimeout(() => setAiCopied(false), 2000);
-  }, [cut, plotFile]);
+  }, [overlays, onSave, onClose, returnOnSave, cut.aiDraft]);
 
   const handleExport = useCallback(async () => {
     // Block export when the cut plan contained overlays that could not be placed
@@ -1172,26 +1175,20 @@ export function LetteringEditor({
 
         {/* Inspector panel */}
         <div className="w-64 border-l border-border p-3 overflow-y-auto flex-shrink-0">
-          <div
-            className="mb-3 rounded border border-accent/30 bg-accent/5 p-2 space-y-1.5"
-            data-testid="ai-draft-current-target"
-          >
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
-              AI draft assist
-            </p>
-            <p className="text-[11px] text-muted">
-              Copy a prompt scoped to {targetLabel ?? `cut ${cut.id}`}. Review
-              and edit any drafted bubbles here before saving.
-            </p>
-            <button
-              type="button"
-              onClick={copyAiDraftPrompt}
-              className="rounded border border-accent/40 px-2 py-1 text-[11px] font-medium text-accent hover:bg-accent/10"
-              data-testid="copy-ai-lettering-current"
+          {cut.aiDraft?.status === "generated" && (
+            <div
+              className="mb-3 rounded border border-accent/30 bg-accent/5 p-2 space-y-1"
+              data-testid="ai-draft-current-target"
             >
-              {aiCopied ? "Copied!" : "Copy AI draft prompt"}
-            </button>
-          </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
+                AI draft ready
+              </p>
+              <p className="text-[11px] text-muted">
+                These first-pass overlays came from the cut script. Review and
+                tune them here before exporting the final panel.
+              </p>
+            </div>
+          )}
           {/* Insert-from-script (#336): drop the cut's planned dialogue/narration/
               SFX straight into a prefilled overlay — no copy/paste out of JSON. */}
           {scriptLines.length > 0 && (
