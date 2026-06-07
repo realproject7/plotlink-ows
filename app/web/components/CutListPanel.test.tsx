@@ -1032,6 +1032,11 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(advanced.tagName.toLowerCase()).toBe("details");
     expect(advanced).not.toHaveAttribute("open");
     expect(within(advanced).getByTestId("sync-clean-btn")).toBeInTheDocument();
+    const help = screen.getByTestId("cartoon-workflow-help");
+    expect(help.tagName.toLowerCase()).toBe("details");
+    expect(help).not.toHaveAttribute("open");
+    expect(within(help).getByText("Cut workflow help")).toBeInTheDocument();
+    expect(screen.getByTestId("finish-episode-details")).not.toHaveAttribute("open");
   });
 
   // #488: AI drafting is scoped to the selected target inside the focused
