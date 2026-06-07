@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 
 const API_BASE = "http://localhost:7777";
 
 interface WalletInfo {
+  walletId?: string;
+  name?: string;
   address: string;
   ethBalance: string;
   ethFormatted: string;
@@ -48,16 +50,17 @@ interface DashboardData {
 
 export function Dashboard({ token }: { token: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
-  const authFetch = (url: string, opts?: RequestInit) =>
-    fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
+  const authFetch = useCallback((url: string, opts?: RequestInit) =>
+    fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
+  [token]);
 
-  const loadDashboard = () => {
+  const loadDashboard = useCallback(() => {
     authFetch(`${API_BASE}/api/dashboard`)
       .then((r) => r.json())
       .then(setData);
-  };
+  }, [authFetch]);
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const truncate = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   const formatDate = (d: string | undefined | null) => {
@@ -104,6 +107,12 @@ export function Dashboard({ token }: { token: string }) {
         <div className="border-border rounded border p-4">
           <h3 className="text-accent mb-3 text-xs font-bold uppercase tracking-wider">Wallet</h3>
           <div className="space-y-1.5">
+            {data.wallet.name && (
+              <div className="flex justify-between text-xs">
+                <span className="text-muted">Active wallet</span>
+                <span className="text-foreground truncate pl-3 font-mono text-[10px]">{data.wallet.name}</span>
+              </div>
+            )}
             <div className="flex justify-between text-xs">
               <span className="text-muted">Address</span>
               <code className="text-foreground font-mono text-[10px]">{truncate(data.wallet.address)}</code>

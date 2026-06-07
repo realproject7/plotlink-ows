@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import fs from "fs";
 import { ENV_FILE } from "../lib/paths";
+import { nextPlotlinkWalletName, resolveActiveWallet, selectActiveWallet, toPublicActiveWallet } from "../lib/active-wallet";
 
 const envPath = ENV_FILE;
 
@@ -21,18 +22,8 @@ function readEnvPassphrase(): string | null {
 /** GET /api/wallet — get wallet info */
 wallet.get("/", async (c) => {
   try {
-    const { getAgentWallet, getBaseAddress } = await import("../../lib/ows/wallet");
-
-    // Try to find existing wallet
-    const { listAgentWallets } = await import("../../lib/ows/wallet");
-    const wallets = listAgentWallets();
-    const plotlinkWallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-
-    if (!plotlinkWallet) {
-      return c.json({ exists: false });
-    }
-
-    const address = getBaseAddress(plotlinkWallet);
+    const resolved = await resolveActiveWallet();
+    const activeWallet = resolved.activeWallet;
 
     // Fetch balances on Base via RPC
     let ethBalance = "0";
@@ -40,8 +31,8 @@ wallet.get("/", async (c) => {
     let plotBalance = "0";
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 
-    if (address) {
-      const addrPadded = "000000000000000000000000" + address.slice(2).toLowerCase();
+    if (activeWallet?.address) {
+      const addrPadded = "000000000000000000000000" + activeWallet.address.slice(2).toLowerCase();
       const balanceOfSig = "0x70a08231" + addrPadded;
 
       try {
@@ -49,7 +40,7 @@ wallet.get("/", async (c) => {
         const ethRes = await fetch(rpcUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [address, "latest"] }),
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [activeWallet.address, "latest"] }),
         });
         const ethData = await ethRes.json() as { result?: string };
         if (ethData.result && ethData.result !== "0x" && ethData.result !== "0x0") {
@@ -82,20 +73,56 @@ wallet.get("/", async (c) => {
       } catch { /* balance fetch best-effort */ }
     }
 
+    if (!activeWallet) {
+      return c.json({
+        exists: resolved.wallets.length > 0,
+        selectionRequired: resolved.selectionRequired,
+        error: resolved.error,
+        wallets: resolved.wallets,
+      });
+    }
+
     return c.json({
       exists: true,
-      walletId: plotlinkWallet.id,
-      name: plotlinkWallet.name,
-      address,
+      walletId: activeWallet.walletId,
+      name: activeWallet.name,
+      address: activeWallet.address,
+      activeWallet: toPublicActiveWallet(activeWallet),
+      selectionRequired: false,
+      wallets: resolved.wallets,
       ethBalance,
       usdcBalance,
       plotBalance,
-      accounts: plotlinkWallet.accounts,
+      accounts: activeWallet.wallet.accounts,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get wallet";
     return c.json({ exists: false, error: message });
   }
+});
+
+/** POST /api/wallet/active — select active OWS wallet */
+wallet.post("/active", async (c) => {
+  const body = await c.req.json<{ walletId?: string; name?: string; address?: string }>();
+  if (!body.walletId && !body.name && !body.address) {
+    return c.json({ error: "walletId, name, or address required" }, 400);
+  }
+
+  const resolved = await selectActiveWallet(body);
+  if (!resolved.activeWallet) {
+    return c.json({
+      error: resolved.error || "Could not select wallet",
+      selectionRequired: resolved.selectionRequired,
+      wallets: resolved.wallets,
+    }, 400);
+  }
+
+  return c.json({
+    ok: true,
+    activeWallet: toPublicActiveWallet(resolved.activeWallet),
+    wallets: resolved.wallets,
+    selectionRequired: false,
+  });
 });
 
 /** POST /api/wallet/create — create OWS wallet */
@@ -106,20 +133,21 @@ wallet.post("/create", async (c) => {
       return c.json({ error: "Passphrase not configured" }, 400);
     }
 
-    const { createAgentWallet, getBaseAddress, listAgentWallets } = await import("../../lib/ows/wallet");
+    const { createAgentWallet, listAgentWallets } = await import("../../lib/ows/wallet");
 
-    // Check if wallet already exists
     const wallets = listAgentWallets();
-    const existing = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (existing) {
-      const address = getBaseAddress(existing);
-      return c.json({ walletId: existing.id, address, alreadyExisted: true });
-    }
+    const name = nextPlotlinkWalletName(wallets);
+    const createdWallet = createAgentWallet(name, passphrase);
+    const resolved = await selectActiveWallet({ walletId: createdWallet.id, name: createdWallet.name });
 
-    const wallet = createAgentWallet("plotlink-writer", passphrase);
-    const address = getBaseAddress(wallet);
-
-    return c.json({ walletId: wallet.id, address, alreadyExisted: false });
+    return c.json({
+      walletId: resolved.activeWallet?.walletId ?? createdWallet.id,
+      name: createdWallet.name,
+      address: resolved.activeWallet?.address,
+      activeWallet: resolved.activeWallet ? toPublicActiveWallet(resolved.activeWallet) : null,
+      wallets: resolved.wallets,
+      alreadyExisted: false,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Wallet creation failed";
     return c.json({ error: message }, 500);
