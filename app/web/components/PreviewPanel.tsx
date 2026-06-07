@@ -9,8 +9,22 @@ import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
 import { WorkflowCoach } from "./WorkflowCoach";
 import type { CoachUiAction } from "@app-lib/cartoon-coach";
-import { classifyCartoonReadiness, cartoonGenesisReadiness, summarizeCutProgress, previewFooterGuidance, type CartoonReadinessStage as CartoonStage, type CartoonCutProgress } from "@app-lib/cartoon-readiness";
-import { validateCoverImage, cartoonCoverReadiness, COVER_GUIDANCE, derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
+import {
+  classifyCartoonReadiness,
+  cartoonGenesisReadiness,
+  summarizeCutProgress,
+  previewFooterGuidance,
+  type CartoonReadinessStage as CartoonStage,
+  type CartoonCutProgress,
+} from "@app-lib/cartoon-readiness";
+import {
+  validateCoverImage,
+  cartoonCoverReadiness,
+  COVER_GUIDANCE,
+  derivePublishTitle,
+  isRawFilenameTitle,
+  hasExplicitEpisodeTitle,
+} from "../lib/publish-helpers";
 import { importImageToCompliantBlob } from "../lib/import-image";
 
 /** Custom sanitizer matching plotlink.xyz — allows img with src, alt, title */
@@ -25,7 +39,9 @@ const sanitizeSchema = {
 const IPFS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
 
 /** Find all markdown image references in content */
-function findImageRefs(text: string): Array<{ full: string; alt: string; url: string }> {
+function findImageRefs(
+  text: string,
+): Array<{ full: string; alt: string; url: string }> {
   const results: Array<{ full: string; alt: string; url: string }> = [];
   const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
   let m;
@@ -36,18 +52,25 @@ function findImageRefs(text: string): Array<{ full: string; alt: string; url: st
 }
 
 /** Validate image references for publishing */
-function validateImageRefs(text: string): { count: number; warnings: string[] } {
+function validateImageRefs(text: string): {
+  count: number;
+  warnings: string[];
+} {
   const refs = findImageRefs(text);
   const warnings: string[] = [];
   for (const ref of refs) {
     if (!ref.url.startsWith(IPFS_GATEWAY)) {
-      warnings.push(`Non-IPFS image URL: ${ref.url.length > 60 ? ref.url.slice(0, 60) + "..." : ref.url}`);
+      warnings.push(
+        `Non-IPFS image URL: ${ref.url.length > 60 ? ref.url.slice(0, 60) + "..." : ref.url}`,
+      );
     }
   }
   // Check for malformed image markdown (missing closing bracket/paren)
   const malformed = text.match(/!\[[^\]]*\]\([^)]*$|!\[[^\]]*$(?!\])/gm);
   if (malformed) {
-    warnings.push("Malformed image markdown detected — check brackets and parentheses");
+    warnings.push(
+      "Malformed image markdown detected — check brackets and parentheses",
+    );
   }
   return { count: refs.length, warnings };
 }
@@ -59,7 +82,14 @@ interface PreviewPanelProps {
   // Resolves to true only on a confirmed-successful publish (so a selected cover
   // may be dropped); false/void when blocked before the stream (#375) or when the
   // publish fails/aborts before completing (#376), so the cover is kept.
-  onPublish?: (storyName: string, fileName: string, genre: string, language: string, isNsfw: boolean, coverFile?: File | null) => void | Promise<boolean | void>;
+  onPublish?: (
+    storyName: string,
+    fileName: string,
+    genre: string,
+    language: string,
+    isNsfw: boolean,
+    coverFile?: File | null,
+  ) => void | Promise<boolean | void>;
   publishingFile?: string | null;
   walletAddress?: string | null;
   contentType?: "fiction" | "cartoon";
@@ -82,6 +112,14 @@ interface PreviewPanelProps {
   // issue diagnostics + the publish action now live. Cartoon episode views show a
   // single compact CTA that calls this instead of hosting publish controls.
   onViewPublish?: () => void;
+  /** Whether the right panel is currently in focused cartoon lettering mode. */
+  focusedLetteringMode?: boolean;
+  /** Whether the wider app work area is restored while editing. */
+  focusedLetteringWorkspaceVisible?: boolean;
+  /** Enter/leave focused cartoon lettering mode. */
+  onFocusedLetteringModeChange?: (active: boolean) => void;
+  /** Restore/fold the wider app work area while staying in the editor. */
+  onFocusedLetteringWorkspaceVisibleChange?: (visible: boolean) => void;
 }
 
 interface FileData {
@@ -98,26 +136,53 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
-export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publishingFile, walletAddress, contentType = "fiction", language, genre: genreMeta, isNsfw: nsfwMeta, hasGenesis = false, onViewProgress, onOpenFile, onViewPublish }: PreviewPanelProps) {
+export function PreviewPanel({
+  storyName,
+  fileName,
+  authFetch,
+  onPublish,
+  publishingFile,
+  walletAddress,
+  contentType = "fiction",
+  language,
+  genre: genreMeta,
+  isNsfw: nsfwMeta,
+  hasGenesis = false,
+  onViewProgress,
+  onOpenFile,
+  onViewPublish,
+  focusedLetteringMode = false,
+  focusedLetteringWorkspaceVisible = false,
+  onFocusedLetteringModeChange,
+  onFocusedLetteringWorkspaceVisibleChange,
+}: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
   // Cartoon preview sub-mode: "publish" = exact PlotLink-bound markdown;
   // "inspect" = cuts.json planning inspector. Kept distinct so planning prose
   // does not masquerade as publish content (#289).
-  const [cartoonPreviewMode, setCartoonPreviewMode] = useState<"publish" | "inspect">("publish");
+  const [cartoonPreviewMode, setCartoonPreviewMode] = useState<
+    "publish" | "inspect"
+  >("publish");
   // Cartoon Genesis is a hybrid (a prose opening + its own genesis.cuts.json image
   // cuts), so its Edit tab offers two sub-views: the opening-text editor and the
   // cut workspace (#429). Plots use the cut workspace directly; fiction never sees
   // this. Defaults to "text" so opening Edit on Genesis is unchanged; the workflow
   // coach's cut actions switch it to "cuts" so lettering/upload/refresh land on a
   // real, actionable workspace instead of the markdown editor.
-  const [genesisEditMode, setGenesisEditMode] = useState<"text" | "cuts">("text");
+  const [genesisEditMode, setGenesisEditMode] = useState<"text" | "cuts">(
+    "text",
+  );
   // #371: a deep-link request from the Cut Inspector's per-cut CTA into the Edit
   // tab for that exact cut. `seq` makes repeated clicks (even on the same cut)
   // re-trigger the focus/expand effect in CutListPanel; it is cleared once
   // CutListPanel has applied it so re-entering the Edit tab manually is unaffected.
-  const [cutFocus, setCutFocus] = useState<{ cutId: number; openEditor: boolean; seq: number } | null>(null);
+  const [cutFocus, setCutFocus] = useState<{
+    cutId: number;
+    openEditor: boolean;
+    seq: number;
+  } | null>(null);
   const handleEditCut = useCallback((cutId: number, openEditor: boolean) => {
     setActiveTab("edit");
     setCutFocus((prev) => ({ cutId, openEditor, seq: (prev?.seq ?? 0) + 1 }));
@@ -141,12 +206,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   const [cartoonTotalCuts, setCartoonTotalCuts] = useState(0);
   // Per-cut production tallies (clean/lettered/exported/uploaded) for the compact
   // cartoon status summary in the bottom panel (#420).
-  const [cartoonCutProgress, setCartoonCutProgress] = useState<CartoonCutProgress | null>(null);
+  const [cartoonCutProgress, setCartoonCutProgress] =
+    useState<CartoonCutProgress | null>(null);
   // Inputs for resolving + showing the public publish title before publish (#358):
   // the story structure.md content (genesis story title) and the cut plan's
   // episode title (cartoon plot).
   const [structureContent, setStructureContent] = useState<string | null>(null);
-  const [cartoonEpisodeTitle, setCartoonEpisodeTitle] = useState<string | null>(null);
+  const [cartoonEpisodeTitle, setCartoonEpisodeTitle] = useState<string | null>(
+    null,
+  );
   // Bumped whenever the embedded cut editor mutates the cut plan (export/upload/
   // save), so the readiness effect re-fetches and the Episode-steps panel stays
   // in sync with the cut cards after a lettering export (#343).
@@ -175,11 +243,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // detectedCover = the path actually loaded into the cover selection (status
   // label); detectedCoverWarning = an invalid/oversize detected asset we won't use.
   const [detectedCover, setDetectedCover] = useState<string | null>(null);
-  const [detectedCoverWarning, setDetectedCoverWarning] = useState<string | null>(null);
+  const [detectedCoverWarning, setDetectedCoverWarning] = useState<
+    string | null
+  >(null);
   // Outcome of the generated-cover detection for an unpublished genesis (#312),
   // so the publish flow can state explicitly whether a generated assets/cover.webp
   // will be uploaded as the PlotLink cover, is invalid, or is missing.
-  const [coverStatus, setCoverStatus] = useState<"unknown" | "detected" | "selected" | "invalid" | "none">("unknown");
+  const [coverStatus, setCoverStatus] = useState<
+    "unknown" | "detected" | "selected" | "invalid" | "none"
+  >("unknown");
   // Once the writer manually picks or removes a cover, stop auto-applying the
   // detected one (so removal/override sticks and detection doesn't loop).
   const coverUserTouchedRef = useRef(false);
@@ -187,15 +259,22 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Inline illustration state
   const [showIllustrations, setShowIllustrations] = useState(false);
   const [illustrationUploading, setIllustrationUploading] = useState(false);
-  const [illustrationError, setIllustrationError] = useState<string | null>(null);
-  const [uploadedImages, setUploadedImages] = useState<Array<{ cid: string; url: string }>>([]);
+  const [illustrationError, setIllustrationError] = useState<string | null>(
+    null,
+  );
+  const [uploadedImages, setUploadedImages] = useState<
+    Array<{ cid: string; url: string }>
+  >([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const illustrationInputRef = useRef<HTMLInputElement>(null);
 
   const prevFileRef = useRef<string | null>(null);
 
   const loadFile = useCallback(async () => {
-    if (!storyName || !fileName) { setFileData(null); return; }
+    if (!storyName || !fileName) {
+      setFileData(null);
+      return;
+    }
     const fileKey = `${storyName}/${fileName}`;
     const isNewFile = prevFileRef.current !== fileKey;
     if (isNewFile) {
@@ -209,10 +288,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         // Update edit content on new file or when no unsaved changes
         if (isNewFile || !dirtyRef.current) {
           setEditContent(data.content ?? "");
-          if (isNewFile) { setDirty(false); dirtyRef.current = false; }
+          if (isNewFile) {
+            setDirty(false);
+            dirtyRef.current = false;
+          }
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [storyName, fileName, authFetch]);
 
   // Initial load
@@ -232,20 +316,35 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Genesis-as-Episode-1 cut progress (#422): discover + summarize
   // genesis.cuts.json so the Genesis view reflects its real cut/image state and
   // the footer can guide "plan cuts" vs "generate clean images".
-  const [genesisCutProgress, setGenesisCutProgress] = useState<CartoonCutProgress | null>(null);
-  const cartoonGenesisForCuts = contentType === "cartoon" && fileName === "genesis.md";
+  const [genesisCutProgress, setGenesisCutProgress] =
+    useState<CartoonCutProgress | null>(null);
+  const cartoonGenesisForCuts =
+    contentType === "cartoon" && fileName === "genesis.md";
   useEffect(() => {
-    if (!cartoonGenesisForCuts || !storyName) { setGenesisCutProgress(null); return; }
+    if (!cartoonGenesisForCuts || !storyName) {
+      setGenesisCutProgress(null);
+      return;
+    }
     let cancelled = false;
     authFetch(`/api/stories/${storyName}/cuts/genesis`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled) setGenesisCutProgress(data ? summarizeCutProgress(data.cuts || []) : null); })
-      .catch(() => { if (!cancelled) setGenesisCutProgress(null); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (!cancelled)
+          setGenesisCutProgress(
+            data ? summarizeCutProgress(data.cuts || []) : null,
+          );
+      })
+      .catch(() => {
+        if (!cancelled) setGenesisCutProgress(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [cartoonGenesisForCuts, storyName, authFetch]);
 
   // Compute cartoon publish readiness for cartoon plot files
-  const cartoonPlotForReadiness = contentType === "cartoon" && !!fileName && /^plot-\d+\.md$/.test(fileName);
+  const cartoonPlotForReadiness =
+    contentType === "cartoon" && !!fileName && /^plot-\d+\.md$/.test(fileName);
   useEffect(() => {
     if (!cartoonPlotForReadiness || !storyName || !fileName) {
       setCartoonStage(null);
@@ -275,7 +374,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         }
         const cutsData = await cutsRes.json();
         const cuts = cutsData.cuts || [];
-        const content = fileRes.ok ? (await fileRes.json()).content ?? "" : "";
+        const content = fileRes.ok
+          ? ((await fileRes.json()).content ?? "")
+          : "";
         const result = classifyCartoonReadiness(content, cuts);
         if (!cancelled) {
           setCartoonStage(result.stage);
@@ -283,7 +384,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           setCartoonTotalCuts(result.totalCuts);
           setCartoonCutProgress(summarizeCutProgress(cuts));
           // Cut plan's episode title for the publish-title display (#358).
-          setCartoonEpisodeTitle(typeof cutsData.title === "string" ? cutsData.title : null);
+          setCartoonEpisodeTitle(
+            typeof cutsData.title === "string" ? cutsData.title : null,
+          );
         }
       } catch {
         if (!cancelled) {
@@ -294,20 +397,37 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         }
       }
     })();
-    return () => { cancelled = true; };
-  }, [cartoonPlotForReadiness, storyName, fileName, authFetch, fileData?.content, fileData?.status, cutsRefreshKey]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    cartoonPlotForReadiness,
+    storyName,
+    fileName,
+    authFetch,
+    fileData?.content,
+    fileData?.status,
+    cutsRefreshKey,
+  ]);
 
   // Load structure.md once per story — used to resolve the public title before
   // publish (#358) and as a metadata fallback when .story.json lacks genre/
   // language (#424).
   useEffect(() => {
-    if (!storyName) { setStructureContent(null); return; }
+    if (!storyName) {
+      setStructureContent(null);
+      return;
+    }
     let cancelled = false;
     authFetch(`/api/stories/${storyName}/structure.md`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (!cancelled) setStructureContent(data?.content ?? null); })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setStructureContent(data?.content ?? null);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [storyName, authFetch]);
 
   // Seed the publish metadata controls from the story's real values (#424).
@@ -324,16 +444,28 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       const match = structureContent.match(/\*{0,2}genre\*{0,2}[:\s]+(.+)/i);
       // Canonicalize so a natural label like "Sci-Fi" preselects "Science
       // Fiction" instead of being silently dropped (#412).
-      if (match) genreVal = canonicalizeGenre(match[1].replace(/\*+/g, "").trim()) ?? "";
+      if (match)
+        genreVal = canonicalizeGenre(match[1].replace(/\*+/g, "").trim()) ?? "";
     }
     setSelectedGenre(genreVal);
     // Language: the server-resolved story language (explicit .story.json or
     // script-detected), else structure.md, else unset ("Needs metadata" — no
     // misleading English default). `language` is undefined when undetermined.
-    let langVal = (language && LANGUAGES.find((l) => l.toLowerCase() === language.toLowerCase())) || "";
+    let langVal =
+      (language &&
+        LANGUAGES.find((l) => l.toLowerCase() === language.toLowerCase())) ||
+      "";
     if (!langVal && structureContent) {
-      const langMatch = structureContent.match(/\*{0,2}language\*{0,2}[:\s]+(.+)/i);
-      if (langMatch) langVal = LANGUAGES.find((l) => l.toLowerCase() === langMatch[1].replace(/\*+/g, "").trim().toLowerCase()) || "";
+      const langMatch = structureContent.match(
+        /\*{0,2}language\*{0,2}[:\s]+(.+)/i,
+      );
+      if (langMatch)
+        langVal =
+          LANGUAGES.find(
+            (l) =>
+              l.toLowerCase() ===
+              langMatch[1].replace(/\*+/g, "").trim().toLowerCase(),
+          ) || "";
     }
     setSelectedLanguage(langVal);
     setIsNsfw(nsfwMeta ?? false);
@@ -342,14 +474,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // Persist a publish-control edit back to .story.json so it sticks across
   // refresh and the controls stay in sync with story metadata (#424). Best
   // effort: a failure still leaves the selection applied to this publish.
-  const persistPublishMeta = useCallback((patch: { genre?: string; language?: string; isNsfw?: boolean }) => {
-    if (!storyName) return;
-    authFetch(`/api/stories/${storyName}/publish-metadata`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    }).catch(() => { /* best-effort */ });
-  }, [storyName, authFetch]);
+  const persistPublishMeta = useCallback(
+    (patch: { genre?: string; language?: string; isNsfw?: boolean }) => {
+      if (!storyName) return;
+      authFetch(`/api/stories/${storyName}/publish-metadata`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).catch(() => {
+        /* best-effort */
+      });
+    },
+    [storyName, authFetch],
+  );
 
   const handleSave = useCallback(async () => {
     if (!storyName || !fileName) return;
@@ -361,10 +498,15 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         body: JSON.stringify({ content: editContent }),
       });
       if (res.ok) {
-        setDirty(false); dirtyRef.current = false;
-        setFileData((prev) => prev ? { ...prev, content: editContent } : prev);
+        setDirty(false);
+        dirtyRef.current = false;
+        setFileData((prev) =>
+          prev ? { ...prev, content: editContent } : prev,
+        );
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setSaving(false);
   }, [storyName, fileName, authFetch, editContent]);
 
@@ -376,14 +518,19 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     if (!storyName || !fileName) return;
     const plotFile = fileName.replace(/\.md$/, "");
     try {
-      const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`, { method: "POST" });
+      const res = await authFetch(
+        `/api/stories/${storyName}/cuts/${plotFile}/generate-markdown`,
+        { method: "POST" },
+      );
       if (res.ok) {
         await loadFile();
         // Re-run readiness + reload the workflow coach so the next action moves
         // off "Prepare the episode for publish" once the layout is built (#429).
         setCutsRefreshKey((k) => k + 1);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [storyName, fileName, authFetch, loadFile]);
 
   // Route a workflow-coach UI action to the right control (#429). When the
@@ -392,59 +539,77 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // there offers the same action in place. Otherwise reveal the control: the cut
   // workspace for letter/export/upload/refresh, the Preview tab for publish (the
   // writer still confirms the irreversible publish), or run Prepare directly.
-  const handleCoachAction = useCallback((action: CoachUiAction, episodeFile: string | null) => {
-    if (action === "view-progress") { onViewProgress?.(); return; }
-    if (episodeFile && episodeFile !== fileName) { onOpenFile?.(episodeFile); return; }
-    switch (action) {
-      case "open-cuts":
-      case "open-lettering":
-      case "upload":
-      case "refresh-assets":
-        setActiveTab("edit");
-        // For Genesis the Edit tab defaults to the opening-text editor; switch to
-        // the cut workspace so the lettering/upload/refresh action is actionable.
-        // No-op for plots (the cut workspace is the only Edit view).
-        setGenesisEditMode("cuts");
-        break;
-      case "generate-markdown":
-        handleGenerateMarkdown();
-        break;
-      case "publish":
-        setActiveTab("preview");
-        break;
-    }
-  }, [fileName, onViewProgress, onOpenFile, handleGenerateMarkdown]);
+  const handleCoachAction = useCallback(
+    (action: CoachUiAction, episodeFile: string | null) => {
+      if (action === "view-progress") {
+        onViewProgress?.();
+        return;
+      }
+      if (episodeFile && episodeFile !== fileName) {
+        onOpenFile?.(episodeFile);
+        return;
+      }
+      switch (action) {
+        case "open-cuts":
+        case "open-lettering":
+        case "upload":
+        case "refresh-assets":
+          setActiveTab("edit");
+          // For Genesis the Edit tab defaults to the opening-text editor; switch to
+          // the cut workspace so the lettering/upload/refresh action is actionable.
+          // No-op for plots (the cut workspace is the only Edit view).
+          setGenesisEditMode("cuts");
+          break;
+        case "generate-markdown":
+          handleGenerateMarkdown();
+          break;
+        case "publish":
+          setActiveTab("preview");
+          break;
+      }
+    },
+    [fileName, onViewProgress, onOpenFile, handleGenerateMarkdown],
+  );
 
   // Handle cover image selection
-  const handleCoverSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // A manual pick overrides any auto-detected cover and stops re-detection.
-    coverUserTouchedRef.current = true;
-    setDetectedCover(null);
-    setDetectedCoverWarning(null);
-    // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
-    // immediate feedback instead of a late error at save (the server enforces
-    // the same WebP/JPEG ≤1MB constraint).
-    const error = validateCoverImage(file);
-    if (error) {
-      // Discard any previously-queued valid cover and clear the input, so an
-      // invalid re-selection can't leave a stale cover that Save would still
-      // upload contrary to the user's latest choice (#281 follow-up).
-      setCoverFile(null);
-      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-      if (coverInputRef.current) coverInputRef.current.value = "";
-      setEditError(error);
-      // Surface the rejected pick in the cartoon cover-status badge (#337), not
-      // just the inline error, so the cover step clearly reads "can't be used".
-      setCoverStatus("invalid");
-      return;
-    }
-    setCoverFile(file);
-    setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
-    setEditError(null);
-    setCoverStatus("selected");
-  }, []);
+  const handleCoverSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // A manual pick overrides any auto-detected cover and stops re-detection.
+      coverUserTouchedRef.current = true;
+      setDetectedCover(null);
+      setDetectedCoverWarning(null);
+      // Reject oversized / non-WebP-JPEG covers at selection so the writer gets
+      // immediate feedback instead of a late error at save (the server enforces
+      // the same WebP/JPEG ≤1MB constraint).
+      const error = validateCoverImage(file);
+      if (error) {
+        // Discard any previously-queued valid cover and clear the input, so an
+        // invalid re-selection can't leave a stale cover that Save would still
+        // upload contrary to the user's latest choice (#281 follow-up).
+        setCoverFile(null);
+        setCoverPreview((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+        if (coverInputRef.current) coverInputRef.current.value = "";
+        setEditError(error);
+        // Surface the rejected pick in the cartoon cover-status badge (#337), not
+        // just the inline error, so the cover step clearly reads "can't be used".
+        setCoverStatus("invalid");
+        return;
+      }
+      setCoverFile(file);
+      setCoverPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+      setEditError(null);
+      setCoverStatus("selected");
+    },
+    [],
+  );
 
   // Import a Codex-generated image (e.g. a large PNG) as the cover (#301). The
   // browser converts/compresses it to a compliant WebP/JPEG <=1MB, then OWS
@@ -452,88 +617,111 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // import-cover and loads it into the same coverFile the manual picker uses, so
   // the existing publish flow attaches it with no special casing. A source that
   // cannot be decoded/compressed surfaces a clear error and saves nothing.
-  const handleCoverImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (coverImportInputRef.current) coverImportInputRef.current.value = "";
-    if (!file || !storyName) return;
-    // A deliberate import overrides any auto-detected cover, like a manual pick.
-    coverUserTouchedRef.current = true;
-    setDetectedCover(null);
-    setCoverImporting(true);
-    setEditError(null);
-    try {
-      let blob: Blob;
-      try {
-        blob = await importImageToCompliantBlob(file);
-      } catch (err) {
-        setCoverFile(null);
-        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-        setEditError(err instanceof Error ? err.message : "Could not import image");
-        return;
-      }
-      const ext = blob.type === "image/jpeg" ? "jpg" : "webp";
-      const imported = new File([blob], `cover.${ext}`, { type: blob.type });
-      const formData = new FormData();
-      formData.append("file", imported);
-      const res = await authFetch(`/api/stories/${storyName}/import-cover`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setEditError(data.error || "Cover import failed");
-        return;
-      }
-      setCoverFile(imported);
-      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(imported); });
-      setDetectedCoverWarning(null);
-      setCoverStatus("selected");
+  const handleCoverImport = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (coverImportInputRef.current) coverImportInputRef.current.value = "";
+      if (!file || !storyName) return;
+      // A deliberate import overrides any auto-detected cover, like a manual pick.
+      coverUserTouchedRef.current = true;
+      setDetectedCover(null);
+      setCoverImporting(true);
       setEditError(null);
-    } catch {
-      setEditError("Cover import failed");
-    } finally {
-      setCoverImporting(false);
-    }
-  }, [storyName, authFetch]);
+      try {
+        let blob: Blob;
+        try {
+          blob = await importImageToCompliantBlob(file);
+        } catch (err) {
+          setCoverFile(null);
+          setCoverPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+          setEditError(
+            err instanceof Error ? err.message : "Could not import image",
+          );
+          return;
+        }
+        const ext = blob.type === "image/jpeg" ? "jpg" : "webp";
+        const imported = new File([blob], `cover.${ext}`, { type: blob.type });
+        const formData = new FormData();
+        formData.append("file", imported);
+        const res = await authFetch(`/api/stories/${storyName}/import-cover`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setEditError(data.error || "Cover import failed");
+          return;
+        }
+        setCoverFile(imported);
+        setCoverPreview((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(imported);
+        });
+        setDetectedCoverWarning(null);
+        setCoverStatus("selected");
+        setEditError(null);
+      } catch {
+        setEditError("Cover import failed");
+      } finally {
+        setCoverImporting(false);
+      }
+    },
+    [storyName, authFetch],
+  );
 
   // Handle illustration image upload from File object
-  const uploadIllustration = useCallback(async (file: File) => {
-    if (file.size > 1024 * 1024) {
-      setIllustrationError("Image exceeds 1MB limit");
-      return;
-    }
-    const allowedTypes = ["image/webp", "image/jpeg"];
-    if (!allowedTypes.includes(file.type)) {
-      setIllustrationError("Only WebP and JPEG images are accepted");
-      return;
-    }
-    setIllustrationUploading(true);
-    setIllustrationError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await authFetch("/api/publish/upload-plot-image", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Upload failed");
+  const uploadIllustration = useCallback(
+    async (file: File) => {
+      if (file.size > 1024 * 1024) {
+        setIllustrationError("Image exceeds 1MB limit");
+        return;
       }
-      const data = await res.json();
-      setUploadedImages((prev) => [...prev, { cid: data.cid, url: data.url }]);
-    } catch (err) {
-      setIllustrationError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setIllustrationUploading(false);
-      if (illustrationInputRef.current) illustrationInputRef.current.value = "";
-    }
-  }, [authFetch]);
+      const allowedTypes = ["image/webp", "image/jpeg"];
+      if (!allowedTypes.includes(file.type)) {
+        setIllustrationError("Only WebP and JPEG images are accepted");
+        return;
+      }
+      setIllustrationUploading(true);
+      setIllustrationError(null);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await authFetch("/api/publish/upload-plot-image", {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Upload failed");
+        }
+        const data = await res.json();
+        setUploadedImages((prev) => [
+          ...prev,
+          { cid: data.cid, url: data.url },
+        ]);
+      } catch (err) {
+        setIllustrationError(
+          err instanceof Error ? err.message : "Upload failed",
+        );
+      } finally {
+        setIllustrationUploading(false);
+        if (illustrationInputRef.current)
+          illustrationInputRef.current.value = "";
+      }
+    },
+    [authFetch],
+  );
 
-  const handleIllustrationInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadIllustration(file);
-  }, [uploadIllustration]);
+  const handleIllustrationInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) uploadIllustration(file);
+    },
+    [uploadIllustration],
+  );
 
   // Save storyline edits (cover upload + metadata update)
   const handleEditSave = useCallback(async () => {
@@ -586,7 +774,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       // local preview so the status reads "attached", not "selected".
       if (coverCid !== undefined) {
         setEditHasCover(true);
-        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+        setCoverPreview((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
         setCoverStatus("unknown");
         if (coverInputRef.current) coverInputRef.current.value = "";
       }
@@ -596,7 +787,14 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     } finally {
       setEditSaving(false);
     }
-  }, [fileData?.storylineId, coverFile, editGenre, editLanguage, editNsfw, authFetch]);
+  }, [
+    fileData?.storylineId,
+    coverFile,
+    editGenre,
+    editLanguage,
+    editNsfw,
+    authFetch,
+  ]);
 
   // Reset edit panel state when changing files
   useEffect(() => {
@@ -628,7 +826,12 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     // null, so without this an auto-detected cover could be set before the file
     // load resolves and then leak into the published Edit Story panel (re1).
     if (!fileData) return;
-    if (fileData.storylineId || fileData.status === "published" || fileData.status === "published-not-indexed") return;
+    if (
+      fileData.storylineId ||
+      fileData.status === "published" ||
+      fileData.status === "published-not-indexed"
+    )
+      return;
     if (coverUserTouchedRef.current) return; // a manual pick/removal wins
     let cancelled = false;
     (async () => {
@@ -637,26 +840,56 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         if (cancelled || !res.ok) return;
         const data = await res.json();
         if (cancelled) return;
-        if (!data?.found) { setCoverStatus("none"); return; }
+        if (!data?.found) {
+          setCoverStatus("none");
+          return;
+        }
         if (!data.valid) {
-          setDetectedCoverWarning(data.error || "Detected cover asset is invalid and was not used");
+          setDetectedCoverWarning(
+            data.error || "Detected cover asset is invalid and was not used",
+          );
           setCoverStatus("invalid");
           return;
         }
-        const assetRes = await authFetch(`/api/stories/${storyName}/asset/${data.path.replace(/^assets\//, "")}`);
+        const assetRes = await authFetch(
+          `/api/stories/${storyName}/asset/${data.path.replace(/^assets\//, "")}`,
+        );
         if (cancelled || !assetRes.ok) return;
         const blob = await assetRes.blob();
-        const file = new File([blob], data.path.split("/").pop() || "cover.webp", { type: data.type });
+        const file = new File(
+          [blob],
+          data.path.split("/").pop() || "cover.webp",
+          { type: data.type },
+        );
         // Reuse the exact client validation the manual picker uses.
-        if (validateCoverImage(file) || cancelled || coverUserTouchedRef.current) return;
+        if (
+          validateCoverImage(file) ||
+          cancelled ||
+          coverUserTouchedRef.current
+        )
+          return;
         setCoverFile(file);
-        setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+        setCoverPreview((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(file);
+        });
         setDetectedCover(data.path);
         setCoverStatus("detected");
-      } catch { /* best-effort: no detected cover */ }
+      } catch {
+        /* best-effort: no detected cover */
+      }
     })();
-    return () => { cancelled = true; };
-  }, [storyName, fileName, fileData, fileData?.status, fileData?.storylineId, authFetch]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    storyName,
+    fileName,
+    fileData,
+    fileData?.status,
+    fileData?.storylineId,
+    authFetch,
+  ]);
 
   // Fetch current storyline metadata when edit panel opens
   useEffect(() => {
@@ -665,7 +898,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     const PLOTLINK_URL = "https://plotlink.xyz";
     let cancelled = false;
     fetch(`${PLOTLINK_URL}/api/storyline/${fileData.storylineId}`)
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
         if (!data) {
@@ -677,7 +910,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           if (found) setEditGenre(found);
         }
         if (data.language) {
-          const found = LANGUAGES.find((l) => l.toLowerCase() === data.language.toLowerCase());
+          const found = LANGUAGES.find(
+            (l) => l.toLowerCase() === data.language.toLowerCase(),
+          );
           if (found) setEditLanguage(found);
         }
         if (data.isNsfw !== undefined) setEditNsfw(!!data.isNsfw);
@@ -689,7 +924,9 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       .catch(() => {
         if (!cancelled) setEditError("Could not load current story metadata");
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [showEditPanel, fileData?.storylineId]);
 
   // Ctrl+S / Cmd+S to save
@@ -722,9 +959,10 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   }, [fileData?.status, fileData?.publishedAt]);
 
   const indexExpired = indexTimeLeft !== null && indexTimeLeft <= 0;
-  const indexCountdown = indexTimeLeft !== null && indexTimeLeft > 0
-    ? `${Math.floor(indexTimeLeft / 60000)}:${String(Math.floor((indexTimeLeft % 60000) / 1000)).padStart(2, "0")}`
-    : null;
+  const indexCountdown =
+    indexTimeLeft !== null && indexTimeLeft > 0
+      ? `${Math.floor(indexTimeLeft / 60000)}:${String(Math.floor((indexTimeLeft % 60000) / 1000)).padStart(2, "0")}`
+      : null;
 
   if (!storyName || !fileName) {
     return (
@@ -745,7 +983,8 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
     );
   }
 
-  const content = activeTab === "edit" ? editContent : (fileData?.content ?? "");
+  const content =
+    activeTab === "edit" ? editContent : (fileData?.content ?? "");
   const charCount = content.length;
   const isGenesis = fileName === "genesis.md";
   const isPlot = fileName ? /^plot-\d+\.md$/.test(fileName) : false;
@@ -755,16 +994,23 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   // readiness block — those move to the Publish tab — and show only the opening
   // content, production next-step guidance, and a compact "Review publish" CTA.
   const isCartoonEpisode = isCartoonGenesis || isCartoonPlot;
-  const isPublished = fileData?.status === "published" || fileData?.status === "published-not-indexed";
+  const isPublished =
+    fileData?.status === "published" ||
+    fileData?.status === "published-not-indexed";
+  const hideFocusedEditorChrome = focusedLetteringMode && isCartoonEpisode;
 
   // State-aware preview footer guidance (#422). Cut count for the selected
   // episode: Genesis from genesis.cuts.json, a plot from its readiness scan
   // (null until loaded, so we don't flash "not started"). Drives outline/
   // genesis/placeholder-plot guidance; null ⇒ let the per-stage UI speak.
   const episodeCutCount = isCartoonGenesis
-    ? (genesisCutProgress ? genesisCutProgress.total : null)
+    ? genesisCutProgress
+      ? genesisCutProgress.total
+      : null
     : isCartoonPlot
-      ? (cartoonStage === null ? null : cartoonTotalCuts)
+      ? cartoonStage === null
+        ? null
+        : cartoonTotalCuts
       : null;
   const footerGuidance = previewFooterGuidance({
     fileName: fileName ?? "",
@@ -793,23 +1039,33 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         episodeTitle: cartoonEpisodeTitle,
       })
     : null;
-  const rawTitleBlocked = !!resolvedPublishTitle && isRawFilenameTitle(resolvedPublishTitle, fileName!);
+  const rawTitleBlocked =
+    !!resolvedPublishTitle &&
+    isRawFilenameTitle(resolvedPublishTitle, fileName!);
   // #365: a cartoon plot must have an EXPLICIT reader-facing title — a real
   // `# Title` H1 or a non-empty cut-plan title. The friendly "Episode NN"
   // fallback (derivePublishTitle) is diagnostic only and must NOT be published,
   // so a missing explicit title blocks publish (tightens #358's plot path).
-  const episodeTitleMissing = isCartoonPlot && !isPublished
-    && !hasExplicitEpisodeTitle({ fileContent: fileData?.content ?? "", episodeTitle: cartoonEpisodeTitle });
+  const episodeTitleMissing =
+    isCartoonPlot &&
+    !isPublished &&
+    !hasExplicitEpisodeTitle({
+      fileContent: fileData?.content ?? "",
+      episodeTitle: cartoonEpisodeTitle,
+    });
 
   // Cartoon Genesis prologue readiness (#359, hardened in #400). Genesis is the
   // reader-facing opening readers meet before plot-01, so block a missing H1
   // title AND a too-short / synopsis-shaped / single-dense-block opening that
   // doesn't read as a real story opening. Cartoon-only; fiction is unchanged.
-  const genesisReadiness = (isCartoonGenesis && !isPublished)
-    ? cartoonGenesisReadiness(fileData?.content ?? "")
-    : null;
-  const genesisBlocked = !!genesisReadiness && genesisReadiness.blockers.length > 0;
-  const cartoonStatusCardClass = "w-full max-w-[32rem] rounded-xl border px-3 py-3";
+  const genesisReadiness =
+    isCartoonGenesis && !isPublished
+      ? cartoonGenesisReadiness(fileData?.content ?? "")
+      : null;
+  const genesisBlocked =
+    !!genesisReadiness && genesisReadiness.blockers.length > 0;
+  const cartoonStatusCardClass =
+    "w-full max-w-[32rem] rounded-xl border px-3 py-3";
 
   // Cartoon cover readiness badge + requirements (#337). Shown wherever a
   // cartoon writer manages the cover (pre-publish picker and the published Edit
@@ -828,13 +1084,21 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       attached,
     });
     return (
-      <div className="flex flex-col gap-0.5" data-testid="cartoon-cover-status" data-state={r.state}>
-        <span className={`text-[11px] font-medium ${COVER_TONE[r.tone]}`}>{r.label}</span>
+      <div
+        className="flex flex-col gap-0.5"
+        data-testid="cartoon-cover-status"
+        data-state={r.state}
+      >
+        <span className={`text-[11px] font-medium ${COVER_TONE[r.tone]}`}>
+          {r.label}
+        </span>
         {/* Long cover spec/tips collapsed by default (#420) so the panel isn't a
             wall of text; the concise status line above is always visible. */}
         <details className="text-[10px] text-muted" data-testid="cover-details">
           <summary className="cursor-pointer select-none">Cover tips</summary>
-          <span className="block mt-0.5" data-testid="cartoon-cover-guidance">{COVER_GUIDANCE}</span>
+          <span className="block mt-0.5" data-testid="cartoon-cover-guidance">
+            {COVER_GUIDANCE}
+          </span>
         </details>
       </div>
     );
@@ -857,17 +1121,34 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       >
         <span className="text-[11px] text-foreground">
           <span className="font-medium">{label}:</span>{" "}
-          <span className={titleBlocked ? "text-error font-medium" : "text-foreground"}>{resolvedPublishTitle}</span>
+          <span
+            className={
+              titleBlocked ? "text-error font-medium" : "text-foreground"
+            }
+          >
+            {resolvedPublishTitle}
+          </span>
         </span>
         {rawTitleBlocked ? (
-          <span className="text-[10px] text-error" data-testid="publish-title-raw-error">
-            This would publish as a raw filename. {isGenesis
+          <span
+            className="text-[10px] text-error"
+            data-testid="publish-title-raw-error"
+          >
+            This would publish as a raw filename.{" "}
+            {isGenesis
               ? "Add a real “# Title” heading to genesis.md"
-              : "Set a title in the cut plan (or add a “# Title” to the episode)"} before publishing.
+              : "Set a title in the cut plan (or add a “# Title” to the episode)"}{" "}
+            before publishing.
           </span>
         ) : episodeTitleMissing ? (
-          <span className="text-[10px] text-error" data-testid="publish-title-episode-required">
-            “{resolvedPublishTitle}” is a generic placeholder, not a reader-facing title, so it can’t be published. Set a real episode title in the cut plan (or add a “# Title” to the episode) — e.g. “Episode 01 — The Couple Coupon” — before publishing.
+          <span
+            className="text-[10px] text-error"
+            data-testid="publish-title-episode-required"
+          >
+            “{resolvedPublishTitle}” is a generic placeholder, not a
+            reader-facing title, so it can’t be published. Set a real episode
+            title in the cut plan (or add a “# Title” to the episode) — e.g.
+            “Episode 01 — The Couple Coupon” — before publishing.
           </span>
         ) : null}
       </div>
@@ -887,34 +1168,62 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
         data-testid="cartoon-genesis-readiness"
         data-blocked={genesisBlocked ? "true" : "false"}
       >
-        <span className="text-[11px] font-medium text-foreground">Story opening (Prologue)</span>
-        <span className="text-[10px] text-muted" data-testid="genesis-readiness-hint">
-          Genesis is the first thing readers see. Write it as the story opening/prologue, not a synopsis — set up the premise and stakes, then bridge into Episode 01.
+        <span className="text-[11px] font-medium text-foreground">
+          Story opening (Prologue)
+        </span>
+        <span
+          className="text-[10px] text-muted"
+          data-testid="genesis-readiness-hint"
+        >
+          Genesis is the first thing readers see. Write it as the story
+          opening/prologue, not a synopsis — set up the premise and stakes, then
+          bridge into Episode 01.
         </span>
         {genesisReadiness.blockers.map((b, i) => (
-          <span key={`b-${i}`} className="text-[10px] text-error" data-testid="genesis-readiness-blocker">{b}</span>
+          <span
+            key={`b-${i}`}
+            className="text-[10px] text-error"
+            data-testid="genesis-readiness-blocker"
+          >
+            {b}
+          </span>
         ))}
         {genesisReadiness.warnings.map((w, i) => (
-          <span key={`w-${i}`} className="text-[10px] text-amber-600" data-testid="genesis-readiness-warning">{w}</span>
+          <span
+            key={`w-${i}`}
+            className="text-[10px] text-amber-600"
+            data-testid="genesis-readiness-warning"
+          >
+            {w}
+          </span>
         ))}
       </div>
     );
   };
-  const charLimit = (isGenesis || isPlot) ? 10000 : null;
+  const charLimit = isGenesis || isPlot ? 10000 : null;
   // Don't show over-limit warning for already-published files
   const overLimit = !isPublished && charLimit !== null && charCount > charLimit;
 
   // Pre-publish image validation for pending content
   const publishContent = fileData?.content ?? "";
-  const imageValidation = !isPublished ? validateImageRefs(publishContent) : { count: 0, warnings: [] };
+  const imageValidation = !isPublished
+    ? validateImageRefs(publishContent)
+    : { count: 0, warnings: [] };
 
   // Plain prose editor (fiction files + the Genesis "Opening text" sub-view).
   const proseEditor = (
-    <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
+    <div
+      className="flex-1 min-h-0 flex flex-col"
+      style={{ background: "var(--paper-bg)" }}
+    >
       <textarea
         ref={textareaRef}
         value={editContent}
-        onChange={(e) => { setEditContent(e.target.value); setDirty(true); dirtyRef.current = true; }}
+        onChange={(e) => {
+          setEditContent(e.target.value);
+          setDirty(true);
+          dirtyRef.current = true;
+        }}
         className="flex-1 min-h-0 w-full resize-none px-4 py-3 text-sm leading-relaxed focus:outline-none"
         style={{
           fontFamily: '"Geist Mono", ui-monospace, monospace',
@@ -941,88 +1250,108 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
   return (
     <div className="h-full flex flex-col">
       {/* Header with file path + tabs */}
-      <div className="border-b border-border">
-        <div className="px-3 py-1.5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-mono text-muted">
-            {onViewProgress && (
-              <button
-                onClick={onViewProgress}
-                data-testid="view-progress-btn"
-                className="text-accent hover:underline font-sans"
-                title="Story progress overview"
-              >
-                ← Progress
-              </button>
-            )}
-            <span>{storyName}/{fileName}</span>
-            {fileData?.status === "published" && (
-              <span className="text-green-700 font-medium">Published</span>
-            )}
-            {fileData?.status === "published-not-indexed" && (
-              <span className="text-amber-700 font-medium" title={fileData.indexError}>Published (not indexed)</span>
-            )}
-            {fileData?.status === "pending" && (
-              <span className="text-amber-700 font-medium">Pending</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono ${overLimit ? "text-error font-medium" : "text-muted"}`}>
-              {charCount.toLocaleString()}{charLimit !== null ? `/${charLimit.toLocaleString()}` : " chars"}
-            </span>
-            {overLimit && (
-              <span className="text-error text-xs font-medium">
-                {(charCount - charLimit).toLocaleString()} over limit
+      {!hideFocusedEditorChrome && (
+        <div className="border-b border-border">
+          <div className="px-3 py-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-mono text-muted">
+              {onViewProgress && (
+                <button
+                  onClick={onViewProgress}
+                  data-testid="view-progress-btn"
+                  className="text-accent hover:underline font-sans"
+                  title="Story progress overview"
+                >
+                  ← Progress
+                </button>
+              )}
+              <span>
+                {storyName}/{fileName}
               </span>
-            )}
+              {fileData?.status === "published" && (
+                <span className="text-green-700 font-medium">Published</span>
+              )}
+              {fileData?.status === "published-not-indexed" && (
+                <span
+                  className="text-amber-700 font-medium"
+                  title={fileData.indexError}
+                >
+                  Published (not indexed)
+                </span>
+              )}
+              {fileData?.status === "pending" && (
+                <span className="text-amber-700 font-medium">Pending</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-mono ${overLimit ? "text-error font-medium" : "text-muted"}`}
+              >
+                {charCount.toLocaleString()}
+                {charLimit !== null
+                  ? `/${charLimit.toLocaleString()}`
+                  : " chars"}
+              </span>
+              {overLimit && (
+                <span className="text-error text-xs font-medium">
+                  {(charCount - charLimit).toLocaleString()} over limit
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex px-3 gap-1">
+            <button
+              onClick={() => setActiveTab("preview")}
+              className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === "preview"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted hover:text-foreground"
+              }`}
+            >
+              Preview
+            </button>
+            <button
+              onClick={() => setActiveTab("edit")}
+              className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === "edit"
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted hover:text-foreground"
+              }`}
+            >
+              Edit
+              {dirty && <span className="ml-1 text-amber-600">*</span>}
+            </button>
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex px-3 gap-1">
-          <button
-            onClick={() => setActiveTab("preview")}
-            className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
-              activeTab === "preview"
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            Preview
-          </button>
-          <button
-            onClick={() => setActiveTab("edit")}
-            className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
-              activeTab === "edit"
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            Edit
-            {dirty && <span className="ml-1 text-amber-600">*</span>}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Persistent cartoon workflow coach (#429): one clear next action across
           every cartoon file view, derived from real story/episode state. Sits
           above the content so it stays visible on both the Preview and Edit
           tabs. Fiction renders nothing (the coach is null), so fiction views are
           unchanged. */}
-      {contentType === "cartoon" && storyName && fileName && (
-        <WorkflowCoach
-          storyName={storyName}
-          fileName={fileName}
-          authFetch={authFetch}
-          refreshKey={cutsRefreshKey}
-          onAction={handleCoachAction}
-          showEmptyState
-        />
-      )}
+      {!hideFocusedEditorChrome &&
+        contentType === "cartoon" &&
+        storyName &&
+        fileName && (
+          <WorkflowCoach
+            storyName={storyName}
+            fileName={fileName}
+            authFetch={authFetch}
+            refreshKey={cutsRefreshKey}
+            onAction={handleCoachAction}
+            showEmptyState
+          />
+        )}
 
       {/* Content area */}
       {activeTab === "preview" ? (
         isCartoonPlot ? (
-          <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
+          <div
+            className="flex-1 min-h-0 flex flex-col"
+            style={{ background: "var(--paper-bg)" }}
+          >
             {/* Two explicit modes: Publish Preview (exact PlotLink markdown) vs
                 Cut Inspector (cuts.json planning metadata) — see #289. */}
             <div className="flex gap-1 px-3 py-1 border-b border-border">
@@ -1043,14 +1372,25 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
             </div>
             <div className="flex-1 min-h-0">
               {cartoonPreviewMode === "publish" ? (
-                <CartoonPublishPreview content={fileData?.content ?? ""} stage={cartoonStage} />
+                <CartoonPublishPreview
+                  content={fileData?.content ?? ""}
+                  stage={cartoonStage}
+                />
               ) : (
-                <CartoonPreview storyName={storyName!} fileName={fileName!} authFetch={authFetch} onEditCut={handleEditCut} />
+                <CartoonPreview
+                  storyName={storyName!}
+                  fileName={fileName!}
+                  authFetch={authFetch}
+                  onEditCut={handleEditCut}
+                />
               )}
             </div>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4" style={{ background: "var(--paper-bg)" }}>
+          <div
+            className="flex-1 min-h-0 overflow-y-auto px-6 py-4"
+            style={{ background: "var(--paper-bg)" }}
+          >
             {fileData?.content ? (
               <div className="prose max-w-none">
                 <ReactMarkdown
@@ -1066,15 +1406,32 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
         )
       ) : isCartoonPlot ? (
-        <div className="flex-1 min-h-[22rem] overflow-hidden" style={{ background: "var(--paper-bg)" }}>
-          <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} focusRequest={cutFocus} onFocusHandled={() => setCutFocus(null)} />
+        <div
+          className="flex-1 min-h-[22rem] overflow-hidden"
+          style={{ background: "var(--paper-bg)" }}
+        >
+          <CutListPanel
+            storyName={storyName!}
+            fileName={fileName!}
+            authFetch={authFetch}
+            language={language}
+            onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
+            focusRequest={cutFocus}
+            onFocusHandled={() => setCutFocus(null)}
+            onFocusedLetteringModeChange={onFocusedLetteringModeChange}
+            workspaceVisible={focusedLetteringWorkspaceVisible}
+            onWorkspaceVisibleChange={onFocusedLetteringWorkspaceVisibleChange}
+          />
         </div>
       ) : isCartoonGenesis ? (
         // Genesis Edit tab: opening-text editor vs. its cut workspace (#429), so
         // the coach's lettering/upload/refresh actions for Episode 1 are actionable
         // and Genesis cuts get the same workspace as plots — without losing the
         // hand-written opening prose editor.
-        <div className="flex-1 min-h-0 flex flex-col" style={{ background: "var(--paper-bg)" }}>
+        <div
+          className="flex-1 min-h-0 flex flex-col"
+          style={{ background: "var(--paper-bg)" }}
+        >
           <div className="flex gap-1 px-3 py-1 border-b border-border">
             <button
               data-testid="genesis-edit-mode-text"
@@ -1093,7 +1450,20 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           </div>
           <div className="flex-1 min-h-0">
             {genesisEditMode === "cuts" ? (
-              <CutListPanel storyName={storyName!} fileName={fileName!} authFetch={authFetch} language={language} onCutsChanged={() => setCutsRefreshKey((k) => k + 1)} focusRequest={cutFocus} onFocusHandled={() => setCutFocus(null)} />
+              <CutListPanel
+                storyName={storyName!}
+                fileName={fileName!}
+                authFetch={authFetch}
+                language={language}
+                onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
+                focusRequest={cutFocus}
+                onFocusHandled={() => setCutFocus(null)}
+                onFocusedLetteringModeChange={onFocusedLetteringModeChange}
+                workspaceVisible={focusedLetteringWorkspaceVisible}
+                onWorkspaceVisibleChange={
+                  onFocusedLetteringWorkspaceVisibleChange
+                }
+              />
             ) : (
               proseEditor
             )}
@@ -1104,356 +1474,468 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
       )}
 
       {/* Action bar */}
-      <div className="px-3 py-2 border-t border-border flex items-center justify-between">
-        {fileName === "structure.md" ? (
-          <p className="text-muted text-xs italic" data-testid="footer-guidance">{footerGuidance}</p>
-        ) : fileData?.status === "published-not-indexed" ? (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-amber-700">Published on-chain but not indexed on PlotLink</span>
-              {!indexExpired && (
-                <button
-                  onClick={async () => {
-                    if (!storyName || !fileName || !fileData.txHash) return;
-                    setRetrying(true);
-                    try {
-                      const res = await authFetch("/api/publish/retry-index", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          storyName, fileName,
-                          txHash: fileData.txHash,
-                          content: fileData.content,
-                          storylineId: fileData.storylineId,
-                        }),
-                      });
-                      const data = await res.json();
-                      if (data.ok) {
-                        await authFetch(`/api/stories/${storyName}/${fileName}/publish-status`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            txHash: fileData.txHash,
-                            storylineId: fileData.storylineId,
-                            contentCid: "",
-                            gasCost: "",
-                          }),
-                        });
-                        loadFile();
-                      }
-                    } catch { /* ignore */ }
-                    setRetrying(false);
-                  }}
-                  disabled={retrying}
-                  className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
-                >
-                  {retrying ? "Retrying..." : `Retry Index${indexCountdown ? ` (${indexCountdown})` : ""}`}
-                </button>
-              )}
-              {isPlot && (
-                <button
-                  onClick={() => {
-                    if (!storyName || !fileName) return;
-                    // #332: Retry Publish mints a NEW on-chain chainPlot. The
-                    // tx for this episode already exists (status is
-                    // published-not-indexed), so this is only for the rare case
-                    // where indexing never recovers — require an explicit
-                    // duplicate-risk confirm so it can't be clicked by reflex
-                    // instead of Retry Index, which would create a permanent
-                    // duplicate chapter on PlotLink.
-                    const ok = window.confirm(
-                      "This episode is already on-chain — try “Retry Index” first.\n\nRetry Publish creates a NEW on-chain transaction and a SECOND, permanent chapter on PlotLink (PlotLink content is immutable). Only do this if the chapter never appeared after indexing.\n\nCreate a new on-chain chapter anyway?",
-                    );
-                    if (!ok) return;
-                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
-                  }}
-                  disabled={!!publishingFile}
-                  data-testid="retry-publish-btn"
-                  className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
-                >
-                  {publishingFile === fileName ? "Publishing..." : "Retry Publish"}
-                </button>
-              )}
-              {fileData.txHash && (
-                <a
-                  href={`https://basescan.org/tx/${fileData.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted underline"
-                >
-                  BaseScan
-                </a>
-              )}
-            </div>
-            <p className="text-muted text-xs">
-              {indexExpired
-                ? isPlot
-                  ? "Index window expired. Use Retry Publish to create a new on-chain tx."
-                  : "Index window expired. Contact support or re-publish manually."
-                : isPlot
-                  ? "Try Retry Index first (available for 5 min after publish). If that fails, Retry Publish creates a new on-chain tx."
-                  : "Retry Index is available for 5 min after publish."}
+      {!hideFocusedEditorChrome && (
+        <div className="px-3 py-2 border-t border-border flex items-center justify-between">
+          {fileName === "structure.md" ? (
+            <p
+              className="text-muted text-xs italic"
+              data-testid="footer-guidance"
+            >
+              {footerGuidance}
             </p>
-            {fileData.indexError && (
-              <p className="text-error text-xs">{fileData.indexError}</p>
-            )}
-          </div>
-        ) : fileData?.status === "published" ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-green-700">Published</span>
-              {fileData.storylineId && (
-                <a
-                  href={(() => {
-                    const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
-                    if (!isPlot) return base;
-                    const idx = fileData.plotIndex != null && fileData.plotIndex > 0
-                      ? fileData.plotIndex
-                      : parseInt(fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "1");
-                    return `${base}/${idx}`;
-                  })()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent underline"
-                >
-                  View on PlotLink
-                </a>
-              )}
-              {fileData.txHash && (
-                <a
-                  href={`https://basescan.org/tx/${fileData.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted underline"
-                >
-                  BaseScan
-                </a>
-              )}
-              {isGenesis && walletAddress && fileData.storylineId && (!fileData.authorAddress || fileData.authorAddress.toLowerCase() === walletAddress.toLowerCase()) && (
-                <button
-                  onClick={() => setShowEditPanel((v) => !v)}
-                  className="px-2 py-0.5 border border-border text-xs rounded hover:bg-surface"
-                >
-                  {showEditPanel ? "Close Edit" : "Edit Story"}
-                </button>
-              )}
-            </div>
-            {/* Edit panel for published genesis files */}
-            {showEditPanel && isGenesis && fileData.storylineId && (
-              <div className="border border-border rounded p-3 flex flex-col gap-3 bg-surface">
-                {/* Cover image upload */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-foreground">Cover Image</span>
-                  {/* Attached/selected/invalid cover status for the published
-                      cartoon story (#337). */}
-                  {renderCoverStatus(editHasCover)}
-                  <div className="flex items-start gap-3">
-                    {coverPreview && (
-                      <div className="relative">
-                        <img
-                          src={coverPreview}
-                          alt="Cover preview"
-                          className="w-16 h-24 object-cover rounded border border-border"
-                        />
-                        <button
-                          onClick={() => { setCoverFile(null); setCoverPreview(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); if (coverInputRef.current) coverInputRef.current.value = ""; }}
-                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
-                        >
-                          x
-                        </button>
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-1">
-                      <input
-                        ref={coverInputRef}
-                        type="file"
-                        accept="image/webp,image/jpeg"
-                        onChange={handleCoverSelect}
-                        className="text-xs"
-                        data-testid="cover-input"
-                      />
-                      <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Genre & Language */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={editGenre}
-                    onChange={(e) => setEditGenre(e.target.value)}
-                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
-                  >
-                    {GENRES.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={editLanguage}
-                    onChange={(e) => setEditLanguage(e.target.value)}
-                    className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l} value={l}>{l}</option>
-                    ))}
-                  </select>
-                </div>
-                {/* NSFW toggle */}
-                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editNsfw}
-                    onChange={(e) => setEditNsfw(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  This story contains adult content (18+)
-                </label>
-                {/* Save / status */}
-                <div className="flex items-center gap-2">
+          ) : fileData?.status === "published-not-indexed" ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-amber-700">
+                  Published on-chain but not indexed on PlotLink
+                </span>
+                {!indexExpired && (
                   <button
-                    onClick={handleEditSave}
-                    disabled={editSaving || !editMetaLoaded}
+                    onClick={async () => {
+                      if (!storyName || !fileName || !fileData.txHash) return;
+                      setRetrying(true);
+                      try {
+                        const res = await authFetch(
+                          "/api/publish/retry-index",
+                          {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              storyName,
+                              fileName,
+                              txHash: fileData.txHash,
+                              content: fileData.content,
+                              storylineId: fileData.storylineId,
+                            }),
+                          },
+                        );
+                        const data = await res.json();
+                        if (data.ok) {
+                          await authFetch(
+                            `/api/stories/${storyName}/${fileName}/publish-status`,
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                txHash: fileData.txHash,
+                                storylineId: fileData.storylineId,
+                                contentCid: "",
+                                gasCost: "",
+                              }),
+                            },
+                          );
+                          loadFile();
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                      setRetrying(false);
+                    }}
+                    disabled={retrying}
                     className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
                   >
-                    {editSaving ? "Saving..." : !editMetaLoaded ? "Loading..." : "Save Changes"}
+                    {retrying
+                      ? "Retrying..."
+                      : `Retry Index${indexCountdown ? ` (${indexCountdown})` : ""}`}
                   </button>
-                  {editSuccess && <span className="text-green-700 text-xs">Updated!</span>}
-                  {editError && <span className="text-error text-xs">{editError}</span>}
-                </div>
+                )}
+                {isPlot && (
+                  <button
+                    onClick={() => {
+                      if (!storyName || !fileName) return;
+                      // #332: Retry Publish mints a NEW on-chain chainPlot. The
+                      // tx for this episode already exists (status is
+                      // published-not-indexed), so this is only for the rare case
+                      // where indexing never recovers — require an explicit
+                      // duplicate-risk confirm so it can't be clicked by reflex
+                      // instead of Retry Index, which would create a permanent
+                      // duplicate chapter on PlotLink.
+                      const ok = window.confirm(
+                        "This episode is already on-chain — try “Retry Index” first.\n\nRetry Publish creates a NEW on-chain transaction and a SECOND, permanent chapter on PlotLink (PlotLink content is immutable). Only do this if the chapter never appeared after indexing.\n\nCreate a new on-chain chapter anyway?",
+                      );
+                      if (!ok) return;
+                      onPublish?.(
+                        storyName,
+                        fileName,
+                        selectedGenre,
+                        selectedLanguage,
+                        isNsfw,
+                      );
+                    }}
+                    disabled={!!publishingFile}
+                    data-testid="retry-publish-btn"
+                    className="px-3 py-1 border border-border text-xs rounded hover:bg-surface disabled:opacity-50"
+                  >
+                    {publishingFile === fileName
+                      ? "Publishing..."
+                      : "Retry Publish"}
+                  </button>
+                )}
+                {fileData.txHash && (
+                  <a
+                    href={`https://basescan.org/tx/${fileData.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted underline"
+                  >
+                    BaseScan
+                  </a>
+                )}
               </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {/* Creator-facing 6-step production checklist so a first-time user
+              <p className="text-muted text-xs">
+                {indexExpired
+                  ? isPlot
+                    ? "Index window expired. Use Retry Publish to create a new on-chain tx."
+                    : "Index window expired. Contact support or re-publish manually."
+                  : isPlot
+                    ? "Try Retry Index first (available for 5 min after publish). If that fails, Retry Publish creates a new on-chain tx."
+                    : "Retry Index is available for 5 min after publish."}
+              </p>
+              {fileData.indexError && (
+                <p className="text-error text-xs">{fileData.indexError}</p>
+              )}
+            </div>
+          ) : fileData?.status === "published" ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-700">Published</span>
+                {fileData.storylineId && (
+                  <a
+                    href={(() => {
+                      const base = `https://plotlink.xyz/story/${fileData.storylineId}`;
+                      if (!isPlot) return base;
+                      const idx =
+                        fileData.plotIndex != null && fileData.plotIndex > 0
+                          ? fileData.plotIndex
+                          : parseInt(
+                              fileName?.match(/^plot-(\d+)\.md$/)?.[1] ?? "1",
+                            );
+                      return `${base}/${idx}`;
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    View on PlotLink
+                  </a>
+                )}
+                {fileData.txHash && (
+                  <a
+                    href={`https://basescan.org/tx/${fileData.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted underline"
+                  >
+                    BaseScan
+                  </a>
+                )}
+                {isGenesis &&
+                  walletAddress &&
+                  fileData.storylineId &&
+                  (!fileData.authorAddress ||
+                    fileData.authorAddress.toLowerCase() ===
+                      walletAddress.toLowerCase()) && (
+                    <button
+                      onClick={() => setShowEditPanel((v) => !v)}
+                      className="px-2 py-0.5 border border-border text-xs rounded hover:bg-surface"
+                    >
+                      {showEditPanel ? "Close Edit" : "Edit Story"}
+                    </button>
+                  )}
+              </div>
+              {/* Edit panel for published genesis files */}
+              {showEditPanel && isGenesis && fileData.storylineId && (
+                <div className="border border-border rounded p-3 flex flex-col gap-3 bg-surface">
+                  {/* Cover image upload */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-foreground">
+                      Cover Image
+                    </span>
+                    {/* Attached/selected/invalid cover status for the published
+                      cartoon story (#337). */}
+                    {renderCoverStatus(editHasCover)}
+                    <div className="flex items-start gap-3">
+                      {coverPreview && (
+                        <div className="relative">
+                          <img
+                            src={coverPreview}
+                            alt="Cover preview"
+                            className="w-16 h-24 object-cover rounded border border-border"
+                          />
+                          <button
+                            onClick={() => {
+                              setCoverFile(null);
+                              setCoverPreview(null);
+                              setDetectedCoverWarning(null);
+                              setCoverStatus("unknown");
+                              if (coverInputRef.current)
+                                coverInputRef.current.value = "";
+                            }}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
+                          >
+                            x
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-1">
+                        <input
+                          ref={coverInputRef}
+                          type="file"
+                          accept="image/webp,image/jpeg"
+                          onChange={handleCoverSelect}
+                          className="text-xs"
+                          data-testid="cover-input"
+                        />
+                        <span className="text-xs text-muted">
+                          WebP/JPEG, max 1MB, 600x900px recommended
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Genre & Language */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={editGenre}
+                      onChange={(e) => setEditGenre(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                    >
+                      {GENRES.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={editLanguage}
+                      onChange={(e) => setEditLanguage(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-border rounded bg-surface text-foreground"
+                    >
+                      {LANGUAGES.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* NSFW toggle */}
+                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editNsfw}
+                      onChange={(e) => setEditNsfw(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    This story contains adult content (18+)
+                  </label>
+                  {/* Save / status */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleEditSave}
+                      disabled={editSaving || !editMetaLoaded}
+                      className="px-3 py-1 bg-accent text-white text-xs rounded hover:bg-accent-dim disabled:opacity-50"
+                    >
+                      {editSaving
+                        ? "Saving..."
+                        : !editMetaLoaded
+                          ? "Loading..."
+                          : "Save Changes"}
+                    </button>
+                    {editSuccess && (
+                      <span className="text-green-700 text-xs">Updated!</span>
+                    )}
+                    {editError && (
+                      <span className="text-error text-xs">{editError}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {/* Creator-facing 6-step production checklist so a first-time user
                 can see which step is current/next without internal jargon
                 (#320, expanded to per-cut granularity in #335). */}
-            {/* Compact cartoon production status (#420): one scannable line of
+              {/* Compact cartoon production status (#420): one scannable line of
                 cut/clean/lettered/uploaded tallies, with a link to the full
                 story progress overview (#418). The detailed 6-step guide stays
                 below. */}
-            {isCartoonPlot && cartoonCutProgress && cartoonCutProgress.total > 0 && (
-              <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" data-testid="cartoon-status-summary">
-                <span>Cuts: <span className="text-foreground font-medium">{cartoonCutProgress.total}</span></span>
-                <span>Clean: <span className="text-foreground font-medium">{cartoonCutProgress.withClean}/{cartoonCutProgress.needClean}</span></span>
-                <span>Lettered: <span className="text-foreground font-medium">{cartoonCutProgress.withText}/{cartoonCutProgress.total}</span></span>
-                <span>Uploaded: <span className="text-foreground font-medium">{cartoonCutProgress.uploaded}/{cartoonCutProgress.total}</span></span>
-                {onViewProgress && (
-                  <button onClick={onViewProgress} className="ml-auto text-accent hover:underline" data-testid="status-view-progress">
-                    View progress →
-                  </button>
+              {isCartoonPlot &&
+                cartoonCutProgress &&
+                cartoonCutProgress.total > 0 && (
+                  <div
+                    className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted"
+                    data-testid="cartoon-status-summary"
+                  >
+                    <span>
+                      Cuts:{" "}
+                      <span className="text-foreground font-medium">
+                        {cartoonCutProgress.total}
+                      </span>
+                    </span>
+                    <span>
+                      Clean:{" "}
+                      <span className="text-foreground font-medium">
+                        {cartoonCutProgress.withClean}/
+                        {cartoonCutProgress.needClean}
+                      </span>
+                    </span>
+                    <span>
+                      Lettered:{" "}
+                      <span className="text-foreground font-medium">
+                        {cartoonCutProgress.withText}/{cartoonCutProgress.total}
+                      </span>
+                    </span>
+                    <span>
+                      Uploaded:{" "}
+                      <span className="text-foreground font-medium">
+                        {cartoonCutProgress.uploaded}/{cartoonCutProgress.total}
+                      </span>
+                    </span>
+                    {onViewProgress && (
+                      <button
+                        onClick={onViewProgress}
+                        className="ml-auto text-accent hover:underline"
+                        data-testid="status-view-progress"
+                      >
+                        View progress →
+                      </button>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-            {/* #461: the 6-step production checklist is a publish/production
+              {/* #461: the 6-step production checklist is a publish/production
                 checklist — it now lives on the Publish tab + the cut workspace's
                 FinishEpisodePanel, so it no longer renders under the episode. */}
-            {/* Genesis-as-Episode-1 cut summary (#422): discover + summarize
+              {/* Genesis-as-Episode-1 cut summary (#422): discover + summarize
                 genesis.cuts.json so a writer sees its real cut/image state in the
                 readiness UI instead of treating Genesis as text-only. */}
-            {isCartoonGenesis && genesisCutProgress && (
-              <div className="text-xs text-muted" data-testid="genesis-cuts-summary">
-                {/* Distinguish clean art / lettering / final-export / upload so the
+              {isCartoonGenesis && genesisCutProgress && (
+                <div
+                  className="text-xs text-muted"
+                  data-testid="genesis-cuts-summary"
+                >
+                  {/* Distinguish clean art / lettering / final-export / upload so the
                     state never collapses to just "uploaded" (#451). */}
-                Episode 1 (Genesis) cuts: {genesisCutProgress.total} planned
-                {genesisCutProgress.total > 0 && (
-                  <>
-                    {" "}· {genesisCutProgress.withClean} clean
-                    {" "}· {genesisCutProgress.withText} lettered
-                    {" "}· {genesisCutProgress.exported} exported
-                    {" "}· {genesisCutProgress.uploaded} uploaded
-                  </>
-                )}
-              </div>
-            )}
-            {/* State-aware guidance for a not-yet-produced Genesis or a future-
+                  Episode 1 (Genesis) cuts: {genesisCutProgress.total} planned
+                  {genesisCutProgress.total > 0 && (
+                    <>
+                      {" "}
+                      · {genesisCutProgress.withClean} clean ·{" "}
+                      {genesisCutProgress.withText} lettered ·{" "}
+                      {genesisCutProgress.exported} exported ·{" "}
+                      {genesisCutProgress.uploaded} uploaded
+                    </>
+                  )}
+                </div>
+              )}
+              {/* State-aware guidance for a not-yet-produced Genesis or a future-
                 episode placeholder (#422): plan cuts / generate clean images /
                 expand the cut plan — never a misleading "ready to publish". */}
-            {(isCartoonGenesis || isCartoonPlot) && footerGuidance && (
-              <div
-                className={`${cartoonStatusCardClass} flex flex-col gap-1 border-border bg-surface/50`}
-                data-testid="cartoon-not-started"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
-                    {episodeCutCount === 0 ? "Not started" : "Next step"}
-                  </span>
-                  <span className="text-xs font-medium text-foreground">
-                    {isCartoonGenesis ? "Genesis (Episode 1)" : "Future episode"}
-                  </span>
+              {(isCartoonGenesis || isCartoonPlot) && footerGuidance && (
+                <div
+                  className={`${cartoonStatusCardClass} flex flex-col gap-1 border-border bg-surface/50`}
+                  data-testid="cartoon-not-started"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+                      {episodeCutCount === 0 ? "Not started" : "Next step"}
+                    </span>
+                    <span className="text-xs font-medium text-foreground">
+                      {isCartoonGenesis
+                        ? "Genesis (Episode 1)"
+                        : "Future episode"}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted">{footerGuidance}</span>
                 </div>
-                <span className="text-xs text-muted">{footerGuidance}</span>
-              </div>
-            )}
-            {/* #461: the planning-stage "Prepare episode for publish" callout and
+              )}
+              {/* #461: the planning-stage "Prepare episode for publish" callout and
                 the awaiting-upload pending callout are publish-readiness states —
                 they now live on the Publish tab. The cartoon episode keeps only
                 production next-step guidance (cartoon-not-started / cut summaries)
                 plus the compact "Review publish checklist" CTA below. */}
-            {/* Inline illustration upload for plot files (Preview tab only) */}
-            {isPlot && !isCartoonPlot && activeTab === "preview" && (
-              <div>
-                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showIllustrations}
-                    onChange={(e) => setShowIllustrations(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  Add illustrations in the plot
-                </label>
-                {showIllustrations && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <div
-                      className="border-2 border-dashed border-border rounded p-3 flex flex-col items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
-                      onClick={() => illustrationInputRef.current?.click()}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file) uploadIllustration(file);
-                      }}
-                    >
-                      <input
-                        ref={illustrationInputRef}
-                        type="file"
-                        accept="image/webp,image/jpeg"
-                        onChange={handleIllustrationInput}
-                        className="hidden"
-                      />
-                      <span className="text-xs text-muted">
-                        {illustrationUploading ? "Uploading..." : "Drop image here or click to browse"}
-                      </span>
-                      <span className="text-xs text-muted">WebP/JPEG, max 1MB</span>
-                    </div>
-                    {illustrationError && (
-                      <span className="text-error text-xs">{illustrationError}</span>
-                    )}
-                    {uploadedImages.map((img, i) => (
-                      <div key={img.cid} className="border border-border rounded p-2 flex flex-col gap-1 bg-surface">
-                        <span className="text-xs text-green-700">Image uploaded! Copy the markdown below and paste it where you want the illustration to appear in your plot:</span>
-                        <div className="flex items-center gap-1.5">
-                          <code className="flex-1 text-xs bg-background px-2 py-1 rounded font-mono break-all">
-                            ![Scene description]({img.url})
-                          </code>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(`![Scene description](${img.url})`);
-                              setCopiedIndex(i);
-                              setTimeout(() => setCopiedIndex(null), 2000);
-                            }}
-                            className="px-2 py-1 text-xs border border-border rounded hover:bg-surface shrink-0"
-                          >
-                            {copiedIndex === i ? "Copied!" : "Copy"}
-                          </button>
-                        </div>
+              {/* Inline illustration upload for plot files (Preview tab only) */}
+              {isPlot && !isCartoonPlot && activeTab === "preview" && (
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showIllustrations}
+                      onChange={(e) => setShowIllustrations(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    Add illustrations in the plot
+                  </label>
+                  {showIllustrations && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <div
+                        className="border-2 border-dashed border-border rounded p-3 flex flex-col items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
+                        onClick={() => illustrationInputRef.current?.click()}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) uploadIllustration(file);
+                        }}
+                      >
+                        <input
+                          ref={illustrationInputRef}
+                          type="file"
+                          accept="image/webp,image/jpeg"
+                          onChange={handleIllustrationInput}
+                          className="hidden"
+                        />
+                        <span className="text-xs text-muted">
+                          {illustrationUploading
+                            ? "Uploading..."
+                            : "Drop image here or click to browse"}
+                        </span>
+                        <span className="text-xs text-muted">
+                          WebP/JPEG, max 1MB
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {/* Pre-publish cover picker (#284): a new genesis (esp. cartoon)
+                      {illustrationError && (
+                        <span className="text-error text-xs">
+                          {illustrationError}
+                        </span>
+                      )}
+                      {uploadedImages.map((img, i) => (
+                        <div
+                          key={img.cid}
+                          className="border border-border rounded p-2 flex flex-col gap-1 bg-surface"
+                        >
+                          <span className="text-xs text-green-700">
+                            Image uploaded! Copy the markdown below and paste it
+                            where you want the illustration to appear in your
+                            plot:
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <code className="flex-1 text-xs bg-background px-2 py-1 rounded font-mono break-all">
+                              ![Scene description]({img.url})
+                            </code>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  `![Scene description](${img.url})`,
+                                );
+                                setCopiedIndex(i);
+                                setTimeout(() => setCopiedIndex(null), 2000);
+                              }}
+                              className="px-2 py-1 text-xs border border-border rounded hover:bg-surface shrink-0"
+                            >
+                              {copiedIndex === i ? "Copied!" : "Copy"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Pre-publish cover picker (#284): a new genesis (esp. cartoon)
                 gets a cover before its first createStoryline. Reuses the same
                 validation/stale-clear as the published Edit Story panel; the
                 selected file is handed to the publish flow, which uploads it and
@@ -1462,254 +1944,386 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
                 cut/lettering editor gets the height — the cover stays available
                 in the Opening-text/Preview view, Story Info, and the Publish page,
                 and the auto-detect effect still loads it for publish. */}
-            {isGenesis && contentType !== "cartoon" && !(activeTab === "edit" && genesisEditMode === "cuts") && (
-              <div className="flex flex-col gap-1.5" data-testid="prepublish-cover">
-                <span className="text-xs font-medium text-foreground">Cover Image <span className="text-muted font-normal">(optional)</span></span>
-                {/* Cartoon cover readiness + requirements (#337): keep the cover
+              {isGenesis &&
+                contentType !== "cartoon" &&
+                !(activeTab === "edit" && genesisEditMode === "cuts") && (
+                  <div
+                    className="flex flex-col gap-1.5"
+                    data-testid="prepublish-cover"
+                  >
+                    <span className="text-xs font-medium text-foreground">
+                      Cover Image{" "}
+                      <span className="text-muted font-normal">(optional)</span>
+                    </span>
+                    {/* Cartoon cover readiness + requirements (#337): keep the cover
                     step visible before genesis publish so a pilot story isn't
                     published coverless by accident. */}
-                {renderCoverStatus(false)}
-                <div className="flex items-start gap-3">
-                  {coverPreview && (
-                    <div className="relative">
-                      <img
-                        src={coverPreview}
-                        alt="Cover preview"
-                        className="w-16 h-24 object-cover rounded border border-border"
-                      />
-                      <button
-                        onClick={() => { coverUserTouchedRef.current = true; setDetectedCover(null); setDetectedCoverWarning(null); setCoverStatus("unknown"); setCoverFile(null); setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; }); if (coverInputRef.current) coverInputRef.current.value = ""; }}
-                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
-                      >
-                        x
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-1">
-                    <input
-                      ref={coverInputRef}
-                      type="file"
-                      accept="image/webp,image/jpeg"
-                      onChange={handleCoverSelect}
-                      className="text-xs"
-                      data-testid="prepublish-cover-input"
-                    />
-                    <span className="text-xs text-muted">WebP/JPEG, max 1MB, 600x900px recommended</span>
-                    {/* Codex-image import (#301): convert a generated PNG (or any
+                    {renderCoverStatus(false)}
+                    <div className="flex items-start gap-3">
+                      {coverPreview && (
+                        <div className="relative">
+                          <img
+                            src={coverPreview}
+                            alt="Cover preview"
+                            className="w-16 h-24 object-cover rounded border border-border"
+                          />
+                          <button
+                            onClick={() => {
+                              coverUserTouchedRef.current = true;
+                              setDetectedCover(null);
+                              setDetectedCoverWarning(null);
+                              setCoverStatus("unknown");
+                              setCoverFile(null);
+                              setCoverPreview((prev) => {
+                                if (prev) URL.revokeObjectURL(prev);
+                                return null;
+                              });
+                              if (coverInputRef.current)
+                                coverInputRef.current.value = "";
+                            }}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-error text-white rounded-full text-xs flex items-center justify-center"
+                          >
+                            x
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-1">
+                        <input
+                          ref={coverInputRef}
+                          type="file"
+                          accept="image/webp,image/jpeg"
+                          onChange={handleCoverSelect}
+                          className="text-xs"
+                          data-testid="prepublish-cover-input"
+                        />
+                        <span className="text-xs text-muted">
+                          WebP/JPEG, max 1MB, 600x900px recommended
+                        </span>
+                        {/* Codex-image import (#301): convert a generated PNG (or any
                         large image) to a compliant cover in-browser, save it as
                         assets/cover.webp, and load it as the selected cover —
                         no agent-side shell image tools. */}
-                    <input
-                      ref={coverImportInputRef}
-                      type="file"
-                      accept="image/png,image/webp,image/jpeg"
-                      onChange={handleCoverImport}
-                      className="hidden"
-                      data-testid="prepublish-cover-import-input"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => coverImportInputRef.current?.click()}
-                      disabled={coverImporting}
-                      className="self-start px-2 py-1 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
-                      data-testid="prepublish-cover-import"
-                    >
-                      {coverImporting ? "Importing…" : "Import generated image (PNG ok)"}
-                    </button>
-                    {/* #312: make the generated-cover → PlotLink-cover connection
+                        <input
+                          ref={coverImportInputRef}
+                          type="file"
+                          accept="image/png,image/webp,image/jpeg"
+                          onChange={handleCoverImport}
+                          className="hidden"
+                          data-testid="prepublish-cover-import-input"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => coverImportInputRef.current?.click()}
+                          disabled={coverImporting}
+                          className="self-start px-2 py-1 text-xs border border-border rounded hover:border-accent hover:bg-accent/5 disabled:opacity-50"
+                          data-testid="prepublish-cover-import"
+                        >
+                          {coverImporting
+                            ? "Importing…"
+                            : "Import generated image (PNG ok)"}
+                        </button>
+                        {/* #312: make the generated-cover → PlotLink-cover connection
                         explicit. Whenever a cover is selected (auto-detected,
                         imported, or manually picked) it WILL be uploaded as the
                         storyline cover at publish; an invalid or missing generated
                         cover gets a clear action. */}
-                    {coverFile && (
-                      <span className="text-green-700 text-xs" data-testid="prepublish-cover-will-upload">
-                        This cover will be uploaded as the PlotLink storyline cover when you publish.
-                      </span>
-                    )}
-                    {detectedCover && (
-                      <span className="text-accent text-xs" data-testid="prepublish-cover-detected">
-                        Auto-detected generated cover {detectedCover} — pick a file to override.
-                      </span>
-                    )}
-                    {detectedCoverWarning && (
-                      <span className="text-amber-700 text-xs" data-testid="prepublish-cover-detected-warning">
-                        {detectedCoverWarning} Use &ldquo;Import generated image&rdquo; below to convert/compress it, or pick a file.
-                      </span>
-                    )}
-                    {contentType === "cartoon" && coverStatus === "none" && !coverFile && (
-                      <span className="text-muted text-xs" data-testid="prepublish-cover-none">
-                        No generated cover detected. Create <span className="font-mono">assets/cover.webp</span> or use &ldquo;Import generated image&rdquo; — it will be uploaded as the PlotLink storyline cover when you publish.
-                      </span>
-                    )}
-                    {editError && <span className="text-error text-xs" data-testid="prepublish-cover-error">{editError}</span>}
+                        {coverFile && (
+                          <span
+                            className="text-green-700 text-xs"
+                            data-testid="prepublish-cover-will-upload"
+                          >
+                            This cover will be uploaded as the PlotLink
+                            storyline cover when you publish.
+                          </span>
+                        )}
+                        {detectedCover && (
+                          <span
+                            className="text-accent text-xs"
+                            data-testid="prepublish-cover-detected"
+                          >
+                            Auto-detected generated cover {detectedCover} — pick
+                            a file to override.
+                          </span>
+                        )}
+                        {detectedCoverWarning && (
+                          <span
+                            className="text-amber-700 text-xs"
+                            data-testid="prepublish-cover-detected-warning"
+                          >
+                            {detectedCoverWarning} Use &ldquo;Import generated
+                            image&rdquo; below to convert/compress it, or pick a
+                            file.
+                          </span>
+                        )}
+                        {contentType === "cartoon" &&
+                          coverStatus === "none" &&
+                          !coverFile && (
+                            <span
+                              className="text-muted text-xs"
+                              data-testid="prepublish-cover-none"
+                            >
+                              No generated cover detected. Create{" "}
+                              <span className="font-mono">
+                                assets/cover.webp
+                              </span>{" "}
+                              or use &ldquo;Import generated image&rdquo; — it
+                              will be uploaded as the PlotLink storyline cover
+                              when you publish.
+                            </span>
+                          )}
+                        {editError && (
+                          <span
+                            className="text-error text-xs"
+                            data-testid="prepublish-cover-error"
+                          >
+                            {editError}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-            {/* Public title shown + validated before publish (#358). #461: moved
+                )}
+              {/* Public title shown + validated before publish (#358). #461: moved
                 to the Publish tab for cartoon — fiction keeps it inline. */}
-            {!isCartoonEpisode && renderPublishTitle()}
-            {/* Cartoon Genesis prologue readiness checklist (#359). #461: moved to
+              {!isCartoonEpisode && renderPublishTitle()}
+              {/* Cartoon Genesis prologue readiness checklist (#359). #461: moved to
                 the Publish tab; never rendered in the cartoon episode view. */}
-            {!isCartoonEpisode && renderGenesisReadiness()}
-            {/* #461: the genre/language selects + publish button + publish-disabled
+              {!isCartoonEpisode && renderGenesisReadiness()}
+              {/* #461: the genre/language selects + publish button + publish-disabled
                 reasons are publish controls — for cartoon they live on the Publish
                 tab. Fiction keeps the inline publish controls unchanged. */}
-            {!isCartoonEpisode && (
-            <div className="flex items-center gap-2">
-              {/* Genre/language are edited in Story Info for cartoon (#439/#450);
+              {!isCartoonEpisode && (
+                <div className="flex items-center gap-2">
+                  {/* Genre/language are edited in Story Info for cartoon (#439/#450);
                   the inline selects are fiction-only so the cartoon cut workspace
                   isn't a metadata form. Cartoon publish still reads the persisted
                   genre/language (seeded into these values from .story.json). */}
-              {isGenesis && contentType !== "cartoon" && (
-                <>
-                  <select
-                    value={selectedGenre}
-                    data-testid="publish-genre-select"
-                    onChange={(e) => {
-                      setSelectedGenre(e.target.value);
-                      if (e.target.value) persistPublishMeta({ genre: e.target.value });
+                  {isGenesis && contentType !== "cartoon" && (
+                    <>
+                      <select
+                        value={selectedGenre}
+                        data-testid="publish-genre-select"
+                        onChange={(e) => {
+                          setSelectedGenre(e.target.value);
+                          if (e.target.value)
+                            persistPublishMeta({ genre: e.target.value });
+                        }}
+                        className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedGenre ? "border-border" : "border-amber-500"}`}
+                      >
+                        {/* Explicit unset state — no silent Romance default (#424). */}
+                        {!selectedGenre && (
+                          <option value="" disabled>
+                            Needs metadata — select genre
+                          </option>
+                        )}
+                        {GENRES.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedLanguage}
+                        data-testid="publish-language-select"
+                        onChange={(e) => {
+                          setSelectedLanguage(e.target.value);
+                          if (e.target.value)
+                            persistPublishMeta({ language: e.target.value });
+                        }}
+                        className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedLanguage ? "border-border" : "border-amber-500"}`}
+                      >
+                        {/* Explicit unset state — no silent English default (#424). */}
+                        {!selectedLanguage && (
+                          <option value="" disabled>
+                            Needs metadata — select language
+                          </option>
+                        )}
+                        {LANGUAGES.map((l) => (
+                          <option key={l} value={l}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <button
+                    onClick={async () => {
+                      if (!storyName || !fileName) return;
+                      if (imageValidation.count > 0) {
+                        const msg = `This plot contains ${imageValidation.count} illustration(s). Content is immutable after publishing — image references cannot be changed or removed.\n\nPlease verify illustrations appear correctly in Preview before continuing.\n\nPublish now?`;
+                        if (!window.confirm(msg)) return;
+                      }
+                      // Genesis carries the optional pre-publish cover (#284); plot
+                      // files never do. Only pass the 6th arg when a cover is
+                      // actually selected, so the no-cover call signature (and
+                      // existing fiction/plot publish behavior) is unchanged.
+                      // The cover may be a manual pick OR an auto-detected
+                      // assets/cover.webp loaded into coverFile (#296) — both flow
+                      // through the same attach path.
+                      const cover = isGenesis ? coverFile : null;
+                      if (cover) {
+                        // Drop the local cover selection ONLY on a confirmed-successful
+                        // publish (onPublish resolves truthy). A publish blocked before
+                        // the stream (#375) or one that opens then fails before `done`
+                        // (#376) resolves falsy, so the writer's selected/auto-detected
+                        // cover stays put for the retry.
+                        const published = await onPublish?.(
+                          storyName,
+                          fileName,
+                          selectedGenre,
+                          selectedLanguage,
+                          isNsfw,
+                          cover,
+                        );
+                        if (published) {
+                          coverUserTouchedRef.current = true;
+                          setDetectedCover(null);
+                          setDetectedCoverWarning(null);
+                          setCoverStatus("unknown");
+                          setCoverFile(null);
+                          setCoverPreview((prev) => {
+                            if (prev) URL.revokeObjectURL(prev);
+                            return null;
+                          });
+                          if (coverInputRef.current)
+                            coverInputRef.current.value = "";
+                        }
+                      } else {
+                        onPublish?.(
+                          storyName,
+                          fileName,
+                          selectedGenre,
+                          selectedLanguage,
+                          isNsfw,
+                        );
+                      }
                     }}
-                    className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedGenre ? "border-border" : "border-amber-500"}`}
-                  >
-                    {/* Explicit unset state — no silent Romance default (#424). */}
-                    {!selectedGenre && <option value="" disabled>Needs metadata — select genre</option>}
-                    {GENRES.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={selectedLanguage}
-                    data-testid="publish-language-select"
-                    onChange={(e) => {
-                      setSelectedLanguage(e.target.value);
-                      if (e.target.value) persistPublishMeta({ language: e.target.value });
-                    }}
-                    className={`px-2 py-1.5 text-xs border rounded bg-surface text-foreground ${selectedLanguage ? "border-border" : "border-amber-500"}`}
-                  >
-                    {/* Explicit unset state — no silent English default (#424). */}
-                    {!selectedLanguage && <option value="" disabled>Needs metadata — select language</option>}
-                    {LANGUAGES.map((l) => (
-                      <option key={l} value={l}>{l}</option>
-                    ))}
-                  </select>
-                </>
-              )}
-              <button
-                onClick={async () => {
-                  if (!storyName || !fileName) return;
-                  if (imageValidation.count > 0) {
-                    const msg = `This plot contains ${imageValidation.count} illustration(s). Content is immutable after publishing — image references cannot be changed or removed.\n\nPlease verify illustrations appear correctly in Preview before continuing.\n\nPublish now?`;
-                    if (!window.confirm(msg)) return;
-                  }
-                  // Genesis carries the optional pre-publish cover (#284); plot
-                  // files never do. Only pass the 6th arg when a cover is
-                  // actually selected, so the no-cover call signature (and
-                  // existing fiction/plot publish behavior) is unchanged.
-                  // The cover may be a manual pick OR an auto-detected
-                  // assets/cover.webp loaded into coverFile (#296) — both flow
-                  // through the same attach path.
-                  const cover = isGenesis ? coverFile : null;
-                  if (cover) {
-                    // Drop the local cover selection ONLY on a confirmed-successful
-                    // publish (onPublish resolves truthy). A publish blocked before
-                    // the stream (#375) or one that opens then fails before `done`
-                    // (#376) resolves falsy, so the writer's selected/auto-detected
-                    // cover stays put for the retry.
-                    const published = await onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw, cover);
-                    if (published) {
-                      coverUserTouchedRef.current = true;
-                      setDetectedCover(null);
-                      setDetectedCoverWarning(null);
-                      setCoverStatus("unknown");
-                      setCoverFile(null);
-                      setCoverPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-                      if (coverInputRef.current) coverInputRef.current.value = "";
+                    disabled={
+                      !!publishingFile ||
+                      overLimit ||
+                      titleBlocked ||
+                      genesisBlocked ||
+                      (isGenesis && (!selectedGenre || !selectedLanguage)) ||
+                      (isCartoonPlot && cartoonStage !== "ready")
                     }
-                  } else {
-                    onPublish?.(storyName, fileName, selectedGenre, selectedLanguage, isNsfw);
-                  }
-                }}
-                disabled={!!publishingFile || overLimit || titleBlocked || genesisBlocked || (isGenesis && (!selectedGenre || !selectedLanguage)) || (isCartoonPlot && cartoonStage !== "ready")}
-                className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {publishingFile === fileName ? "Publishing..." : "Publish to PlotLink"}
-              </button>
-              {/* Cartoon edits these in Story Info, so point there instead of the
+                    className="px-4 py-1.5 bg-accent text-white text-sm rounded hover:bg-accent-dim disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {publishingFile === fileName
+                      ? "Publishing..."
+                      : "Publish to PlotLink"}
+                  </button>
+                  {/* Cartoon edits these in Story Info, so point there instead of the
                   hidden inline selects (#450); fiction keeps the inline guidance. */}
-              {isGenesis && contentType === "cartoon" && (!selectedGenre || !selectedLanguage) && (
-                <span className="text-amber-600 text-xs" data-testid="cartoon-metadata-needs-story-info">
-                  Set the genre and language in Story Info before publishing
-                </span>
+                  {isGenesis &&
+                    contentType === "cartoon" &&
+                    (!selectedGenre || !selectedLanguage) && (
+                      <span
+                        className="text-amber-600 text-xs"
+                        data-testid="cartoon-metadata-needs-story-info"
+                      >
+                        Set the genre and language in Story Info before
+                        publishing
+                      </span>
+                    )}
+                  {isGenesis && contentType !== "cartoon" && !selectedGenre && (
+                    <span
+                      className="text-amber-600 text-xs"
+                      data-testid="genre-needs-metadata"
+                    >
+                      Needs metadata — choose a genre before publishing
+                    </span>
+                  )}
+                  {isGenesis &&
+                    contentType !== "cartoon" &&
+                    selectedGenre &&
+                    !selectedLanguage && (
+                      <span
+                        className="text-amber-600 text-xs"
+                        data-testid="language-needs-metadata"
+                      >
+                        Needs metadata — choose a language before publishing
+                      </span>
+                    )}
+                  {overLimit && (
+                    <span className="text-error text-xs">
+                      Reduce content to publish
+                    </span>
+                  )}
+                  {isCartoonPlot && cartoonStage === "error" && (
+                    <span
+                      className="text-error text-xs"
+                      data-testid="publish-disabled-reason"
+                    >
+                      Fix the issues below before publishing
+                    </span>
+                  )}
+                  {isCartoonPlot && cartoonStage === "planning" && (
+                    <span
+                      className="text-muted text-xs"
+                      data-testid="publish-disabled-reason"
+                    >
+                      Prepare the episode for publish to continue
+                    </span>
+                  )}
+                  {isCartoonPlot && cartoonStage === "awaiting-upload" && (
+                    <span
+                      className="text-muted text-xs"
+                      data-testid="publish-disabled-reason"
+                    >
+                      Upload all final images, then “Prepare episode for
+                      publish” — {cartoonAwaitingCount} of {cartoonTotalCuts}{" "}
+                      still need an uploaded image
+                    </span>
+                  )}
+                </div>
               )}
-              {isGenesis && contentType !== "cartoon" && !selectedGenre && (
-                <span className="text-amber-600 text-xs" data-testid="genre-needs-metadata">
-                  Needs metadata — choose a genre before publishing
-                </span>
-              )}
-              {isGenesis && contentType !== "cartoon" && selectedGenre && !selectedLanguage && (
-                <span className="text-amber-600 text-xs" data-testid="language-needs-metadata">
-                  Needs metadata — choose a language before publishing
-                </span>
-              )}
-              {overLimit && (
-                <span className="text-error text-xs">Reduce content to publish</span>
-              )}
-              {isCartoonPlot && cartoonStage === "error" && (
-                <span className="text-error text-xs" data-testid="publish-disabled-reason">Fix the issues below before publishing</span>
-              )}
-              {isCartoonPlot && cartoonStage === "planning" && (
-                <span className="text-muted text-xs" data-testid="publish-disabled-reason">Prepare the episode for publish to continue</span>
-              )}
-              {isCartoonPlot && cartoonStage === "awaiting-upload" && (
-                <span className="text-muted text-xs" data-testid="publish-disabled-reason">
-                  Upload all final images, then “Prepare episode for publish” — {cartoonAwaitingCount} of {cartoonTotalCuts} still need an uploaded image
-                </span>
-              )}
-            </div>
-            )}
-            {/* #461: the grouped publish-readiness issues card (#360/#421) is a
+              {/* #461: the grouped publish-readiness issues card (#360/#421) is a
                 publish checklist — it now renders on the Publish tab. The cartoon
                 episode view links there via the compact CTA below. */}
-            {isCartoonEpisode && (
-              <button
-                onClick={() => onViewPublish?.()}
-                data-testid="cartoon-review-publish"
-                className="self-start rounded border border-accent/40 px-3 py-1 text-xs text-accent hover:bg-accent/5 transition-colors"
-              >
-                Review publish checklist →
-              </button>
-            )}
-            {imageValidation.warnings.length > 0 && (
-              <div className="flex flex-col gap-0.5">
-                {imageValidation.warnings.map((w, i) => (
-                  <span key={i} className="text-amber-600 text-xs">{w}</span>
-                ))}
-              </div>
-            )}
-            {/* Adult-content flag is edited in Story Info for cartoon (#450). */}
-            {isGenesis && contentType !== "cartoon" && (
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isNsfw}
-                    onChange={(e) => {
-                      setIsNsfw(e.target.checked);
-                      persistPublishMeta({ isNsfw: e.target.checked });
-                    }}
-                    className="rounded border-border"
-                  />
-                  This story contains adult content (18+)
-                </label>
-                {isNsfw && (
-                  <span className="text-xs text-amber-600">Adult content will be hidden from the default browse view.</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              {isCartoonEpisode && (
+                <button
+                  onClick={() => onViewPublish?.()}
+                  data-testid="cartoon-review-publish"
+                  className="self-start rounded border border-accent/40 px-3 py-1 text-xs text-accent hover:bg-accent/5 transition-colors"
+                >
+                  Review publish checklist →
+                </button>
+              )}
+              {imageValidation.warnings.length > 0 && (
+                <div className="flex flex-col gap-0.5">
+                  {imageValidation.warnings.map((w, i) => (
+                    <span key={i} className="text-amber-600 text-xs">
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Adult-content flag is edited in Story Info for cartoon (#450). */}
+              {isGenesis && contentType !== "cartoon" && (
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isNsfw}
+                      onChange={(e) => {
+                        setIsNsfw(e.target.checked);
+                        persistPublishMeta({ isNsfw: e.target.checked });
+                      }}
+                      className="rounded border-border"
+                    />
+                    This story contains adult content (18+)
+                  </label>
+                  {isNsfw && (
+                    <span className="text-xs text-amber-600">
+                      Adult content will be hidden from the default browse view.
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
