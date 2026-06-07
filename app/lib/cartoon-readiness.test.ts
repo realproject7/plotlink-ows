@@ -592,6 +592,7 @@ describe("text panels (#350)", () => {
     expect(p.total).toBe(2);
     expect(p.needClean).toBe(1); // only the image cut
     expect(p.withClean).toBe(1);
+    expect(p.withText).toBe(1); // the image cut is lettered; the empty text panel is not
     expect(p.exported).toBe(2); // both panels exported
     expect(p.uploaded).toBe(2);
   });
@@ -610,14 +611,15 @@ describe("text panels (#350)", () => {
     expect(checkCartoonReadiness(cuts).ready).toBe(true);
   });
 
-  it("cartoonChecklist: an all-text episode skips clean/letter and points at export", () => {
+  it("cartoonChecklist: an all-text episode skips clean but still requires text-card lettering", () => {
     const r = cartoonChecklist({ cuts: [makeCut({ id: 1, kind: "text" })] });
     const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
     expect(statusOf("clean")).toBe("done"); // no image cuts to clean
-    expect(statusOf("letter")).toBe("done");
-    expect(statusOf("export")).toBe("current");
+    expect(statusOf("letter")).toBe("current");
+    expect(statusOf("export")).toBe("todo");
     expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("no image cuts");
-    expect(r.nextStep).toMatch(/export/i);
+    expect(r.steps.find((s) => s.key === "letter")!.detail).toBe("0 / 1 cut");
+    expect(r.nextStep).toMatch(/lettering editor|speech bubbles/i);
   });
 
   it("cartoonChecklist: a mixed plan still gates clean on the image cut", () => {
@@ -626,6 +628,20 @@ describe("text panels (#350)", () => {
     const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
     expect(statusOf("clean")).toBe("current");
     expect(r.steps.find((s) => s.key === "clean")!.detail).toBe("0 / 1 cut");
+  });
+
+  it("cartoonChecklist: an empty text panel keeps lettering current even after image cuts are lettered (#488 re2)", () => {
+    const cuts = [
+      makeCut(imageDone(1)),
+      makeCut({ id: 2, kind: "text", overlays: [] }),
+    ];
+    const r = cartoonChecklist({ cuts });
+    const statusOf = (k: string) => r.steps.find((s) => s.key === k)!.status;
+    expect(statusOf("clean")).toBe("done");
+    expect(statusOf("letter")).toBe("current");
+    expect(statusOf("export")).toBe("todo");
+    expect(r.steps.find((s) => s.key === "letter")!.detail).toBe("1 / 2 cuts");
+    expect(r.nextStep).toMatch(/lettering editor|speech bubbles/i);
   });
 });
 

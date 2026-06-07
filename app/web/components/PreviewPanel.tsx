@@ -1335,7 +1335,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
               <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" data-testid="cartoon-status-summary">
                 <span>Cuts: <span className="text-foreground font-medium">{cartoonCutProgress.total}</span></span>
                 <span>Clean: <span className="text-foreground font-medium">{cartoonCutProgress.withClean}/{cartoonCutProgress.needClean}</span></span>
-                <span>Lettered: <span className="text-foreground font-medium">{cartoonCutProgress.withText}/{cartoonCutProgress.needClean}</span></span>
+                <span>Lettered: <span className="text-foreground font-medium">{cartoonCutProgress.withText}/{cartoonCutProgress.total}</span></span>
                 <span>Uploaded: <span className="text-foreground font-medium">{cartoonCutProgress.uploaded}/{cartoonCutProgress.total}</span></span>
                 {onViewProgress && (
                   <button onClick={onViewProgress} className="ml-auto text-accent hover:underline" data-testid="status-view-progress">
