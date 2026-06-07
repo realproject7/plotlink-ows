@@ -2098,7 +2098,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
   // card per cut with a creator-facing status + primary action, technical
   // controls collapsed by default.
   it("renders an episode header, progress summary, per-cut card statuses, and collapses technical controls", async () => {
-    const fn = vi.fn((url: string) => {
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
       if (url.includes("/asset-diagnostics")) {
         return Promise.resolve({
           ok: true,

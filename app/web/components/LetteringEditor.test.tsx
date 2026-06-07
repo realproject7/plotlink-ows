@@ -588,6 +588,7 @@ describe("LetteringEditor", () => {
 
     expect(onSave).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ type: "speech" })]),
+      null,
     );
   });
 
@@ -658,6 +659,7 @@ describe("LetteringEditor", () => {
           }),
         }),
       ]),
+      null,
     );
   });
 
