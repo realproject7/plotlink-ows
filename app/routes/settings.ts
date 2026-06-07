@@ -2,12 +2,8 @@ import { Hono } from "hono";
 import { createPublicClient, createWalletClient, http, decodeEventLog } from "viem";
 import { base } from "viem/chains";
 import { erc8004Abi } from "../../packages/cli/src/sdk/abi";
-import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import { resolveActiveWallet } from "../lib/active-wallet";
 import { createOwsAccount } from "../lib/publish";
-import { db } from "../db";
-import {
-  signMessage as owsSignMsg,
-} from "@open-wallet-standard/core";
 import { CONFIG_DIR } from "../lib/paths";
 import fs from "fs";
 import path from "path";
@@ -43,18 +39,22 @@ settings.post("/generate-binding", async (c) => {
   }
 
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet found. Create one in Wallet settings first." }, 400);
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet found. Create one in Wallet settings first.",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
 
-    const owsWallet = getBaseAddress(wallet);
+    const owsWallet = wallet.address;
     if (!owsWallet) return c.json({ error: "No EVM address on wallet" }, 400);
 
     const message = `I authorize ${body.humanWallet} as my PlotLink owner. Wallet: ${owsWallet}`;
-    const passphrase = process.env.OWS_PASSPHRASE;
-
-    const result = owsSignMsg(wallet.name, "eip155:8453", message, passphrase);
-    const signature = result.signature.startsWith("0x") ? result.signature : `0x${result.signature}`;
+    const account = createOwsAccount(wallet.name, owsWallet as `0x${string}`);
+    const signature = await account.signMessage({ message });
 
     // Include agent data from config.json if available
     const config = readConfig();
@@ -89,11 +89,17 @@ settings.post("/register-agent", async (c) => {
   }
 
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet found. Create one in Wallet settings first." }, 400);
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet found. Create one in Wallet settings first.",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
 
-    const owsAddress = getBaseAddress(wallet);
+    const owsAddress = wallet.address;
     if (!owsAddress) return c.json({ error: "No EVM address on wallet" }, 400);
 
     // Check if already registered
@@ -184,11 +190,18 @@ settings.post("/register-agent", async (c) => {
 /** GET /api/settings/link-status — check if OWS wallet is registered on ERC-8004 */
 settings.get("/link-status", async (c) => {
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ linked: false, error: "No wallet" });
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        linked: false,
+        error: resolvedWallet.error || "No wallet",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      });
+    }
 
-    const address = getBaseAddress(wallet);
+    const address = wallet.address;
     if (!address) return c.json({ linked: false, error: "No EVM address" });
 
     // Check config.json cache first (survives npx reinstalls + RPC rate limits)

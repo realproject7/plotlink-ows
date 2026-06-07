@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { publishStoryline, publishPlot, getEthBalance, getCreationFee, estimatePublishCost, uploadCoverImage, uploadPlotImage, updateStoryline } from "../lib/publish";
 import { keccak256, toBytes } from "viem";
-import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import { resolveActiveWallet } from "../lib/active-wallet";
 import path from "path";
 import { STORIES_DIR } from "../lib/paths";
 import { readCutsFile } from "../lib/cuts";
@@ -51,13 +51,18 @@ const publish = new Hono();
 publish.get("/preflight", async (c) => {
   try {
     // Check wallet
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
     if (!wallet) {
-      return c.json({ ready: false, error: "No OWS wallet found" });
+      return c.json({
+        ready: false,
+        error: resolvedWallet.error || "No OWS wallet found",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      });
     }
 
-    const address = getBaseAddress(wallet);
+    const address = wallet.address;
     if (!address) {
       return c.json({ ready: false, error: "No EVM address on wallet" });
     }
@@ -76,6 +81,8 @@ publish.get("/preflight", async (c) => {
       return c.json({
         ready: false,
         address,
+        walletName: wallet.name,
+        walletId: wallet.walletId,
         ethBalance: balance.toString(),
         error: "Could not read creation fee — check RPC and contract config",
       });
@@ -108,6 +115,8 @@ publish.get("/preflight", async (c) => {
     return c.json({
       ready: hasEnoughEth,
       address,
+      walletName: wallet.name,
+      walletId: wallet.walletId,
       ethBalance: balance.toString(),
       creationFee: creationFee.toString(),
       requiredBalance: requiredBalance.toString(),
@@ -259,16 +268,22 @@ publish.post("/file", async (c) => {
     }
   }
 
-  // Get wallet
-  let wallets;
+  // Get active wallet
+  let wallet;
   try {
-    wallets = listAgentWallets();
+    const resolvedWallet = await resolveActiveWallet();
+    wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
   } catch (err) {
-    console.error("[publish/file] listAgentWallets error:", err);
+    console.error("[publish/file] resolveActiveWallet error:", err);
     return c.json({ error: `OWS wallet error: ${err instanceof Error ? err.message : String(err)}` }, 500);
   }
-  const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-  if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
 
   console.log("[publish/file] Starting publish for", body.storyName, body.fileName, "wallet:", wallet.name);
 
@@ -369,11 +384,17 @@ publish.post("/retry-index", async (c) => {
 /** POST /api/publish/upload-cover — upload cover image with wallet signature */
 publish.post("/upload-cover", async (c) => {
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
 
-    const address = getBaseAddress(wallet);
+    const address = wallet.address;
     if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
 
     const formData = await c.req.formData();
@@ -407,11 +428,17 @@ publish.post("/upload-cover", async (c) => {
 /** POST /api/publish/upload-plot-image — upload plot illustration with wallet signature */
 publish.post("/upload-plot-image", async (c) => {
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
 
-    const address = getBaseAddress(wallet);
+    const address = wallet.address;
     if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
 
     const formData = await c.req.formData();
@@ -442,11 +469,17 @@ publish.post("/upload-plot-image", async (c) => {
 /** POST /api/publish/update-storyline — update storyline metadata with wallet signature */
 publish.post("/update-storyline", async (c) => {
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
-    if (!wallet) return c.json({ error: "No OWS wallet" }, 400);
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
+    if (!wallet) {
+      return c.json({
+        error: resolvedWallet.error || "No OWS wallet",
+        selectionRequired: resolvedWallet.selectionRequired,
+        wallets: resolvedWallet.wallets,
+      }, 400);
+    }
 
-    const address = getBaseAddress(wallet);
+    const address = wallet.address;
     if (!address) return c.json({ error: "No EVM address on wallet" }, 400);
 
     const body = await c.req.json<{

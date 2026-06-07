@@ -4,7 +4,7 @@ import { base } from "viem/chains";
 import fs from "fs";
 import path from "path";
 import { getEthBalance } from "../lib/publish";
-import { listAgentWallets, getBaseAddress } from "../../lib/ows/wallet";
+import { resolveActiveWallet } from "../lib/active-wallet";
 import { mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
 import { STORIES_DIR, readPublishStatus } from "./stories";
 
@@ -82,10 +82,10 @@ dashboard.get("/", async (c) => {
   // Get wallet info
   let walletInfo = null;
   try {
-    const wallets = listAgentWallets();
-    const wallet = wallets.find((w) => w.name.startsWith("plotlink-writer"));
+    const resolvedWallet = await resolveActiveWallet();
+    const wallet = resolvedWallet.activeWallet;
     if (wallet) {
-      const address = getBaseAddress(wallet);
+      const address = wallet.address;
       if (address) {
         const ethBalance = await getEthBalance(address);
 
@@ -107,6 +107,8 @@ dashboard.get("/", async (c) => {
         } catch { /* best effort */ }
 
         walletInfo = {
+          walletId: wallet.walletId,
+          name: wallet.name,
           address,
           ethBalance: ethBalance.toString(),
           ethFormatted: (Number(ethBalance) / 1e18).toFixed(6),
