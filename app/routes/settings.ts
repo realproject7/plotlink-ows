@@ -9,15 +9,57 @@ import fs from "fs";
 import path from "path";
 
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+type Config = Record<string, unknown>;
 
-function readConfig(): Record<string, unknown> {
+function readConfig(): Config {
   try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8")); } catch { return {}; }
 }
 
-function writeConfig(updates: Record<string, unknown>) {
+function writeConfig(updates: Config) {
   const config = readConfig();
   Object.assign(config, updates);
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+function normalizeAddress(address: unknown): string | null {
+  return typeof address === "string" && /^0x[a-fA-F0-9]{40}$/.test(address)
+    ? address.toLowerCase()
+    : null;
+}
+
+function getWalletAgentConfig(
+  config: Config,
+  wallet: { walletId?: string; name: string; address: string },
+  selectableWalletCount: number,
+): Config | null {
+  if (!config.agentId) return null;
+
+  const cachedAddress = normalizeAddress(config.agentWalletAddress);
+  const activeAddress = normalizeAddress(wallet.address);
+  if (cachedAddress && activeAddress) {
+    return cachedAddress === activeAddress ? config : null;
+  }
+
+  if (typeof config.agentWalletId === "string" && wallet.walletId) {
+    return config.agentWalletId === wallet.walletId ? config : null;
+  }
+
+  if (typeof config.agentWalletName === "string") {
+    return config.agentWalletName === wallet.name ? config : null;
+  }
+
+  // Backwards compatibility for pre-#196 installs: an unscoped cache can only
+  // be trusted when there is no wallet-switching ambiguity.
+  return selectableWalletCount <= 1 ? config : null;
+}
+
+function walletAgentConfig(wallet: { walletId?: string; name: string; address: string }, updates: Config): Config {
+  return {
+    ...updates,
+    agentWalletAddress: wallet.address.toLowerCase(),
+    agentWalletName: wallet.name,
+    ...(wallet.walletId ? { agentWalletId: wallet.walletId } : {}),
+  };
 }
 
 const ERC_8004 = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
@@ -57,19 +99,19 @@ settings.post("/generate-binding", async (c) => {
     const signature = await account.signMessage({ message });
 
     // Include agent data from config.json if available
-    const config = readConfig();
+    const config = getWalletAgentConfig(readConfig(), wallet, resolvedWallet.wallets.filter((w) => w.address).length);
 
     return c.json({
       message,
       signature,
       owsWallet,
-      agentId: config.agentId ? Number(config.agentId) : undefined,
-      agentName: (config.agentName as string) || undefined,
-      agentDescription: (config.agentDescription as string) || undefined,
-      agentGenre: (config.agentGenre as string) || undefined,
-      agentLlmModel: (config.agentLlmModel as string) || undefined,
-      agentRegisteredBy: (config.agentRegisteredBy as string) || undefined,
-      agentRegisteredAt: (config.agentRegisteredAt as string) || undefined,
+      agentId: config?.agentId ? Number(config.agentId) : undefined,
+      agentName: (config?.agentName as string) || undefined,
+      agentDescription: (config?.agentDescription as string) || undefined,
+      agentGenre: (config?.agentGenre as string) || undefined,
+      agentLlmModel: (config?.agentLlmModel as string) || undefined,
+      agentRegisteredBy: (config?.agentRegisteredBy as string) || undefined,
+      agentRegisteredAt: (config?.agentRegisteredAt as string) || undefined,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to generate binding proof";
@@ -166,7 +208,7 @@ settings.post("/register-agent", async (c) => {
     }
 
     // Cache full tokenURI data in config.json (survives npx reinstalls, no Prisma dependency)
-    writeConfig({
+    writeConfig(walletAgentConfig(wallet, {
       agentId,
       agentName: body.name.trim(),
       agentDescription: body.description.trim(),
@@ -174,7 +216,7 @@ settings.post("/register-agent", async (c) => {
       agentLlmModel: "Claude",
       agentRegisteredBy: "plotlink-ows",
       agentRegisteredAt: registeredAt,
-    });
+    }));
 
     return c.json({
       agentId,
@@ -205,8 +247,8 @@ settings.get("/link-status", async (c) => {
     if (!address) return c.json({ linked: false, error: "No EVM address" });
 
     // Check config.json cache first (survives npx reinstalls + RPC rate limits)
-    const config = readConfig();
-    if (config.agentId) {
+    const config = getWalletAgentConfig(readConfig(), wallet, resolvedWallet.wallets.filter((w) => w.address).length);
+    if (config?.agentId) {
       return c.json({ linked: true, agentId: Number(config.agentId), owsWallet: address });
     }
 
@@ -220,7 +262,7 @@ settings.get("/link-status", async (c) => {
       }) as bigint;
 
       if (agentId > 0n) {
-        writeConfig({ agentId: Number(agentId) });
+        writeConfig(walletAgentConfig(wallet, { agentId: Number(agentId) }));
         return c.json({ linked: true, agentId: Number(agentId), owsWallet: address });
       }
     } catch { /* agentIdByWallet may revert if not bound */ }
@@ -248,7 +290,7 @@ settings.get("/link-status", async (c) => {
         } catch { /* ERC-721 Enumerable not supported */ }
 
         if (agentId !== undefined) {
-          writeConfig({ agentId });
+          writeConfig(walletAgentConfig(wallet, { agentId }));
         }
         return c.json({ linked: true, agentId, owsWallet: address });
       }
