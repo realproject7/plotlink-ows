@@ -2262,7 +2262,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
         description: "Wide shot",
       }),
     ];
-    const fn = vi.fn((url: string) => {
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
       if (url.includes("/asset-diagnostics")) {
         return Promise.resolve({
           ok: true,
