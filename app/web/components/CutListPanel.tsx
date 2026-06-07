@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
 import { AssetImage, assetUrl } from "./asset-image";
-import { buildCodexTaskPrompt, buildLetteringPrompt } from "@app-lib/cartoon-prompt";
+import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
 import { withRateLimitRetry, createUploadThrottle, type RetryDeps } from "../lib/upload-retry";
@@ -141,6 +141,25 @@ function boardStatus(cut: Cut, needsConversion: boolean, hasStale: boolean): Boa
   return { key: "needs-image", label: "Needs image", tone: "muted" };
 }
 
+function letteringReviewState(cut: Cut): { label: string; detail: string; tone: BoardTone } {
+  if (cut.uploadedCid || cut.uploadedUrl) {
+    return { label: "Complete", detail: "Final image uploaded", tone: "green" };
+  }
+  if (cut.finalImagePath || cut.exportedAt) {
+    return { label: "Exported", detail: "Ready to upload", tone: "green" };
+  }
+  if ((cut.overlays?.length ?? 0) > 0) {
+    return { label: "Draft saved", detail: `${cut.overlays.length} overlay${cut.overlays.length === 1 ? "" : "s"} placed`, tone: "amber" };
+  }
+  if (isTextPanel(cut)) {
+    return { label: "Between-scene card", detail: "Open to add narration or title text", tone: "accent" };
+  }
+  if (cut.cleanImagePath) {
+    return { label: "Unlettered", detail: "Clean art ready for bubble placement", tone: "muted" };
+  }
+  return { label: "Needs artwork", detail: "Add or sync clean art first", tone: "muted" };
+}
+
 function CutRow({
   cut,
   storyName,
@@ -190,10 +209,6 @@ function CutRow({
   // generated PNG into this cut without hunting through a hidden folder.
   const [showCodexPicker, setShowCodexPicker] = useState(false);
   const [convertingThis, setConvertingThis] = useState(false);
-  // Lettering is a first-class step (#442): an intentional Manual vs AI-draft
-  // choice per cut, surfaced on the card (not hidden under Edit).
-  const [letteringMode, setLetteringMode] = useState<"manual" | "ai">("manual");
-  const [letteringCopied, setLetteringCopied] = useState(false);
   const status = getCutStatus(cut);
   // A recorded cleanImagePath/finalImagePath whose file is missing/invalid (#302):
   // surface it precisely rather than letting the field-based status claim the cut
@@ -267,18 +282,13 @@ function CutRow({
     !isTextPanel(cut) && !!cut.cleanImagePath && !cut.finalImagePath &&
     !cut.uploadedCid && !cut.uploadedUrl && !hasStale && !needsConversion;
 
-  const copyLetteringPrompt = useCallback(() => {
-    navigator.clipboard?.writeText(buildLetteringPrompt(cut as unknown as LibCut, plotFile));
-    setLetteringCopied(true);
-    setTimeout(() => setLetteringCopied(false), 2000);
-  }, [cut, plotFile]);
-
   const primary: { label: string; onClick: () => void; testid: string } | null =
     board.key === "convert" ? { label: convertingThis ? "Converting…" : "Convert image", onClick: handleConvertThis, testid: `card-convert-${cut.id}` }
     : board.key === "review" ? { label: "Review cut", onClick: onOpenEditor, testid: `card-review-${cut.id}` }
     : board.key === "text" ? { label: "Add captions", onClick: onOpenEditor, testid: `card-letter-${cut.id}` }
     : board.key === "needs-image" ? { label: "Add artwork", onClick: onToggle, testid: `card-addart-${cut.id}` }
     : null; // exported / uploaded — the next action is the episode-level upload/publish
+  const reviewState = letteringReviewState(cut);
 
   return (
     <div
@@ -303,13 +313,20 @@ function CutRow({
             assetPath={thumbPath}
             authFetch={authFetch}
             alt={`Cut ${cut.id} artwork`}
-            className="w-full max-h-44 object-contain rounded border border-border bg-white"
+            className="w-full max-h-[32rem] object-contain rounded border border-border bg-white"
           />
         ) : (
-          <div className="w-full h-20 rounded border border-dashed border-border bg-surface/40 flex items-center justify-center text-[10px] text-muted" data-testid={`cut-card-noart-${cut.id}`}>
+          <div className="w-full min-h-28 rounded border border-dashed border-border bg-surface/40 flex items-center justify-center text-[10px] text-muted" data-testid={`cut-card-noart-${cut.id}`}>
             {isTextPanel(cut) ? "Text panel — no artwork needed" : "No artwork yet"}
           </div>
         )}
+        <div
+          className={`rounded border border-border/70 bg-surface/50 px-2 py-1.5 text-[11px] ${BOARD_TONE_TEXT[reviewState.tone]}`}
+          data-testid={`lettering-review-state-${cut.id}`}
+        >
+          <span className="font-semibold">{reviewState.label}</span>
+          <span className="text-muted"> · {reviewState.detail}</span>
+        </div>
         <button
           onClick={onToggle}
           data-testid={`cut-desc-${cut.id}`}
@@ -317,51 +334,15 @@ function CutRow({
         >
           {cut.description || "No description"}
         </button>
-        {/* Lettering is a first-class, visible step (#442): an intentional
-            Manual vs AI-draft choice on the card, then the matching CTA. */}
-        {atLetteringStage && (
-          <div className="space-y-1" data-testid={`lettering-${cut.id}`}>
-            <div className="text-[10px] font-medium text-muted uppercase tracking-wider">Lettering</div>
-            <label className="flex items-center gap-1.5 text-[11px] text-foreground">
-              <input
-                type="radio" name={`lettering-mode-${cut.id}`} checked={letteringMode === "manual"}
-                onChange={() => setLetteringMode("manual")} data-testid={`lettering-mode-manual-${cut.id}`}
-              />
-              Manual — I place bubbles myself
-            </label>
-            <label className="flex items-center gap-1.5 text-[11px] text-foreground">
-              <input
-                type="radio" name={`lettering-mode-${cut.id}`} checked={letteringMode === "ai"}
-                onChange={() => setLetteringMode("ai")} data-testid={`lettering-mode-ai-${cut.id}`}
-              />
-              AI draft — ask the agent to place initial bubbles
-            </label>
-            {letteringMode === "ai" && (
-              <p className="text-[10px] text-muted">
-                Paste it to your agent, then review the draft bubbles here and export the final cut.
-              </p>
-            )}
-          </div>
-        )}
         <div className="flex items-center gap-2 flex-wrap">
           {atLetteringStage ? (
-            letteringMode === "manual" ? (
-              <button
-                onClick={onOpenEditor}
-                data-testid={`add-bubbles-${cut.id}`}
-                className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
-              >
-                {bubblesPlaced > 0 ? "Review lettering" : "Add speech bubbles"}
-              </button>
-            ) : (
-              <button
-                onClick={copyLetteringPrompt}
-                data-testid={`copy-lettering-${cut.id}`}
-                className="px-2.5 py-1 text-[11px] font-medium rounded border border-accent/40 text-accent hover:bg-accent/5"
-              >
-                {letteringCopied ? "Copied!" : "Copy AI lettering prompt"}
-              </button>
-            )
+            <button
+              onClick={onOpenEditor}
+              data-testid={`add-bubbles-${cut.id}`}
+              className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
+            >
+              {bubblesPlaced > 0 ? "Review lettering" : "Open focused editor"}
+            </button>
           ) : primary ? (
             <button
               onClick={primary.onClick}
@@ -924,10 +905,10 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     setRepairing(false);
   }, [authFetch, storyName, plotFile, loadCuts, loadDetect]);
 
-  // Append a text/interstitial panel to the cut plan (#352) — a one-click way to
-  // add a narration/title card between image cuts without hand-editing cuts.json.
+  // Insert a text/interstitial panel to the cut plan (#352/#488) — a one-click way
+  // to add a narration/title card between image cuts without hand-editing cuts.json.
   const [addingPanel, setAddingPanel] = useState(false);
-  const addTextPanel = useCallback(async () => {
+  const addTextPanelAt = useCallback(async (insertIndex: number, openEditor = true) => {
     if (!cutsFile) return;
     setAddingPanel(true);
     try {
@@ -939,14 +920,17 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         uploadedCid: null, uploadedUrl: null, overlays: [],
         kind: "text" as const, background: "#101820", aspectRatio: "4:5",
       };
-      const updated = { ...cutsFile, cuts: [...cutsFile.cuts, panel] };
+      const nextCuts = [...cutsFile.cuts];
+      nextCuts.splice(Math.max(0, Math.min(insertIndex, nextCuts.length)), 0, panel);
+      const updated = { ...cutsFile, cuts: nextCuts };
       const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
       if (res.ok) {
-        setExpandedCut(nextId);
+        if (openEditor) setEditingCutId(nextId);
+        else setExpandedCut(nextId);
         await loadCuts();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -957,6 +941,7 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
     }
     setAddingPanel(false);
   }, [cutsFile, authFetch, storyName, plotFile, loadCuts]);
+  const addTextPanel = useCallback(() => addTextPanelAt(cutsFile?.cuts.length ?? 0, true), [addTextPanelAt, cutsFile]);
 
   useEffect(() => {
     loadCuts();
@@ -1000,6 +985,8 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         plotFile={plotFile}
         language={language}
         authFetch={authFetch}
+        targetLabel={isTextPanel(editingCut) ? `Between-scene card ${editingCut.id}` : `Cut ${String(editingCut.id).padStart(2, "0")}`}
+        returnOnSave
         onSave={async (overlays: Overlay[]) => {
           const updated = { ...cutsFile, cuts: cutsFile.cuts.map((c) => c.id === editingCutId ? { ...c, overlays } : c) };
           const res = await authFetch(`/api/stories/${storyName}/cuts/${plotFile}`, {
@@ -1268,32 +1255,83 @@ export function CutListPanel({ storyName, fileName, authFetch, language, uploadR
         published={episodeState.published}
       />
 
-      {/* Cut list */}
-      <div className="flex-1 min-h-56 overflow-y-auto p-3 space-y-2" data-testid="cut-list-scroll">
-        {cutsFile.cuts.map((cut) => (
-          <CutRow
-            key={cut.id}
-            cut={cut}
-            storyName={storyName}
-            plotFile={plotFile}
-            expanded={expandedCut === cut.id}
-            onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
-            authFetch={authFetch}
-            onUpdated={() => { loadCuts(); loadDetect(); loadDiagnostics(); }}
-            onOpenEditor={() => setEditingCutId(cut.id)}
-            detectedLocalClean={detected.has(cut.id)}
-            onSyncClean={syncCleanImages}
-            syncing={syncing}
-            staleMessages={staleByCut.get(cut.id) ?? []}
-            onRepairStale={repairStalePaths}
-            repairing={repairing}
-            conversionPng={conversionByCut.get(cut.id) ?? null}
-            onConvert={convertCut}
-            converting={converting}
-            rowRef={(el) => { if (el) rowRefs.current.set(cut.id, el); else rowRefs.current.delete(cut.id); }}
-          />
+      {/* Full cut review (#488): all clean cuts are shown vertically first, with
+          explicit between-scene slots for narration/title cards. */}
+      <div className="flex-1 min-h-56 overflow-y-auto p-3 space-y-3" data-testid="lettering-review-board">
+        {cutsFile.cuts.map((cut, index) => (
+          <Fragment key={cut.id}>
+            <BetweenSceneSlot
+              index={index}
+              beforeLabel={index === 0 ? "Episode opening" : `After cut ${cutsFile.cuts[index - 1]?.id}`}
+              afterLabel={`Before cut ${cut.id}`}
+              disabled={addingPanel}
+              onAdd={() => addTextPanelAt(index)}
+            />
+            <CutRow
+              cut={cut}
+              storyName={storyName}
+              plotFile={plotFile}
+              expanded={expandedCut === cut.id}
+              onToggle={() => setExpandedCut(expandedCut === cut.id ? null : cut.id)}
+              authFetch={authFetch}
+              onUpdated={() => { loadCuts(); loadDetect(); loadDiagnostics(); }}
+              onOpenEditor={() => setEditingCutId(cut.id)}
+              detectedLocalClean={detected.has(cut.id)}
+              onSyncClean={syncCleanImages}
+              syncing={syncing}
+              staleMessages={staleByCut.get(cut.id) ?? []}
+              onRepairStale={repairStalePaths}
+              repairing={repairing}
+              conversionPng={conversionByCut.get(cut.id) ?? null}
+              onConvert={convertCut}
+              converting={converting}
+              rowRef={(el) => { if (el) rowRefs.current.set(cut.id, el); else rowRefs.current.delete(cut.id); }}
+            />
+          </Fragment>
         ))}
+        <BetweenSceneSlot
+          index={cutsFile.cuts.length}
+          beforeLabel={`After cut ${cutsFile.cuts[cutsFile.cuts.length - 1]?.id}`}
+          afterLabel="Episode ending"
+          disabled={addingPanel}
+          onAdd={() => addTextPanelAt(cutsFile.cuts.length)}
+        />
       </div>
+    </div>
+  );
+}
+
+function BetweenSceneSlot({
+  index,
+  beforeLabel,
+  afterLabel,
+  disabled,
+  onAdd,
+}: {
+  index: number;
+  beforeLabel: string;
+  afterLabel: string;
+  disabled: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      className="rounded border border-dashed border-border bg-surface/35 px-3 py-2 text-[11px] text-muted flex items-center gap-3"
+      data-testid={`between-scene-slot-${index}`}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="font-medium text-foreground">Between-scene lettering</span>
+        <span className="block truncate">{beforeLabel} · {afterLabel}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={disabled}
+        className="flex-shrink-0 rounded border border-accent/40 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
+        data-testid={`add-between-scene-${index}`}
+      >
+        Add card
+      </button>
     </div>
   );
 }

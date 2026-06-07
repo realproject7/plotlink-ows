@@ -100,7 +100,7 @@ describe("CutListPanel", () => {
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Exported")).toBeInTheDocument();
+      expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Exported");
       expect(screen.getByText("1 lettered")).toBeInTheDocument();
     });
   });
@@ -150,7 +150,7 @@ describe("CutListPanel", () => {
     const authFetch = mockAuthFetch({ ok: true, data: cutsData });
     render(<CutListPanel storyName="coupon-crush" fileName="plot-01.md" authFetch={authFetch} />);
 
-    const scroll = await screen.findByTestId("cut-list-scroll");
+    const scroll = await screen.findByTestId("lettering-review-board");
     expect(scroll).toHaveClass("min-h-56");
 
     fireEvent.click(screen.getByText("Cut 1 scene"));
@@ -1021,10 +1021,11 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs conversion");
     expect(screen.getByTestId("card-convert-1")).toBeInTheDocument();
     expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent("Ready for lettering");
-    // A clean, un-lettered cut shows the first-class lettering choice (#442).
-    expect(screen.getByTestId("lettering-2")).toBeInTheDocument();
-    expect(screen.getByTestId("add-bubbles-2")).toBeInTheDocument();
+    expect(screen.getByTestId("lettering-review-state-2")).toHaveTextContent("Unlettered");
+    expect(screen.getByTestId("add-bubbles-2")).toHaveTextContent("Open focused editor");
     expect(screen.getByTestId("cut-card-status-3")).toHaveTextContent("Needs image");
+    expect(screen.getByTestId("lettering-review-board")).toBeInTheDocument();
+    expect(screen.getByTestId("between-scene-slot-1")).toHaveTextContent("Between-scene lettering");
 
     // Technical controls live under a collapsed-by-default Details disclosure.
     const advanced = screen.getByTestId("cut-advanced");
@@ -1033,9 +1034,9 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(within(advanced).getByTestId("sync-clean-btn")).toBeInTheDocument();
   });
 
-  // #442: lettering is a first-class, visible step with an intentional
-  // Manual vs AI-draft choice, and "Review lettering" once bubbles exist.
-  it("offers a Manual/AI-draft lettering choice on a clean cut and 'Review lettering' once bubbles exist", async () => {
+  // #488: AI drafting is scoped to the selected target inside the focused
+  // editor, while the review board stays focused on opening/editing targets.
+  it("opens a focused editor with scoped AI draft assistance and keeps review state visible", async () => {
     const overlay = { id: "o1", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.15, text: "Hi", speaker: "Sera" };
     const fn = vi.fn((url: string) => {
       if (url.includes("/asset-diagnostics")) {
@@ -1057,22 +1058,58 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
     await screen.findByTestId("cut-list-panel");
 
-    // Cut 1 (no bubbles): the lettering choice + "Add speech bubbles" (Manual is default).
-    const lettering = await screen.findByTestId("lettering-1");
-    expect(within(lettering).getByTestId("lettering-mode-manual-1")).toBeChecked();
-    expect(screen.getByTestId("add-bubbles-1")).toHaveTextContent("Add speech bubbles");
+    // Cut 1 (no bubbles): review opens the focused editor.
+    expect(await screen.findByTestId("lettering-review-state-1")).toHaveTextContent("Unlettered");
+    fireEvent.click(screen.getByTestId("add-bubbles-1"));
+    expect(await screen.findByTestId("focused-lettering-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("ai-draft-current-target")).toHaveTextContent("Cut 01");
 
-    // Switch to AI draft → the copy-prompt CTA appears and copies the lettering prompt.
-    fireEvent.click(screen.getByTestId("lettering-mode-ai-1"));
-    fireEvent.click(screen.getByTestId("copy-lettering-1"));
+    // AI draft is scoped to the focused target.
+    fireEvent.click(screen.getByTestId("copy-ai-lettering-current"));
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
     const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(copied).toContain("Draft the speech bubbles and captions for cut 1 of genesis");
     expect(copied).toMatch(/do NOT export or upload/i);
 
-    // Cut 2 (bubbles already placed): status "Needs review" + a "Review lettering" CTA.
+    fireEvent.click(screen.getByTestId("cancel-lettering-btn"));
+
+    // Cut 2 (bubbles already placed): status "Needs review" + a draft-saved state.
     expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent("Needs review");
+    expect(screen.getByTestId("lettering-review-state-2")).toHaveTextContent("Draft saved");
     expect(screen.getByTestId("add-bubbles-2")).toHaveTextContent("Review lettering");
+  });
+
+  it("lets a between-scene slot create a focused text-card editor and Save returns to review (#488)", async () => {
+    let cuts = [
+      makeCut({ id: 1, cleanImagePath: "assets/genesis/cut-01-clean.webp" }),
+      makeCut({ id: 2, cleanImagePath: "assets/genesis/cut-02-clean.webp" }),
+    ];
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
+          diagnostics: cuts.map((c) => ({ cutId: c.id, kind: c.kind === "text" ? "text" : "image", state: c.kind === "text" ? "planned" : "clean-ready", issue: null, convertiblePng: null })),
+          summary: { planned: 0, needsConversion: 0, missing: 0, cleanReady: 2, finalReady: 0, uploaded: 0 },
+        }) });
+      }
+      if (url.includes("/detect-clean-images")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ detected: [], stale: [] }) });
+      if (url.endsWith("/cuts/genesis") && opts?.method === "PUT") {
+        cuts = JSON.parse(opts.body as string).cuts;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      }
+      if (url.includes("/cuts/genesis")) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ version: 1, plotFile: "genesis", cuts }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    render(<CutListPanel storyName="god-cell" fileName="genesis.md" authFetch={fn} />);
+
+    fireEvent.click(await screen.findByTestId("add-between-scene-1"));
+    expect(await screen.findByTestId("focused-lettering-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("focused-lettering-editor")).toHaveTextContent("Between-scene card 3");
+
+    fireEvent.click(screen.getByTestId("add-narration"));
+    fireEvent.click(screen.getByTestId("save-lettering-btn"));
+
+    await waitFor(() => expect(screen.getByTestId("lettering-review-board")).toBeInTheDocument());
+    expect(screen.getByTestId("lettering-review-state-3")).toHaveTextContent("Draft saved");
   });
 
   it("clears the stale diagnostics banner on a file switch whose diagnostics request fails (@re1)", async () => {
