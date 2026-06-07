@@ -23,6 +23,12 @@ import {
   summarizeAssetDiagnostics,
   type CutAssetDiagnostic,
 } from "@app-lib/cut-asset-diagnostics";
+import {
+  buildDraftOverlays,
+  overlaysSignature,
+  cutScriptLines,
+} from "@app-lib/lettering-status";
+import type { CutAiDraft } from "@app-lib/cuts";
 
 interface Overlay {
   id: string;
@@ -67,6 +73,7 @@ interface Cut {
   uploadedUrl: string | null;
   overlays: Overlay[];
   kind?: "image" | "text";
+  aiDraft?: CutAiDraft | null;
   background?: string;
   aspectRatio?: string;
   finalRendererVersion?: number;
@@ -105,6 +112,22 @@ interface CutListPanelProps {
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded" | "text";
+
+function canDraftLettering(cut: Cut): boolean {
+  return (
+    (!!cut.cleanImagePath || isTextPanel(cut)) && cutScriptLines(cut).length > 0
+  );
+}
+
+function buildAiDraftState(overlays: Overlay[]): CutAiDraft {
+  const now = new Date().toISOString();
+  return {
+    status: "generated",
+    baseSig: overlaysSignature(overlays),
+    generatedAt: now,
+    updatedAt: now,
+  };
+}
 
 function getCutStatus(cut: Cut): CutStatus {
   if (cut.uploadedCid) return "uploaded";
@@ -197,10 +220,24 @@ function letteringReviewState(cut: Cut): {
     return { label: "Exported", detail: "Ready to upload", tone: "green" };
   }
   if ((cut.overlays?.length ?? 0) > 0) {
+    if (cut.aiDraft?.status === "generated") {
+      return {
+        label: "Draft ready",
+        detail: `${cut.overlays.length} AI-drafted overlay${cut.overlays.length === 1 ? "" : "s"} ready to review`,
+        tone: "amber",
+      };
+    }
     return {
-      label: "Draft saved",
-      detail: `${cut.overlays.length} overlay${cut.overlays.length === 1 ? "" : "s"} placed`,
+      label: "User-edited",
+      detail: `${cut.overlays.length} overlay${cut.overlays.length === 1 ? "" : "s"} adjusted and ready to review`,
       tone: "amber",
+    };
+  }
+  if (canDraftLettering(cut)) {
+    return {
+      label: "No draft",
+      detail: "Draft with AI or place bubbles manually",
+      tone: "muted",
     };
   }
   if (isTextPanel(cut)) {
@@ -236,6 +273,8 @@ function CutRow({
   detectedLocalClean,
   onSyncClean,
   syncing,
+  onAiDraft,
+  aiDrafting,
   staleMessages,
   onRepairStale,
   repairing,
@@ -255,6 +294,8 @@ function CutRow({
   detectedLocalClean: boolean;
   onSyncClean: () => void;
   syncing: boolean;
+  onAiDraft: () => void;
+  aiDrafting: boolean;
   staleMessages: string[];
   onRepairStale: () => void;
   repairing: boolean;
@@ -358,6 +399,15 @@ function CutRow({
     !cut.uploadedUrl &&
     !hasStale &&
     !needsConversion;
+  const canAiDraft =
+    !hasStale &&
+    !needsConversion &&
+    !cut.finalImagePath &&
+    !cut.uploadedCid &&
+    !cut.uploadedUrl &&
+    canDraftLettering(cut);
+  const aiDraftLabel =
+    (cut.overlays?.length ?? 0) > 0 ? "Re-draft with AI" : "AI draft lettering";
 
   const primary: { label: string; onClick: () => void; testid: string } | null =
     board.key === "convert"
@@ -447,13 +497,25 @@ function CutRow({
         </button>
         <div className="flex items-center gap-2 flex-wrap">
           {atLetteringStage ? (
-            <button
-              onClick={onOpenEditor}
-              data-testid={`add-bubbles-${cut.id}`}
-              className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
-            >
-              {bubblesPlaced > 0 ? "Review lettering" : "Open focused editor"}
-            </button>
+            <>
+              <button
+                onClick={onOpenEditor}
+                data-testid={`add-bubbles-${cut.id}`}
+                className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
+              >
+                {bubblesPlaced > 0 ? "Review lettering" : "Open focused editor"}
+              </button>
+              {canAiDraft && (
+                <button
+                  onClick={onAiDraft}
+                  disabled={aiDrafting}
+                  data-testid={`ai-draft-${cut.id}`}
+                  className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+                >
+                  {aiDrafting ? "Drafting…" : aiDraftLabel}
+                </button>
+              )}
+            </>
           ) : primary ? (
             <button
               onClick={primary.onClick}
@@ -466,6 +528,16 @@ function CutRow({
               {primary.label}
             </button>
           ) : null}
+          {!atLetteringStage && !primary && canAiDraft && (
+            <button
+              onClick={onAiDraft}
+              disabled={aiDrafting}
+              data-testid={`ai-draft-${cut.id}`}
+              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+            >
+              {aiDrafting ? "Drafting…" : aiDraftLabel}
+            </button>
+          )}
           <button
             onClick={onToggle}
             data-testid={`cut-details-${cut.id}`}
@@ -740,6 +812,8 @@ export function CutListPanel({
   const [converting, setConverting] = useState(false);
   const [convertResult, setConvertResult] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [aiDraftingCutId, setAiDraftingCutId] = useState<number | null>(null);
+  const [aiDraftingAll, setAiDraftingAll] = useState(false);
   const [detected, setDetected] = useState<Set<number>>(new Set());
   // cutId → precise stale-path messages (#302), from detect-clean-images.
   const [staleByCut, setStaleByCut] = useState<Map<number, string[]>>(
@@ -786,6 +860,11 @@ export function CutListPanel({
     onFocusHandledRef.current?.();
   }, [focusRequest]);
 
+  useEffect(() => {
+    onFocusedLetteringModeChange?.(editingCutId !== null);
+    return () => onFocusedLetteringModeChange?.(false);
+  }, [editingCutId, onFocusedLetteringModeChange]);
+
   // Scroll a deep-linked, expanded cut into view once its row is on screen. Runs
   // when the target is set and again after the cut plan loads (rows mount). Best
   // effort: `scrollIntoView` is a no-op/undefined under jsdom.
@@ -796,11 +875,6 @@ export function CutListPanel({
     el.scrollIntoView?.({ behavior: "smooth", block: "center" });
     setScrollTargetCutId(null);
   }, [scrollTargetCutId, cutsFile]);
-
-  useEffect(() => {
-    onFocusedLetteringModeChange?.(editingCutId !== null);
-    return () => onFocusedLetteringModeChange?.(false);
-  }, [editingCutId, onFocusedLetteringModeChange]);
 
   const loadCuts = useCallback(async () => {
     try {
@@ -851,6 +925,22 @@ export function CutListPanel({
       setLoading(false);
     }
   }, [authFetch, storyName, plotFile, fileName]);
+
+  const saveCutsFile = useCallback(
+    async (updated: CutsFile): Promise<boolean> => {
+      const res = await authFetch(
+        `/api/stories/${storyName}/cuts/${plotFile}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        },
+      );
+      if (!res.ok) return false;
+      return true;
+    },
+    [authFetch, storyName, plotFile],
+  );
 
   // Server-confirmed detection of local clean files for cuts whose cleanImagePath
   // is still null. Best-effort: failures leave the detected set unchanged.
@@ -917,6 +1007,90 @@ export function CutListPanel({
       setRescanning(false);
     }
   }, [loadCuts, loadDetect, loadDiagnostics]);
+
+  const draftCutWithAi = useCallback(
+    async (cutId: number, opts: { openEditor?: boolean } = {}) => {
+      if (!cutsFile) return false;
+      const cut = cutsFile.cuts.find((c) => c.id === cutId);
+      if (!cut || !canDraftLettering(cut)) return false;
+      if ((cut.overlays?.length ?? 0) > 0) {
+        const ok = window.confirm(
+          "This cut already has overlays. Re-drafting with AI will replace the current draft overlays for this cut. Continue?",
+        );
+        if (!ok) return false;
+      }
+      const overlays = buildDraftOverlays(cut);
+      if (overlays.length === 0) {
+        setSyncResult(`Cut ${cut.id}: no script lines available to draft.`);
+        return false;
+      }
+      setAiDraftingCutId(cutId);
+      setSyncResult(null);
+      try {
+        const updated: CutsFile = {
+          ...cutsFile,
+          cuts: cutsFile.cuts.map((c) =>
+            c.id === cutId
+              ? { ...c, overlays, aiDraft: buildAiDraftState(overlays) }
+              : c,
+          ),
+        };
+        const ok = await saveCutsFile(updated);
+        if (!ok) {
+          setSyncResult(`Cut ${cut.id}: AI draft failed`);
+          return false;
+        }
+        setSyncResult(`Cut ${cut.id}: AI draft ready`);
+        await loadCuts();
+        if (opts.openEditor) setEditingCutId(cutId);
+        return true;
+      } finally {
+        setAiDraftingCutId(null);
+      }
+    },
+    [cutsFile, saveCutsFile, loadCuts],
+  );
+
+  const draftAllUnletteredCuts = useCallback(async () => {
+    if (!cutsFile) return;
+    const eligible = cutsFile.cuts.filter(
+      (cut) =>
+        canDraftLettering(cut) &&
+        (cut.overlays?.length ?? 0) === 0 &&
+        !cut.finalImagePath &&
+        !cut.uploadedCid &&
+        !cut.uploadedUrl,
+    );
+    if (eligible.length === 0) {
+      setSyncResult("No unlettered cuts need an AI draft");
+      return;
+    }
+    setAiDraftingAll(true);
+    setSyncResult(null);
+    try {
+      const updated: CutsFile = {
+        ...cutsFile,
+        cuts: cutsFile.cuts.map((cut) => {
+          if (!eligible.some((e) => e.id === cut.id)) return cut;
+          const overlays = buildDraftOverlays(cut);
+          return overlays.length > 0
+            ? { ...cut, overlays, aiDraft: buildAiDraftState(overlays) }
+            : cut;
+        }),
+      };
+      const ok = await saveCutsFile(updated);
+      if (!ok) {
+        setSyncResult("AI draft failed");
+        return;
+      }
+      setSyncResult(
+        `AI draft ready for ${eligible.length} cut${eligible.length === 1 ? "" : "s"}`,
+      );
+      await loadCuts();
+    } finally {
+      setAiDraftingAll(false);
+    }
+  }, [cutsFile, saveCutsFile, loadCuts]);
 
   const syncCleanImages = useCallback(async () => {
     setSyncing(true);
@@ -1304,24 +1478,18 @@ export function CutListPanel({
             ? () => onWorkspaceVisibleChange(!workspaceVisible)
             : undefined
         }
-        onSave={async (overlays: Overlay[]) => {
+        onSave={async (overlays: Overlay[], aiDraft?: CutAiDraft | null) => {
           const updated = {
             ...cutsFile,
             cuts: cutsFile.cuts.map((c) =>
-              c.id === editingCutId ? { ...c, overlays } : c,
+              c.id === editingCutId
+                ? { ...c, overlays, aiDraft: aiDraft ?? c.aiDraft ?? null }
+                : c,
             ),
           };
-          const res = await authFetch(
-            `/api/stories/${storyName}/cuts/${plotFile}`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(updated),
-            },
-          );
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || "Failed to save overlays");
+          const ok = await saveCutsFile(updated);
+          if (!ok) {
+            throw new Error("Failed to save overlays");
           }
         }}
         onExported={() => loadCuts()}
@@ -1406,6 +1574,14 @@ export function CutListPanel({
     uploaded: cutsFile.cuts.filter((c) => c.uploadedCid || c.uploadedUrl)
       .length,
   };
+  const aiDraftEligibleCount = cutsFile.cuts.filter(
+    (cut) =>
+      canDraftLettering(cut) &&
+      (cut.overlays?.length ?? 0) === 0 &&
+      !cut.finalImagePath &&
+      !cut.uploadedCid &&
+      !cut.uploadedUrl,
+  ).length;
 
   return (
     <div
@@ -1417,21 +1593,37 @@ export function CutListPanel({
         className="px-3 py-2 border-b border-border flex-shrink-0"
         data-testid="cut-board-header"
       >
-        <div className="flex items-center gap-2 text-xs">
-          <span className="font-serif text-foreground truncate">
-            {episodeLabel}
-          </span>
-          {episodeTitle && (
-            <span className="text-muted truncate">· {episodeTitle}</span>
+        <div className="flex items-start gap-3 justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-serif text-foreground truncate">
+                {episodeLabel}
+              </span>
+              {episodeTitle && (
+                <span className="text-muted truncate">· {episodeTitle}</span>
+              )}
+            </div>
+            <div
+              className="mt-0.5 text-[10px] text-muted"
+              data-testid="cut-board-summary"
+            >
+              {boardSummary.cuts} cuts · {boardSummary.artwork} artwork found ·{" "}
+              {boardSummary.converted} converted · {boardSummary.lettered}{" "}
+              lettered · {boardSummary.uploaded} uploaded
+            </div>
+          </div>
+          {aiDraftEligibleCount > 0 && (
+            <button
+              onClick={draftAllUnletteredCuts}
+              disabled={aiDraftingAll}
+              data-testid="ai-draft-all-btn"
+              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+            >
+              {aiDraftingAll
+                ? "Drafting…"
+                : `AI draft all unlettered (${aiDraftEligibleCount})`}
+            </button>
           )}
-        </div>
-        <div
-          className="mt-0.5 text-[10px] text-muted"
-          data-testid="cut-board-summary"
-        >
-          {boardSummary.cuts} cuts · {boardSummary.artwork} artwork found ·{" "}
-          {boardSummary.converted} converted · {boardSummary.lettered} lettered
-          · {boardSummary.uploaded} uploaded
         </div>
       </div>
       {/* Lower-level / manual controls, collapsed by default so the board stays
@@ -1748,6 +1940,10 @@ export function CutListPanel({
               detectedLocalClean={detected.has(cut.id)}
               onSyncClean={syncCleanImages}
               syncing={syncing}
+              onAiDraft={() => {
+                void draftCutWithAi(cut.id, { openEditor: true });
+              }}
+              aiDrafting={aiDraftingCutId === cut.id}
               staleMessages={staleByCut.get(cut.id) ?? []}
               onRepairStale={repairStalePaths}
               repairing={repairing}

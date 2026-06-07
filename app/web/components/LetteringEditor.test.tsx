@@ -1,18 +1,45 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import { LetteringEditor } from "./LetteringEditor";
-import { installObjectUrlStub, makeAssetAuthFetch, MOCK_BLOB_URL } from "./asset-test-utils";
+import {
+  installObjectUrlStub,
+  makeAssetAuthFetch,
+  MOCK_BLOB_URL,
+} from "./asset-test-utils";
 import { textPanelDimensions } from "@app-lib/cuts";
 
 beforeAll(() => {
   installObjectUrlStub();
   global.ResizeObserver = class {
     callback: ResizeObserverCallback;
-    constructor(callback: ResizeObserverCallback) { this.callback = callback; }
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
     observe(target: Element) {
-      Object.defineProperty(target, "clientWidth", { value: 400, configurable: true });
-      Object.defineProperty(target, "clientHeight", { value: 300, configurable: true });
-      this.callback([{ contentRect: { width: 400, height: 300 }, target } as unknown as ResizeObserverEntry], this);
+      Object.defineProperty(target, "clientWidth", {
+        value: 400,
+        configurable: true,
+      });
+      Object.defineProperty(target, "clientHeight", {
+        value: 300,
+        configurable: true,
+      });
+      this.callback(
+        [
+          {
+            contentRect: { width: 400, height: 300 },
+            target,
+          } as unknown as ResizeObserverEntry,
+        ],
+        this,
+      );
     }
     unobserve() {}
     disconnect() {}
@@ -50,9 +77,17 @@ afterEach(cleanup);
 // load event that drives overlay positioning.
 async function simulateImageLoad() {
   const img = await screen.findByRole("img");
-  Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
-  Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
-  act(() => { fireEvent.load(img); });
+  Object.defineProperty(img, "naturalWidth", {
+    value: 800,
+    configurable: true,
+  });
+  Object.defineProperty(img, "naturalHeight", {
+    value: 600,
+    configurable: true,
+  });
+  act(() => {
+    fireEvent.load(img);
+  });
   return img;
 }
 
@@ -83,8 +118,13 @@ describe("LetteringEditor", () => {
     );
     const img = await screen.findByAltText("Cut 1 clean");
     expect(img).toHaveAttribute("src", MOCK_BLOB_URL);
-    expect(img).not.toHaveAttribute("src", "/api/stories/story/asset/plot-01/cut-01-clean.webp");
-    expect(authFetch).toHaveBeenCalledWith("/api/stories/story/asset/plot-01/cut-01-clean.webp");
+    expect(img).not.toHaveAttribute(
+      "src",
+      "/api/stories/story/asset/plot-01/cut-01-clean.webp",
+    );
+    expect(authFetch).toHaveBeenCalledWith(
+      "/api/stories/story/asset/plot-01/cut-01-clean.webp",
+    );
   });
 
   // #452: a clean-image cut opens a clear lettering workspace, and a narration
@@ -94,7 +134,10 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ narration: "A long narration line that would overflow a tiny default box on an ordinary panel." })}
+        cut={makeCut({
+          narration:
+            "A long narration line that would overflow a tiny default box on an ordinary panel.",
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={vi.fn()}
@@ -110,7 +153,9 @@ describe("LetteringEditor", () => {
     fireEvent.click(screen.getByTestId("script-insert-narration"));
     expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
     // The inspector opens with the text and a one-click Fit control.
-    expect(screen.getByTestId("inspector-text")).toHaveValue("A long narration line that would overflow a tiny default box on an ordinary panel.");
+    expect(screen.getByTestId("inspector-text")).toHaveValue(
+      "A long narration line that would overflow a tiny default box on an ordinary panel.",
+    );
     const fit = screen.getByTestId("inspector-fit-text");
     expect(fit).toBeInTheDocument();
 
@@ -137,7 +182,10 @@ describe("LetteringEditor", () => {
     const overlay: Overlay = {
       id: "narr-1",
       type: "narration",
-      x: 0.1, y: 0.1, width: 0.8, height: 0.2,
+      x: 0.1,
+      y: 0.1,
+      width: 0.8,
+      height: 0.2,
       text: "The story begins...",
     };
     render(
@@ -158,7 +206,11 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ cleanImagePath: null, overlays: [], narration: "Once upon a time..." })}
+        cut={makeCut({
+          cleanImagePath: null,
+          overlays: [],
+          narration: "Once upon a time...",
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={vi.fn()}
@@ -201,7 +253,10 @@ describe("LetteringEditor", () => {
     // ready, the body wraps into its own line span. Wait for that re-render so
     // the body-text assertion is deterministic (was a flaky getByText race).
     await waitFor(() =>
-      expect(screen.getByTestId("overlay-text-test-overlay-1")).toHaveAttribute("data-fonts-ready", "true"),
+      expect(screen.getByTestId("overlay-text-test-overlay-1")).toHaveAttribute(
+        "data-fonts-ready",
+        "true",
+      ),
     );
     expect(screen.getByText("Hello!")).toBeInTheDocument();
   });
@@ -213,8 +268,12 @@ describe("LetteringEditor", () => {
     const overlay: Overlay = {
       id: "tail-speech",
       type: "speech",
-      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
-      text: "Hi", speaker: "Mira",
+      x: 0.1,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12,
+      text: "Hi",
+      speaker: "Mira",
       tailAnchor: { x: 0.5, y: 1.2 },
     };
     render(
@@ -243,7 +302,9 @@ describe("LetteringEditor", () => {
     // The default {0.5, 1.2} tail points straight down: its tip Y sits below the
     // bubble's bottom edge, so the integrated path must reach past the bottom.
     const bubbleBottom = 0.2 * 300 + 0.12 * 300; // oy + oh in display px (image 800x600 → 400x300)
-    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) =>
+      parseFloat(m[1]),
+    );
     expect(Math.max(...ys)).toBeGreaterThan(bubbleBottom); // tail tip extends below the body
     // No separate stroked tail polygon — that was the old seamed rendering.
     expect(document.querySelector("polygon")).toBeNull();
@@ -255,8 +316,12 @@ describe("LetteringEditor", () => {
     const overlay: Overlay = {
       id: "no-tail-speech",
       type: "speech",
-      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
-      text: "Hi", speaker: "Mira",
+      x: 0.1,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12,
+      text: "Hi",
+      speaker: "Mira",
       tailAnchor: { x: 0.5, y: 0.5 }, // tip inside the bubble → no tail
     };
     render(
@@ -277,7 +342,9 @@ describe("LetteringEditor", () => {
     const d = balloon.getAttribute("d") ?? "";
     // Bounded by the body rect — no point extends past the bottom edge.
     const bubbleBottom = 0.2 * 300 + 0.12 * 300;
-    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) => parseFloat(m[1]));
+    const ys = Array.from(d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)).map((m) =>
+      parseFloat(m[1]),
+    );
     expect(Math.max(...ys)).toBeLessThanOrEqual(bubbleBottom + 0.01);
   });
 
@@ -285,7 +352,10 @@ describe("LetteringEditor", () => {
     const overlay: Overlay = {
       id: "narr-tail",
       type: "narration",
-      x: 0.1, y: 0.2, width: 0.25, height: 0.12,
+      x: 0.1,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12,
       text: "Later...",
     };
     render(
@@ -393,14 +463,28 @@ describe("LetteringEditor", () => {
 
     // Simulate a wide image in a tall container (will letterbox top/bottom)
     const img = await screen.findByRole("img");
-    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
-    Object.defineProperty(img, "naturalHeight", { value: 200, configurable: true });
+    Object.defineProperty(img, "naturalWidth", {
+      value: 800,
+      configurable: true,
+    });
+    Object.defineProperty(img, "naturalHeight", {
+      value: 200,
+      configurable: true,
+    });
 
     const container = screen.getByTestId("editor-surface");
-    Object.defineProperty(container, "clientWidth", { value: 400, configurable: true });
-    Object.defineProperty(container, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(container, "clientWidth", {
+      value: 400,
+      configurable: true,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      value: 400,
+      configurable: true,
+    });
 
-    act(() => { fireEvent.load(img); });
+    act(() => {
+      fireEvent.load(img);
+    });
 
     // With 800x200 image in 400x400 container:
     // scale = min(400/800, 400/200) = min(0.5, 2) = 0.5
@@ -414,7 +498,14 @@ describe("LetteringEditor", () => {
 
   it("adds overlay via toolbar button", async () => {
     render(
-      <LetteringEditor storyName="story" cut={makeCut()} plotFile="plot-01" authFetch={makeAssetAuthFetch()} onSave={vi.fn()} onClose={vi.fn()} />,
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut()}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     await simulateImageLoad();
 
@@ -425,12 +516,21 @@ describe("LetteringEditor", () => {
 
   it("edits overlay text via inspector", async () => {
     render(
-      <LetteringEditor storyName="story" cut={makeCut()} plotFile="plot-01" authFetch={makeAssetAuthFetch()} onSave={vi.fn()} onClose={vi.fn()} />,
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut()}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     await simulateImageLoad();
 
     fireEvent.click(screen.getByTestId("add-narration"));
-    const overlayEl = document.querySelector("[data-testid^='overlay-overlay-']")!;
+    const overlayEl = document.querySelector(
+      "[data-testid^='overlay-overlay-']",
+    )!;
     fireEvent.click(overlayEl);
 
     const textInput = screen.getByTestId("inspector-text");
@@ -441,14 +541,23 @@ describe("LetteringEditor", () => {
 
   it("deletes overlay with double-click confirmation", async () => {
     render(
-      <LetteringEditor storyName="story" cut={makeCut()} plotFile="plot-01" authFetch={makeAssetAuthFetch()} onSave={vi.fn()} onClose={vi.fn()} />,
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut()}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     await simulateImageLoad();
 
     fireEvent.click(screen.getByTestId("add-sfx"));
     expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
 
-    const overlayEl = document.querySelector("[data-testid^='overlay-overlay-']")!;
+    const overlayEl = document.querySelector(
+      "[data-testid^='overlay-overlay-']",
+    )!;
     fireEvent.click(overlayEl);
 
     const deleteBtn = screen.getByTestId("delete-overlay");
@@ -463,7 +572,14 @@ describe("LetteringEditor", () => {
   it("saves overlays via onSave callback", async () => {
     const onSave = vi.fn();
     render(
-      <LetteringEditor storyName="story" cut={makeCut()} plotFile="plot-01" authFetch={makeAssetAuthFetch()} onSave={onSave} onClose={vi.fn()} />,
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut()}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
     );
     await simulateImageLoad();
 
@@ -480,7 +596,20 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ id: "manual", type: "speech", x: 0.1, y: 0.1, width: 0.25, height: 0.12, text: "Hello", speaker: "Mira" }] })}
+        cut={makeCut({
+          overlays: [
+            {
+              id: "manual",
+              type: "speech",
+              x: 0.1,
+              y: 0.1,
+              width: 0.25,
+              height: 0.12,
+              text: "Hello",
+              speaker: "Mira",
+            },
+          ],
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={onSave}
@@ -491,31 +620,45 @@ describe("LetteringEditor", () => {
 
     fireEvent.click(screen.getByTestId("overlay-manual"));
     fireEvent.click(screen.getByTestId("inspector-text-manual"));
-    fireEvent.change(screen.getByTestId("inspector-font-scale"), { target: { value: "4.5" } });
-    fireEvent.change(screen.getByTestId("inspector-line-height"), { target: { value: "1.35" } });
-    fireEvent.change(screen.getByTestId("inspector-speaker-scale"), { target: { value: "0.9" } });
-    fireEvent.change(screen.getByTestId("inspector-padding-x"), { target: { value: "12" } });
-    fireEvent.change(screen.getByTestId("inspector-padding-y"), { target: { value: "10" } });
-    fireEvent.change(screen.getByTestId("inspector-corner-radius"), { target: { value: "25" } });
+    fireEvent.change(screen.getByTestId("inspector-font-scale"), {
+      target: { value: "4.5" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-line-height"), {
+      target: { value: "1.35" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-speaker-scale"), {
+      target: { value: "0.9" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-padding-x"), {
+      target: { value: "12" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-padding-y"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-corner-radius"), {
+      target: { value: "25" },
+    });
     fireEvent.click(screen.getByText("Save"));
 
-    expect(onSave).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({
-        id: "manual",
-        textStyle: expect.objectContaining({
-          mode: "manual",
-          fontScale: 0.045,
-          fontWeight: 400,
-          lineHeightFactor: 1.35,
-          speakerScale: 0.9,
+    expect(onSave).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "manual",
+          textStyle: expect.objectContaining({
+            mode: "manual",
+            fontScale: 0.045,
+            fontWeight: 400,
+            lineHeightFactor: 1.35,
+            speakerScale: 0.9,
+          }),
+          bubbleStyle: expect.objectContaining({
+            paddingX: 0.12,
+            paddingY: 0.1,
+            cornerRadius: 0.25,
+          }),
         }),
-        bubbleStyle: expect.objectContaining({
-          paddingX: 0.12,
-          paddingY: 0.1,
-          cornerRadius: 0.25,
-        }),
-      }),
-    ]));
+      ]),
+    );
   });
 
   it("applies the manual bold text style in the preview", async () => {
@@ -523,17 +666,19 @@ describe("LetteringEditor", () => {
       <LetteringEditor
         storyName="story"
         cut={makeCut({
-          overlays: [{
-            id: "bold",
-            type: "speech",
-            x: 0.1,
-            y: 0.1,
-            width: 0.25,
-            height: 0.12,
-            text: "Bold line",
-            speaker: "Mira",
-            textStyle: { mode: "manual", fontScale: 0.04, fontWeight: 700 },
-          }],
+          overlays: [
+            {
+              id: "bold",
+              type: "speech",
+              x: 0.1,
+              y: 0.1,
+              width: 0.25,
+              height: 0.12,
+              text: "Bold line",
+              speaker: "Mira",
+              textStyle: { mode: "manual", fontScale: 0.04, fontWeight: 700 },
+            },
+          ],
         })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
@@ -543,9 +688,14 @@ describe("LetteringEditor", () => {
     );
     await simulateImageLoad();
     await waitFor(() =>
-      expect(screen.getByTestId("overlay-text-bold")).toHaveAttribute("data-fonts-ready", "true"),
+      expect(screen.getByTestId("overlay-text-bold")).toHaveAttribute(
+        "data-fonts-ready",
+        "true",
+      ),
     );
-    const body = screen.getByTestId("overlay-text-bold").querySelector(".text-\\[\\#1a1a1a\\]") as HTMLElement | null;
+    const body = screen
+      .getByTestId("overlay-text-bold")
+      .querySelector(".text-\\[\\#1a1a1a\\]") as HTMLElement | null;
     expect(body?.style.fontWeight).toBe("700");
   });
 
@@ -610,8 +760,12 @@ describe("LetteringEditor", () => {
     fireEvent.click(screen.getByTestId("overlay-tail-preset"));
     fireEvent.click(screen.getByTestId("inspector-tail-left"));
 
-    expect((screen.getByTestId("inspector-tail-x") as HTMLInputElement).value).toBe("-0.2");
-    expect((screen.getByTestId("inspector-tail-y") as HTMLInputElement).value).toBe("0.5");
+    expect(
+      (screen.getByTestId("inspector-tail-x") as HTMLInputElement).value,
+    ).toBe("-0.2");
+    expect(
+      (screen.getByTestId("inspector-tail-y") as HTMLInputElement).value,
+    ).toBe("0.5");
   });
 
   it("uses Korean font when language is Korean", async () => {
@@ -641,7 +795,9 @@ describe("LetteringEditor", () => {
     await simulateImageLoad();
     fireEvent.click(screen.getByTestId("overlay-test-kr-font"));
 
-    expect(screen.getByTestId("inspector-font")).toHaveTextContent("Noto Sans KR");
+    expect(screen.getByTestId("inspector-font")).toHaveTextContent(
+      "Noto Sans KR",
+    );
   });
 
   it("calls onClose when Cancel button is clicked", () => {
@@ -659,14 +815,20 @@ describe("LetteringEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("offers scoped AI draft assistance and can return to review after Save (#488)", async () => {
+  it("shows generated AI draft guidance and can return to review after Save (#494)", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
-    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ dialogue: [{ speaker: "Mira", text: "We move now." }] })}
+        cut={makeCut({
+          dialogue: [{ speaker: "Mira", text: "We move now." }],
+          aiDraft: {
+            status: "generated",
+            baseSig: "sig",
+            generatedAt: "2026-01-01T00:00:00Z",
+          },
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={onSave}
@@ -676,9 +838,12 @@ describe("LetteringEditor", () => {
       />,
     );
 
-    expect(screen.getByTestId("focused-lettering-editor")).toHaveTextContent("Focused lettering editor");
-    fireEvent.click(screen.getByTestId("copy-ai-lettering-current"));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("cut 1 of plot-01"));
+    expect(screen.getByTestId("focused-lettering-editor")).toHaveTextContent(
+      "Focused lettering editor",
+    );
+    expect(screen.getByTestId("ai-draft-current-target")).toHaveTextContent(
+      "AI draft ready",
+    );
 
     fireEvent.click(screen.getByTestId("add-speech"));
     fireEvent.click(screen.getByTestId("save-lettering-btn"));
@@ -690,11 +855,25 @@ describe("LetteringEditor", () => {
   // (shared layout with the export), not a single truncated label.
   it("renders wrapped multi-line bubble text in the preview (WYSIWYG)", async () => {
     const authFetch = makeAssetAuthFetch();
-    const longText = "the quick brown fox jumps over the lazy dog and keeps on running through";
+    const longText =
+      "the quick brown fox jumps over the lazy dog and keeps on running through";
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ id: "ov1", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.35, text: longText, tailAnchor: { x: 0.5, y: 1.2 } }] as unknown as Overlay[] })}
+        cut={makeCut({
+          overlays: [
+            {
+              id: "ov1",
+              type: "speech",
+              x: 0.05,
+              y: 0.05,
+              width: 0.4,
+              height: 0.35,
+              text: longText,
+              tailAnchor: { x: 0.5, y: 1.2 },
+            },
+          ] as unknown as Overlay[],
+        })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={vi.fn()}
@@ -704,10 +883,15 @@ describe("LetteringEditor", () => {
     await simulateImageLoad();
     // The exact (canvas-measured) layout only renders once fonts are ready.
     await waitFor(() =>
-      expect(screen.getByTestId("overlay-text-ov1")).toHaveAttribute("data-fonts-ready", "true"),
+      expect(screen.getByTestId("overlay-text-ov1")).toHaveAttribute(
+        "data-fonts-ready",
+        "true",
+      ),
     );
     const textBox = screen.getByTestId("overlay-text-ov1");
-    const lines = Array.from(textBox.querySelectorAll("span.block")).map((s) => s.textContent);
+    const lines = Array.from(textBox.querySelectorAll("span.block")).map(
+      (s) => s.textContent,
+    );
     expect(lines.length).toBeGreaterThan(1); // wrapped, not one line
     expect(lines.join(" ")).toBe(longText); // no words lost across the wrapped lines
   });
@@ -718,20 +902,37 @@ describe("LetteringEditor", () => {
   it("defers the exact preview layout until fonts are ready, then recomputes", async () => {
     // Control font readiness: ensureFontsReady awaits document.fonts.load.
     let resolveLoad: (v: unknown) => void = () => {};
-    const loadPromise = new Promise((r) => { resolveLoad = r; });
+    const loadPromise = new Promise((r) => {
+      resolveLoad = r;
+    });
     const fontsStub = {
       load: vi.fn(() => loadPromise),
       check: vi.fn(() => false),
       ready: Promise.resolve(),
     };
     const original = Object.getOwnPropertyDescriptor(document, "fonts");
-    Object.defineProperty(document, "fonts", { value: fontsStub, configurable: true });
+    Object.defineProperty(document, "fonts", {
+      value: fontsStub,
+      configurable: true,
+    });
     try {
       const authFetch = makeAssetAuthFetch();
       render(
         <LetteringEditor
           storyName="story"
-          cut={makeCut({ overlays: [{ id: "ovf", type: "speech", x: 0.05, y: 0.05, width: 0.4, height: 0.35, text: "wrap me across multiple lines please now" }] as unknown as Overlay[] })}
+          cut={makeCut({
+            overlays: [
+              {
+                id: "ovf",
+                type: "speech",
+                x: 0.05,
+                y: 0.05,
+                width: 0.4,
+                height: 0.35,
+                text: "wrap me across multiple lines please now",
+              },
+            ] as unknown as Overlay[],
+          })}
           plotFile="plot-01"
           authFetch={authFetch}
           onSave={vi.fn()}
@@ -746,11 +947,20 @@ describe("LetteringEditor", () => {
       expect(fontsStub.load).toHaveBeenCalled(); // export's readiness signal used
 
       // Fonts become ready → preview recomputes the exact layout.
-      await act(async () => { resolveLoad([{}]); await Promise.resolve(); });
+      await act(async () => {
+        resolveLoad([{}]);
+        await Promise.resolve();
+      });
       await waitFor(() =>
-        expect(screen.getByTestId("overlay-text-ovf")).toHaveAttribute("data-fonts-ready", "true"),
+        expect(screen.getByTestId("overlay-text-ovf")).toHaveAttribute(
+          "data-fonts-ready",
+          "true",
+        ),
       );
-      expect(screen.getByTestId("overlay-text-ovf").querySelectorAll("span.block").length).toBeGreaterThan(1);
+      expect(
+        screen.getByTestId("overlay-text-ovf").querySelectorAll("span.block")
+          .length,
+      ).toBeGreaterThan(1);
     } finally {
       if (original) Object.defineProperty(document, "fonts", original);
       else Reflect.deleteProperty(document, "fonts");
@@ -764,14 +974,25 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ type: "speech", speaker: "Hana", text: "Hi", position: "upper-left" }] as unknown as Overlay[] })}
+        cut={makeCut({
+          overlays: [
+            {
+              type: "speech",
+              speaker: "Hana",
+              text: "Hi",
+              position: "upper-left",
+            },
+          ] as unknown as Overlay[],
+        })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={vi.fn()}
         onClose={vi.fn()}
       />,
     );
-    expect(await screen.findByTestId("overlay-repair-note")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("overlay-repair-note"),
+    ).toBeInTheDocument();
     // Repaired (not dropped) → still counted as one overlay.
     expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
   });
@@ -781,7 +1002,11 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        cut={makeCut({
+          overlays: [
+            { type: "speech", text: "orphan, no geometry" },
+          ] as unknown as Overlay[],
+        })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={vi.fn()}
@@ -802,7 +1027,11 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        cut={makeCut({
+          overlays: [
+            { type: "speech", text: "orphan, no geometry" },
+          ] as unknown as Overlay[],
+        })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={onSave}
@@ -812,7 +1041,9 @@ describe("LetteringEditor", () => {
     await screen.findByTestId("overlay-repair-note");
     fireEvent.click(screen.getByTestId("export-btn"));
     // Clear, blocking error; the reduced overlay set is neither saved nor exported.
-    await screen.findByText(/cannot be exported — re-place it or discard it first/);
+    await screen.findByText(
+      /cannot be exported — re-place it or discard it first/,
+    );
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -822,7 +1053,11 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [{ type: "speech", text: "orphan, no geometry" }] as unknown as Overlay[] })}
+        cut={makeCut({
+          overlays: [
+            { type: "speech", text: "orphan, no geometry" },
+          ] as unknown as Overlay[],
+        })}
         plotFile="plot-01"
         authFetch={authFetch}
         onSave={onSave}
@@ -832,7 +1067,11 @@ describe("LetteringEditor", () => {
     await screen.findByTestId("discard-invalid-overlays");
     fireEvent.click(screen.getByTestId("discard-invalid-overlays"));
     // Note flips to the discarded state; the export guard no longer blocks.
-    await waitFor(() => expect(screen.getByTestId("overlay-repair-note")).toHaveTextContent(/Discarded/));
+    await waitFor(() =>
+      expect(screen.getByTestId("overlay-repair-note")).toHaveTextContent(
+        /Discarded/,
+      ),
+    );
     fireEvent.click(screen.getByTestId("export-btn"));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
   });
@@ -842,8 +1081,26 @@ describe("LetteringEditor", () => {
   // without blocking export (overlap can be intentional).
   it("warns when two bubbles overlap, naming the cut and overlay indexes", async () => {
     const overlays: Overlay[] = [
-      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "Good news! We are short one", speaker: "Boss" },
-      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "I am not applying for a boyfriend.", speaker: "Mei" },
+      {
+        id: "ov-a",
+        type: "speech",
+        x: 0.1,
+        y: 0.1,
+        width: 0.3,
+        height: 0.2,
+        text: "Good news! We are short one",
+        speaker: "Boss",
+      },
+      {
+        id: "ov-b",
+        type: "speech",
+        x: 0.2,
+        y: 0.15,
+        width: 0.3,
+        height: 0.2,
+        text: "I am not applying for a boyfriend.",
+        speaker: "Mei",
+      },
     ];
     render(
       <LetteringEditor
@@ -865,8 +1122,26 @@ describe("LetteringEditor", () => {
 
   it("does not warn when bubbles do not overlap", async () => {
     const overlays: Overlay[] = [
-      { id: "ov-a", type: "speech", x: 0.0, y: 0.0, width: 0.25, height: 0.15, text: "Hi", speaker: "A" },
-      { id: "ov-b", type: "speech", x: 0.6, y: 0.6, width: 0.25, height: 0.15, text: "Bye", speaker: "B" },
+      {
+        id: "ov-a",
+        type: "speech",
+        x: 0.0,
+        y: 0.0,
+        width: 0.25,
+        height: 0.15,
+        text: "Hi",
+        speaker: "A",
+      },
+      {
+        id: "ov-b",
+        type: "speech",
+        x: 0.6,
+        y: 0.6,
+        width: 0.25,
+        height: 0.15,
+        text: "Bye",
+        speaker: "B",
+      },
     ];
     render(
       <LetteringEditor
@@ -879,14 +1154,34 @@ describe("LetteringEditor", () => {
       />,
     );
     await simulateImageLoad();
-    expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("overlay-overlap-warning"),
+    ).not.toBeInTheDocument();
   });
 
   it("the overlap warning is non-blocking — export still proceeds", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const overlays: Overlay[] = [
-      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "front", speaker: "A" },
-      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "back", speaker: "B" },
+      {
+        id: "ov-a",
+        type: "speech",
+        x: 0.1,
+        y: 0.1,
+        width: 0.3,
+        height: 0.2,
+        text: "front",
+        speaker: "A",
+      },
+      {
+        id: "ov-b",
+        type: "speech",
+        x: 0.2,
+        y: 0.15,
+        width: 0.3,
+        height: 0.2,
+        text: "back",
+        speaker: "B",
+      },
     ];
     render(
       <LetteringEditor
@@ -906,8 +1201,26 @@ describe("LetteringEditor", () => {
 
   it("clears the overlap warning once the bubbles are separated (live)", async () => {
     const overlays: Overlay[] = [
-      { id: "ov-a", type: "speech", x: 0.1, y: 0.1, width: 0.3, height: 0.2, text: "front", speaker: "A" },
-      { id: "ov-b", type: "speech", x: 0.2, y: 0.15, width: 0.3, height: 0.2, text: "back", speaker: "B" },
+      {
+        id: "ov-a",
+        type: "speech",
+        x: 0.1,
+        y: 0.1,
+        width: 0.3,
+        height: 0.2,
+        text: "front",
+        speaker: "A",
+      },
+      {
+        id: "ov-b",
+        type: "speech",
+        x: 0.2,
+        y: 0.15,
+        width: 0.3,
+        height: 0.2,
+        text: "back",
+        speaker: "B",
+      },
     ];
     render(
       <LetteringEditor
@@ -926,7 +1239,11 @@ describe("LetteringEditor", () => {
     const del = screen.getByTestId("delete-overlay");
     fireEvent.click(del); // arms confirmation
     fireEvent.click(del); // confirms delete
-    await waitFor(() => expect(screen.queryByTestId("overlay-overlap-warning")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("overlay-overlap-warning"),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   // #336: insert dialogue/narration/SFX from cuts.json straight into a prefilled
@@ -935,7 +1252,11 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [], dialogue: [{ speaker: "Mira", text: "We're here at last." }], narration: "Dawn broke." })}
+        cut={makeCut({
+          overlays: [],
+          dialogue: [{ speaker: "Mira", text: "We're here at last." }],
+          narration: "Dawn broke.",
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={vi.fn()}
@@ -951,9 +1272,13 @@ describe("LetteringEditor", () => {
     // Clicking a dialogue line adds a speech overlay carrying that text/speaker.
     fireEvent.click(screen.getByTestId("script-insert-speech-0"));
     expect(screen.getByTestId("overlay-count")).toHaveTextContent("1 overlays");
-    const speakerInput = screen.getByTestId("inspector-speaker") as HTMLInputElement;
+    const speakerInput = screen.getByTestId(
+      "inspector-speaker",
+    ) as HTMLInputElement;
     expect(speakerInput.value).toBe("Mira");
-    expect((screen.getByTestId("inspector-text") as HTMLTextAreaElement).value).toBe("We're here at last.");
+    expect(
+      (screen.getByTestId("inspector-text") as HTMLTextAreaElement).value,
+    ).toBe("We're here at last.");
 
     // Narration is insertable too.
     fireEvent.click(screen.getByTestId("script-insert-narration"));
@@ -966,8 +1291,12 @@ describe("LetteringEditor", () => {
     const overlay: Overlay = {
       id: "oob",
       type: "speech",
-      x: 0.9, y: 0.2, width: 0.25, height: 0.12, // x + width = 1.15 > 1 → clipped
-      text: "Edge", speaker: "Mira",
+      x: 0.9,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12, // x + width = 1.15 > 1 → clipped
+      text: "Edge",
+      speaker: "Mira",
       tailAnchor: { x: 0.5, y: 1.2 },
     };
     render(
@@ -984,17 +1313,30 @@ describe("LetteringEditor", () => {
 
     const warning = screen.getByTestId("lettering-export-warning");
     expect(warning).toHaveTextContent(/outside image/i);
-    expect(screen.getByTestId("overlay-oob")).toHaveAttribute("data-warning", "true");
+    expect(screen.getByTestId("overlay-oob")).toHaveAttribute(
+      "data-warning",
+      "true",
+    );
   });
 
   it("shows the per-cut lettering checklist reflecting cut progress", async () => {
     const overlay: Overlay = {
-      id: "ck", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+      id: "ck",
+      type: "speech",
+      x: 0.1,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12,
+      text: "Hi",
+      speaker: "Mira",
     };
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ overlays: [overlay], dialogue: [{ speaker: "Mira", text: "Hi" }] })}
+        cut={makeCut({
+          overlays: [overlay],
+          dialogue: [{ speaker: "Mira", text: "Hi" }],
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={vi.fn()}
@@ -1004,18 +1346,40 @@ describe("LetteringEditor", () => {
     await simulateImageLoad();
     // makeCut sets a cleanImagePath; dialogue + a placed overlay are present, but
     // nothing is exported/uploaded yet.
-    expect(screen.getByTestId("lettering-check-clean-image")).toHaveAttribute("data-done", "true");
-    expect(screen.getByTestId("lettering-check-script-text")).toHaveAttribute("data-done", "true");
-    expect(screen.getByTestId("lettering-check-bubbles")).toHaveAttribute("data-done", "true");
-    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
-    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-clean-image")).toHaveAttribute(
+      "data-done",
+      "true",
+    );
+    expect(screen.getByTestId("lettering-check-script-text")).toHaveAttribute(
+      "data-done",
+      "true",
+    );
+    expect(screen.getByTestId("lettering-check-bubbles")).toHaveAttribute(
+      "data-done",
+      "true",
+    );
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute(
+      "data-done",
+      "false",
+    );
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute(
+      "data-done",
+      "false",
+    );
   });
 
   // #336 (re1): editing bubbles after an export/upload must invalidate them — the
   // checklist can't keep reporting "Final exported"/"Uploaded" for a stale image.
   it("marks export/upload stale after overlays are edited post-export", async () => {
     const overlay: Overlay = {
-      id: "stale", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+      id: "stale",
+      type: "speech",
+      x: 0.1,
+      y: 0.2,
+      width: 0.25,
+      height: 0.12,
+      text: "Hi",
+      speaker: "Mira",
       tailAnchor: { x: 0.5, y: 1.2 },
     };
     render(
@@ -1036,19 +1400,37 @@ describe("LetteringEditor", () => {
     await simulateImageLoad();
 
     // On open (no edits) the recorded export/upload count as done, no warning.
-    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
-    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
-    expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument();
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute(
+      "data-done",
+      "true",
+    );
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute(
+      "data-done",
+      "true",
+    );
+    expect(
+      screen.queryByTestId("lettering-stale-export-warning"),
+    ).not.toBeInTheDocument();
 
     // Edit the bubble text → the prior export/upload no longer match the screen.
     fireEvent.click(screen.getByTestId("overlay-stale"));
-    fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
+    fireEvent.change(screen.getByTestId("inspector-text"), {
+      target: { value: "Changed line" },
+    });
 
     await waitFor(() =>
-      expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument(),
+      expect(
+        screen.getByTestId("lettering-stale-export-warning"),
+      ).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
-    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "false");
+    expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute(
+      "data-done",
+      "false",
+    );
+    expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute(
+      "data-done",
+      "false",
+    );
   });
 
   // #336 (re1): the lifecycle that regressed lives in handleExport/React state —
@@ -1056,12 +1438,23 @@ describe("LetteringEditor", () => {
   // SAME open editor, with export-cut mocked so the export succeeds in jsdom.
   it("clears the stale-export warning after a successful re-export in the same editor session", async () => {
     vi.doMock("./export-cut", () => ({
-      exportCut: vi.fn().mockResolvedValue(new Blob([new Uint8Array(10)], { type: "image/webp" })),
+      exportCut: vi
+        .fn()
+        .mockResolvedValue(
+          new Blob([new Uint8Array(10)], { type: "image/webp" }),
+        ),
       ensureFontsReady: vi.fn().mockResolvedValue({ ready: true, missing: [] }),
     }));
     try {
       const overlay: Overlay = {
-        id: "re", type: "speech", x: 0.1, y: 0.2, width: 0.25, height: 0.12, text: "Hi", speaker: "Mira",
+        id: "re",
+        type: "speech",
+        x: 0.1,
+        y: 0.2,
+        width: 0.25,
+        height: 0.12,
+        text: "Hi",
+        speaker: "Mira",
         tailAnchor: { x: 0.5, y: 1.2 },
       };
       render(
@@ -1084,16 +1477,37 @@ describe("LetteringEditor", () => {
 
       // Edit a bubble → export goes stale.
       fireEvent.click(screen.getByTestId("overlay-re"));
-      fireEvent.change(screen.getByTestId("inspector-text"), { target: { value: "Changed line" } });
-      await waitFor(() => expect(screen.getByTestId("lettering-stale-export-warning")).toBeInTheDocument());
-      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "false");
+      fireEvent.change(screen.getByTestId("inspector-text"), {
+        target: { value: "Changed line" },
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("lettering-stale-export-warning"),
+        ).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute(
+        "data-done",
+        "false",
+      );
 
       // Re-export in the same session → handleExport advances the baseline, so
       // the warning clears and the checklist steps return to done.
-      await act(async () => { fireEvent.click(screen.getByTestId("export-btn")); });
-      await waitFor(() => expect(screen.queryByTestId("lettering-stale-export-warning")).not.toBeInTheDocument());
-      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute("data-done", "true");
-      expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute("data-done", "true");
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("export-btn"));
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("lettering-stale-export-warning"),
+        ).not.toBeInTheDocument(),
+      );
+      expect(screen.getByTestId("lettering-check-exported")).toHaveAttribute(
+        "data-done",
+        "true",
+      );
+      expect(screen.getByTestId("lettering-check-uploaded")).toHaveAttribute(
+        "data-done",
+        "true",
+      );
     } finally {
       vi.doUnmock("./export-cut");
     }
@@ -1107,7 +1521,13 @@ describe("LetteringEditor", () => {
     render(
       <LetteringEditor
         storyName="story"
-        cut={makeCut({ cleanImagePath: null, overlays: [], kind: "text", background: "#101820", aspectRatio: "4:5" })}
+        cut={makeCut({
+          cleanImagePath: null,
+          overlays: [],
+          kind: "text",
+          background: "#101820",
+          aspectRatio: "4:5",
+        })}
         plotFile="plot-01"
         authFetch={makeAssetAuthFetch()}
         onSave={vi.fn()}

@@ -1,8 +1,17 @@
 import fs from "fs";
 import path from "path";
-import { hasVisibleSpeechTail, CARTOON_BUBBLE_RENDERER_VERSION, type Overlay } from "./overlays";
+import {
+  hasVisibleSpeechTail,
+  CARTOON_BUBBLE_RENDERER_VERSION,
+  type Overlay,
+} from "./overlays";
 
-export const SHOT_TYPES = ["wide", "medium", "close-up", "extreme-close-up"] as const;
+export const SHOT_TYPES = [
+  "wide",
+  "medium",
+  "close-up",
+  "extreme-close-up",
+] as const;
 export type ShotType = (typeof SHOT_TYPES)[number];
 
 export interface CutDialogue {
@@ -18,6 +27,19 @@ export interface CutDialogue {
  * a missing `kind` means "image".
  */
 export type CutKind = "image" | "text";
+
+/**
+ * AI draft lettering state (#494). `generated` means OWS created a first-pass
+ * overlay set from the cut script and it has not been user-tuned yet. `edited`
+ * means the writer has since adjusted or replaced that draft in the editor.
+ */
+export interface CutAiDraft {
+  status: "generated" | "edited";
+  /** Signature of the generated overlay set, for edit-detection on save. */
+  baseSig?: string;
+  generatedAt?: string;
+  updatedAt?: string;
+}
 
 export interface Cut {
   id: number;
@@ -41,6 +63,8 @@ export interface Cut {
   finalRendererVersion?: number;
   /** Panel kind (#350). Absent ⇒ "image" (backward-compatible). */
   kind?: CutKind;
+  /** AI draft lettering state (#494). Optional and backward-compatible. */
+  aiDraft?: CutAiDraft | null;
   /** Text-panel background color (CSS color), e.g. "#101820". Optional (#350). */
   background?: string;
   /** Text-panel aspect ratio hint, e.g. "4:5". Optional (#350). */
@@ -89,7 +113,11 @@ export function cutNextAction(
   if (cut.cleanImagePath || isTextPanel(cut)) {
     return { key: "letter", label: "Letter this cut", opensEditor: true };
   }
-  return { key: "add-art", label: "Add clean art for this cut", opensEditor: false };
+  return {
+    key: "add-art",
+    label: "Add clean art for this cut",
+    opensEditor: false,
+  };
 }
 
 /**
@@ -115,7 +143,9 @@ export function staleTailedCutIds(
   cutsFile: Pick<CutsFile, "cuts">,
   currentVersion: number = CARTOON_BUBBLE_RENDERER_VERSION,
 ): number[] {
-  return cutsFile.cuts.filter((c) => isStaleTailedExport(c, currentVersion)).map((c) => c.id);
+  return cutsFile.cuts
+    .filter((c) => isStaleTailedExport(c, currentVersion))
+    .map((c) => c.id);
 }
 
 /** Base canvas width for a text panel sized from its aspect ratio (#351). */
@@ -127,14 +157,19 @@ export const TEXT_PANEL_BASE_WIDTH = 800;
  * panel letters and exports at the SAME shape. Returns null for a missing or
  * malformed ratio; callers fall back to 800×600.
  */
-export function textPanelDimensions(aspectRatio: string | undefined): { width: number; height: number } | null {
+export function textPanelDimensions(
+  aspectRatio: string | undefined,
+): { width: number; height: number } | null {
   if (!aspectRatio) return null;
   const m = aspectRatio.match(/^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/);
   if (!m) return null;
   const w = parseFloat(m[1]);
   const h = parseFloat(m[2]);
   if (!(w > 0) || !(h > 0)) return null;
-  return { width: TEXT_PANEL_BASE_WIDTH, height: Math.round((TEXT_PANEL_BASE_WIDTH * h) / w) };
+  return {
+    width: TEXT_PANEL_BASE_WIDTH,
+    height: Math.round((TEXT_PANEL_BASE_WIDTH * h) / w),
+  };
 }
 
 export interface CutsFile {
@@ -170,7 +205,9 @@ export function createDefaultCut(id: number, _plotFile: string): Cut {
 }
 
 export function createCutsFile(plotFile: string, cutCount = 1): CutsFile {
-  const cuts = Array.from({ length: cutCount }, (_, i) => createDefaultCut(i + 1, plotFile));
+  const cuts = Array.from({ length: cutCount }, (_, i) =>
+    createDefaultCut(i + 1, plotFile),
+  );
   return { version: 1, plotFile, cuts };
 }
 
@@ -178,7 +215,10 @@ function cutsFilePath(storyDir: string, plotFile: string): string {
   return path.join(storyDir, `${plotFile}.cuts.json`);
 }
 
-export function readCutsFile(storyDir: string, plotFile: string): CutsFile | null {
+export function readCutsFile(
+  storyDir: string,
+  plotFile: string,
+): CutsFile | null {
   const filePath = cutsFilePath(storyDir, plotFile);
   if (!fs.existsSync(filePath)) return null;
 
@@ -186,7 +226,9 @@ export function readCutsFile(storyDir: string, plotFile: string): CutsFile | nul
   try {
     raw = fs.readFileSync(filePath, "utf-8");
   } catch (err) {
-    throw new Error(`Cannot read ${plotFile}.cuts.json: ${(err as Error).message}`);
+    throw new Error(
+      `Cannot read ${plotFile}.cuts.json: ${(err as Error).message}`,
+    );
   }
 
   let data: unknown;
@@ -204,12 +246,19 @@ export function readCutsFile(storyDir: string, plotFile: string): CutsFile | nul
   return data as CutsFile;
 }
 
-export function writeCutsFile(storyDir: string, plotFile: string, cutsFile: CutsFile): void {
+export function writeCutsFile(
+  storyDir: string,
+  plotFile: string,
+  cutsFile: CutsFile,
+): void {
   const filePath = cutsFilePath(storyDir, plotFile);
   fs.writeFileSync(filePath, JSON.stringify(cutsFile, null, 2) + "\n");
 }
 
-export function validateCutsFile(data: unknown): { valid: boolean; error?: string } {
+export function validateCutsFile(data: unknown): {
+  valid: boolean;
+  error?: string;
+} {
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     return { valid: false, error: "Must be a JSON object" };
   }
@@ -254,7 +303,10 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     for (let j = 0; j < (cut.characters as unknown[]).length; j++) {
       if (typeof (cut.characters as unknown[])[j] !== "string") {
-        return { valid: false, error: `Cut ${i} characters[${j}] must be a string` };
+        return {
+          valid: false,
+          error: `Cut ${i} characters[${j}] must be a string`,
+        };
       }
     }
     if (!Array.isArray(cut.dialogue)) {
@@ -262,8 +314,16 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     for (let j = 0; j < (cut.dialogue as unknown[]).length; j++) {
       const d = (cut.dialogue as Record<string, unknown>[])[j];
-      if (typeof d !== "object" || d === null || typeof d.speaker !== "string" || typeof d.text !== "string") {
-        return { valid: false, error: `Cut ${i} dialogue[${j}] must have speaker and text strings` };
+      if (
+        typeof d !== "object" ||
+        d === null ||
+        typeof d.speaker !== "string" ||
+        typeof d.text !== "string"
+      ) {
+        return {
+          valid: false,
+          error: `Cut ${i} dialogue[${j}] must have speaker and text strings`,
+        };
       }
     }
     if (typeof cut.narration !== "string") {
@@ -272,10 +332,19 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     if (typeof cut.sfx !== "string") {
       return { valid: false, error: `Cut ${i} missing sfx` };
     }
-    const nullableStrings = ["cleanImagePath", "finalImagePath", "exportedAt", "uploadedCid", "uploadedUrl"] as const;
+    const nullableStrings = [
+      "cleanImagePath",
+      "finalImagePath",
+      "exportedAt",
+      "uploadedCid",
+      "uploadedUrl",
+    ] as const;
     for (const field of nullableStrings) {
       if (cut[field] !== null && typeof cut[field] !== "string") {
-        return { valid: false, error: `Cut ${i} ${field} must be a string or null` };
+        return {
+          valid: false,
+          error: `Cut ${i} ${field} must be a string or null`,
+        };
       }
     }
     if (cut.overlays !== undefined && !Array.isArray(cut.overlays)) {
@@ -285,6 +354,48 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     if (cut.kind !== undefined && cut.kind !== "image" && cut.kind !== "text") {
       return { valid: false, error: `Cut ${i} kind must be "image" or "text"` };
     }
+    if (cut.aiDraft !== undefined && cut.aiDraft !== null) {
+      if (typeof cut.aiDraft !== "object") {
+        return {
+          valid: false,
+          error: `Cut ${i} aiDraft must be an object or null`,
+        };
+      }
+      const aiDraft = cut.aiDraft as Record<string, unknown>;
+      if (aiDraft.status !== "generated" && aiDraft.status !== "edited") {
+        return {
+          valid: false,
+          error: `Cut ${i} aiDraft.status must be "generated" or "edited"`,
+        };
+      }
+      if (
+        aiDraft.baseSig !== undefined &&
+        typeof aiDraft.baseSig !== "string"
+      ) {
+        return {
+          valid: false,
+          error: `Cut ${i} aiDraft.baseSig must be a string`,
+        };
+      }
+      if (
+        aiDraft.generatedAt !== undefined &&
+        typeof aiDraft.generatedAt !== "string"
+      ) {
+        return {
+          valid: false,
+          error: `Cut ${i} aiDraft.generatedAt must be a string`,
+        };
+      }
+      if (
+        aiDraft.updatedAt !== undefined &&
+        typeof aiDraft.updatedAt !== "string"
+      ) {
+        return {
+          valid: false,
+          error: `Cut ${i} aiDraft.updatedAt must be a string`,
+        };
+      }
+    }
     if (cut.background !== undefined && typeof cut.background !== "string") {
       return { valid: false, error: `Cut ${i} background must be a string` };
     }
@@ -293,8 +404,14 @@ export function validateCutsFile(data: unknown): { valid: boolean; error?: strin
     }
     // Bubble-renderer version stamp (#381) — optional, backward-compatible
     // (absent ⇒ pre-versioning final image).
-    if (cut.finalRendererVersion !== undefined && typeof cut.finalRendererVersion !== "number") {
-      return { valid: false, error: `Cut ${i} finalRendererVersion must be a number` };
+    if (
+      cut.finalRendererVersion !== undefined &&
+      typeof cut.finalRendererVersion !== "number"
+    ) {
+      return {
+        valid: false,
+        error: `Cut ${i} finalRendererVersion must be a number`,
+      };
     }
   }
 

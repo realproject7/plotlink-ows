@@ -3,7 +3,12 @@
 // tested and shared between the editor checklist and the insert-from-script
 // panel. None of this changes the export model or publish readiness rules.
 
-import type { Overlay } from "./overlays";
+import {
+  comfortableOverlaySize,
+  createOverlay,
+  type Overlay,
+  type OverlayType,
+} from "./overlays";
 
 /** The cut fields the lettering guidance reads (a structural subset of Cut). */
 export interface LetteringCut {
@@ -16,6 +21,7 @@ export interface LetteringCut {
   sfx?: string;
   dialogue?: { speaker: string; text: string }[];
   overlays?: Overlay[];
+  kind?: "image" | "text";
 }
 
 export interface LetteringChecklist {
@@ -45,12 +51,16 @@ export function cutLetteringChecklist(
   cut: LetteringCut,
   opts: { staleExport?: boolean } = {},
 ): LetteringChecklist {
-  const exported = !opts.staleExport && (!!cut.finalImagePath || !!cut.exportedAt);
-  const uploaded = !opts.staleExport && (!!cut.uploadedUrl || !!cut.uploadedCid);
+  const exported =
+    !opts.staleExport && (!!cut.finalImagePath || !!cut.exportedAt);
+  const uploaded =
+    !opts.staleExport && (!!cut.uploadedUrl || !!cut.uploadedCid);
   return {
     hasCleanImage: !!cut.cleanImagePath,
     hasScriptText:
-      (cut.dialogue?.length ?? 0) > 0 || !!cut.narration?.trim() || !!cut.sfx?.trim(),
+      (cut.dialogue?.length ?? 0) > 0 ||
+      !!cut.narration?.trim() ||
+      !!cut.sfx?.trim(),
     bubblesPlaced: cut.overlays?.length ?? 0,
     exported,
     uploaded,
@@ -120,14 +130,62 @@ export function cutScriptLines(cut: LetteringCut): ScriptLine[] {
   const lines: ScriptLine[] = [];
   (cut.dialogue ?? []).forEach((d, i) => {
     if (d?.text?.trim()) {
-      lines.push({ type: "speech", speaker: d.speaker, text: d.text.trim(), key: `speech-${i}` });
+      lines.push({
+        type: "speech",
+        speaker: d.speaker,
+        text: d.text.trim(),
+        key: `speech-${i}`,
+      });
     }
   });
   if (cut.narration?.trim()) {
-    lines.push({ type: "narration", text: cut.narration.trim(), key: "narration" });
+    lines.push({
+      type: "narration",
+      text: cut.narration.trim(),
+      key: "narration",
+    });
   }
   if (cut.sfx?.trim()) {
     lines.push({ type: "sfx", text: cut.sfx.trim(), key: "sfx" });
   }
   return lines;
+}
+
+function draftAnchorFor(
+  type: OverlayType,
+  index: number,
+  total: number,
+): { x: number; y: number } {
+  if (type === "narration")
+    return { x: 0.08, y: 0.05 + Math.min(index, 2) * 0.18 };
+  if (type === "sfx") {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    return { x: col === 0 ? 0.1 : 0.62, y: 0.68 + row * 0.12 };
+  }
+  const row = Math.floor(index / 2);
+  const left = index % 2 === 0;
+  const y = 0.08 + row * Math.max(0.15, Math.min(0.22, total > 4 ? 0.16 : 0.2));
+  return { x: left ? 0.05 : 0.45, y };
+}
+
+/**
+ * Create a first-pass editable overlay set from the cut script (#494). Pure,
+ * deterministic, and intentionally approximate: these are draft bubble/caption
+ * positions for the writer to review in the focused editor, not export-ready
+ * layout. Empty script pieces produce no overlays.
+ */
+export function buildDraftOverlays(cut: LetteringCut): Overlay[] {
+  const lines = cutScriptLines(cut);
+  return lines.map((line, index) => {
+    const { x, y } = draftAnchorFor(line.type, index, lines.length);
+    const overlay = createOverlay(line.type, x, y);
+    const comfortable = comfortableOverlaySize(line.type, x, y);
+    return {
+      ...overlay,
+      ...comfortable,
+      text: line.text,
+      ...(line.type === "speech" ? { speaker: line.speaker ?? "" } : {}),
+    };
+  });
 }

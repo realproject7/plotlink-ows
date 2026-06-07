@@ -1989,7 +1989,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
 
   // #441: a PNG clean image is a friendly conversion step, not a red error.
   it("shows a Convert artwork step for PNG clean images instead of red unsupported-extension errors", async () => {
-    const fn = vi.fn((url: string) => {
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
       if (url.includes("/asset-diagnostics")) {
         return Promise.resolve({
           ok: true,
@@ -2235,9 +2235,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     );
   });
 
-  // #488: AI drafting is scoped to the selected target inside the focused
-  // editor, while the review board stays focused on opening/editing targets.
-  it("opens a focused editor with scoped AI draft assistance and keeps review state visible", async () => {
+  it("drafts overlays from full review and opens the focused editor for tuning (#494)", async () => {
     const overlay = {
       id: "o1",
       type: "speech",
@@ -2248,6 +2246,22 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
       text: "Hi",
       speaker: "Sera",
     };
+    let cuts = [
+      makeCut({
+        id: 1,
+        shotType: "close-up",
+        cleanImagePath: "assets/genesis/cut-01-clean.webp",
+        dialogue: [{ speaker: "Sera", text: "그거 따라한 거야" }],
+        description: "Close shot",
+      }),
+      makeCut({
+        id: 2,
+        shotType: "wide",
+        cleanImagePath: "assets/genesis/cut-02-clean.webp",
+        overlays: [overlay],
+        description: "Wide shot",
+      }),
+    ];
     const fn = vi.fn((url: string) => {
       if (url.includes("/asset-diagnostics")) {
         return Promise.resolve({
@@ -2288,31 +2302,20 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
           status: 200,
           json: () => Promise.resolve({ detected: [], stale: [] }),
         });
+      if (url.endsWith("/cuts/genesis") && opts?.method === "PUT") {
+        cuts = JSON.parse(String(opts.body)).cuts;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ok: true }),
+        });
+      }
       if (url.includes("/cuts/"))
         return Promise.resolve({
           ok: true,
           status: 200,
           json: () =>
-            Promise.resolve({
-              version: 1,
-              plotFile: "genesis",
-              cuts: [
-                makeCut({
-                  id: 1,
-                  shotType: "close-up",
-                  cleanImagePath: "assets/genesis/cut-01-clean.webp",
-                  dialogue: [{ speaker: "Sera", text: "그거 따라한 거야" }],
-                  description: "Close shot",
-                }),
-                makeCut({
-                  id: 2,
-                  shotType: "wide",
-                  cleanImagePath: "assets/genesis/cut-02-clean.webp",
-                  overlays: [overlay],
-                  description: "Wide shot",
-                }),
-              ],
-            }),
+            Promise.resolve({ version: 1, plotFile: "genesis", cuts }),
         });
       return Promise.resolve({
         ok: true,
@@ -2329,40 +2332,129 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     );
     await screen.findByTestId("cut-list-panel");
 
-    // Cut 1 (no bubbles): review opens the focused editor.
     expect(
       await screen.findByTestId("lettering-review-state-1"),
-    ).toHaveTextContent("Unlettered");
-    fireEvent.click(screen.getByTestId("add-bubbles-1"));
+    ).toHaveTextContent("No draft");
+    expect(screen.getByTestId("ai-draft-1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("ai-draft-1"));
     expect(
       await screen.findByTestId("focused-lettering-editor"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("ai-draft-current-target")).toHaveTextContent(
-      "Cut 01",
+      "AI draft ready",
     );
-
-    // AI draft is scoped to the focused target.
-    fireEvent.click(screen.getByTestId("copy-ai-lettering-current"));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
-    const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>)
-      .mock.calls[0][0] as string;
-    expect(copied).toContain(
-      "Draft the speech bubbles and captions for cut 1 of genesis",
-    );
-    expect(copied).toMatch(/do NOT export or upload/i);
+    expect(cuts[0].overlays.length).toBeGreaterThan(0);
+    expect(cuts[0].aiDraft?.status).toBe("generated");
 
     fireEvent.click(screen.getByTestId("cancel-lettering-btn"));
 
-    // Cut 2 (bubbles already placed): status "Needs review" + a draft-saved state.
+    expect(
+      await screen.findByTestId("lettering-review-state-1"),
+    ).toHaveTextContent("Draft ready");
     expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent(
       "Needs review",
     );
     expect(screen.getByTestId("lettering-review-state-2")).toHaveTextContent(
-      "Draft saved",
+      "User-edited",
     );
     expect(screen.getByTestId("add-bubbles-2")).toHaveTextContent(
       "Review lettering",
     );
+  });
+
+  it("does not overwrite existing overlays with AI draft without explicit confirmation (#494)", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    let cuts = [
+      makeCut({
+        id: 1,
+        cleanImagePath: "assets/plot-01/cut-01-clean.webp",
+        dialogue: [{ speaker: "Mira", text: "We move now." }],
+        overlays: [
+          {
+            id: "existing",
+            type: "speech",
+            x: 0.1,
+            y: 0.1,
+            width: 0.2,
+            height: 0.1,
+            text: "Existing",
+          },
+        ],
+      }),
+    ];
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              diagnostics: [
+                {
+                  cutId: 1,
+                  kind: "image",
+                  state: "clean-ready",
+                  issue: null,
+                  convertiblePng: null,
+                },
+              ],
+              summary: {
+                planned: 0,
+                needsConversion: 0,
+                missing: 0,
+                cleanReady: 1,
+                finalReady: 0,
+                uploaded: 0,
+              },
+            }),
+        });
+      }
+      if (url.includes("/detect-clean-images"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ detected: [], stale: [] }),
+        });
+      if (url.endsWith("/cuts/plot-01") && opts?.method === "PUT") {
+        cuts = JSON.parse(String(opts.body)).cuts;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ok: true }),
+        });
+      }
+      if (url.includes("/cuts/plot-01"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ version: 1, plotFile: "plot-01", cuts }),
+        });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      });
+    });
+
+    render(
+      <CutListPanel storyName="story" fileName="plot-01.md" authFetch={fn} />,
+    );
+
+    await screen.findByTestId("cut-list-panel");
+    fireEvent.click(screen.getByTestId("ai-draft-1"));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(
+      fn.mock.calls.some(
+        (call) =>
+          String(call[0]).endsWith("/cuts/plot-01") &&
+          (call[1] as RequestInit | undefined)?.method === "PUT",
+      ),
+    ).toBe(false);
+    expect(cuts[0].overlays[0].text).toBe("Existing");
+    confirmSpy.mockRestore();
   });
 
   it("enters focused lettering mode, exposes the work-area toggle, and restores review state on close (#493)", async () => {
@@ -2536,7 +2628,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
       expect(screen.getByTestId("lettering-review-board")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("lettering-review-state-3")).toHaveTextContent(
-      "Draft saved",
+      "User-edited",
     );
   });
 
