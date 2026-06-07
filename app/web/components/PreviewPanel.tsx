@@ -1015,6 +1015,7 @@ export function PreviewPanel({ storyName, fileName, authFetch, onPublish, publis
           authFetch={authFetch}
           refreshKey={cutsRefreshKey}
           onAction={handleCoachAction}
+          showEmptyState
         />
       )}
 
