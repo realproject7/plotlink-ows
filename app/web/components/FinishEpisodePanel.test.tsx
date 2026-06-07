@@ -63,6 +63,9 @@ describe("FinishEpisodePanel (#414)", () => {
     const btn = screen.getByTestId("finish-episode-btn");
     expect(btn).toHaveTextContent("Finish episode");
     expect(btn).not.toBeDisabled();
+    const details = screen.getByTestId("finish-episode-details");
+    expect(details.tagName.toLowerCase()).toBe("details");
+    expect(details).not.toHaveAttribute("open");
     fireEvent.click(btn);
     expect(onFinish).toHaveBeenCalledTimes(1);
   });

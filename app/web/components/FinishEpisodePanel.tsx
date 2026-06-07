@@ -85,67 +85,78 @@ export function FinishEpisodePanel({
         ? "Episode ready to publish"
         : "Finish episode";
 
+  const outstandingCount = steps.filter((s) => s.status !== "done").length;
+  const issuesCount = groups.reduce((sum, g) => sum + g.lines.length, 0);
+
   return (
     <div
-      className="px-3 py-2 border-b border-border bg-surface/50 space-y-2 flex-shrink-0"
+      className="px-3 py-1.5 border-b border-border bg-surface/50 flex-shrink-0"
       data-testid="finish-episode-panel"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-medium text-foreground">Finish episode</span>
         {checklist.nextStep && (
-          <span className="text-[10px] text-muted truncate" data-testid="finish-next-step">
+          <span className="min-w-0 flex-1 text-[10px] text-muted truncate" data-testid="finish-next-step">
             Next: {checklist.nextStep}
           </span>
         )}
+        <button
+          onClick={onFinish}
+          disabled={finishing || !canFinish}
+          data-testid="finish-episode-btn"
+          title="Upload the exported final panels, then prepare the episode for publishing — picks up where it left off"
+          className="px-2.5 py-0.5 text-[11px] border border-accent/40 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+        >
+          {buttonLabel}
+        </button>
       </div>
 
-      {/* Writer-language step status — the exact webtoon production sequence. */}
-      <ol className="flex flex-wrap gap-1.5">
-        {steps.map((s) => (
-          <li
-            key={s.key}
-            data-testid={`finish-step-${s.key}`}
-            data-status={s.status}
-            className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
-              s.status === "current"
-                ? "border-accent/40 bg-accent/10 text-accent"
-                : s.status === "done"
-                  ? "border-border bg-background/70 text-foreground"
-                  : "border-border/70 bg-background/40 text-muted"
-            }`}
-          >
-            <span aria-hidden>{STATUS_MARK[s.status]}</span>
-            <span>{s.label}</span>
-            {s.detail && <span className="text-muted">· {s.detail}</span>}
-          </li>
-        ))}
-      </ol>
+      <details className="mt-1" data-testid="finish-episode-details">
+        <summary className="cursor-pointer select-none text-[10px] text-muted hover:text-foreground">
+          {outstandingCount === 0 ? "Progress details" : `${outstandingCount} step${outstandingCount === 1 ? "" : "s"} left`}
+          {issuesCount > 0 ? ` · ${issuesCount} blocker${issuesCount === 1 ? "" : "s"}` : ""}
+        </summary>
 
-      <button
-        onClick={onFinish}
-        disabled={finishing || !canFinish}
-        data-testid="finish-episode-btn"
-        title="Upload the exported final panels, then prepare the episode for publishing — picks up where it left off"
-        className="px-3 py-1 text-xs border border-accent/40 text-accent rounded hover:bg-accent/5 disabled:opacity-50"
-      >
-        {buttonLabel}
-      </button>
+        <div className="mt-1.5 space-y-1.5">
+          {/* Writer-language step status — the exact webtoon production sequence. */}
+          <ol className="flex flex-wrap gap-1.5">
+            {steps.map((s) => (
+              <li
+                key={s.key}
+                data-testid={`finish-step-${s.key}`}
+                data-status={s.status}
+                className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+                  s.status === "current"
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : s.status === "done"
+                      ? "border-border bg-background/70 text-foreground"
+                      : "border-border/70 bg-background/40 text-muted"
+                }`}
+              >
+                <span aria-hidden>{STATUS_MARK[s.status]}</span>
+                <span>{s.label}</span>
+                {s.detail && <span className="text-muted">· {s.detail}</span>}
+              </li>
+            ))}
+          </ol>
 
-      {/* Blockers grouped by the step that fixes them, not a flat red list. */}
-      {groups.length > 0 && (
-        <div className="space-y-1.5" data-testid="finish-issues">
-          {groups.map((g) => (
-            <div key={g.key} data-testid={`finish-issue-group-${g.key}`} className="text-[10px]">
-              <p className="font-medium text-amber-700">{g.title}</p>
-              <ul className="ml-3 list-disc text-muted">
-                {g.lines.map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
+          {/* Blockers grouped by the step that fixes them, not a flat red list. */}
+          {groups.length > 0 && (
+            <div className="space-y-1.5" data-testid="finish-issues">
+              {groups.map((g) => (
+                <div key={g.key} data-testid={`finish-issue-group-${g.key}`} className="text-[10px]">
+                  <p className="font-medium text-amber-700">{g.title}</p>
+                  <ul className="ml-3 list-disc text-muted">
+                    {g.lines.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+      </details>
     </div>
   );
 }
