@@ -644,7 +644,7 @@ describe("LetteringEditor", () => {
     expect(screen.getByTestId("inspector-font")).toHaveTextContent("Noto Sans KR");
   });
 
-  it("calls onClose when Close button is clicked", () => {
+  it("calls onClose when Cancel button is clicked", () => {
     const onClose = vi.fn();
     render(
       <LetteringEditor
@@ -655,7 +655,34 @@ describe("LetteringEditor", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Close"));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("offers scoped AI draft assistance and can return to review after Save (#488)", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({ dialogue: [{ speaker: "Mira", text: "We move now." }] })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={onSave}
+        onClose={onClose}
+        targetLabel="Cut 01"
+        returnOnSave
+      />,
+    );
+
+    expect(screen.getByTestId("focused-lettering-editor")).toHaveTextContent("Focused lettering editor");
+    fireEvent.click(screen.getByTestId("copy-ai-lettering-current"));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("cut 1 of plot-01"));
+
+    fireEvent.click(screen.getByTestId("add-speech"));
+    fireEvent.click(screen.getByTestId("save-lettering-btn"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
   });
 

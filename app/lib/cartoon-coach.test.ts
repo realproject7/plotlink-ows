@@ -125,12 +125,20 @@ describe("deriveCartoonCoach (#429)", () => {
     expect(c.stageLabel).toBe("Ready to publish");
   });
 
-  it("text panels never gate the clean/letter stage (#350)", () => {
-    // One bare text panel: needClean === 0, so the coach skips the clean and
-    // lettering stages and goes straight to exporting the panel's final image.
+  it("text panels skip clean but still gate the letter stage (#350/#488)", () => {
+    // One bare text panel: needClean === 0, so the coach skips clean images, but
+    // still keeps the creator in the focused lettering workflow before export.
     const c = deriveCartoonCoach(cartoon([ep({ file: "plot-01.md", cuts: [textPanel(1)] })]))!;
     expect(c.uiAction).toBe("open-lettering");
-    expect(c.action).toMatch(/export/i);
+    expect(c.action).toMatch(/lettering/i);
+    expect(c.stageLabel).toBe("Clean images ready");
+  });
+
+  it("empty text panels keep the coach at lettering after image cuts are lettered (#488 re2)", () => {
+    const c = deriveCartoonCoach(cartoon([ep({ file: "plot-01.md", cuts: [lettered(1), textPanel(2)] })]))!;
+    expect(c.uiAction).toBe("open-lettering");
+    expect(c.action).toMatch(/lettering/i);
+    expect(c.action).not.toMatch(/export/i);
   });
 
   it("focus on an unfinished episode overrides the story's active episode", () => {

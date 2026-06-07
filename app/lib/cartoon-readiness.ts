@@ -492,7 +492,7 @@ export interface CartoonCutProgress {
   needClean: number;
   /** Of `needClean`, how many have a clean image recorded. */
   withClean: number;
-  /** Of the clean-image cuts, how many have text overlays placed. */
+  /** Cuts with lettering overlays placed. Image cuts still require clean art first; text panels are first-class lettering targets. */
   withText: number;
   /** Cuts (any kind) with an exported final image. */
   exported: number;
@@ -517,8 +517,8 @@ export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
   let uploaded = 0;
   for (const cut of cuts) {
     // Image cuts need a clean image → lettering; text/interstitial panels (#350)
-    // do not (they're text on a styled background). Every panel still exports +
-    // uploads a final image, so those are counted for both kinds.
+    // do not (they're text on a styled background). Text panels still require
+    // lettering overlays before the shared workflow can advance to export (#488).
     if (!isTextPanel(cut)) {
       needClean++;
       // A PNG clean image is a draft intermediate, not a finished clean asset
@@ -531,6 +531,8 @@ export function summarizeCutProgress(cuts: Cut[]): CartoonCutProgress {
         // every cut-list render now (#414), so a bad persisted cut must not crash it.
         if ((cut.overlays?.length ?? 0) > 0) withText++;
       }
+    } else if ((cut.overlays?.length ?? 0) > 0) {
+      withText++;
     }
     if (cut.finalImagePath && cut.exportedAt) exported++;
     if (cut.uploadedUrl) uploaded++;
@@ -583,12 +585,12 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const p = summarizeCutProgress(cuts);
   if (p.total === 0) return { steps: [], nextStep: null };
 
-  // Clean + letter gate only IMAGE cuts (needClean); export + upload gate EVERY
-  // cut including text panels (total). For an all-image story needClean === total
-  // so this is unchanged from before (#350).
+  // Clean gates only IMAGE cuts (needClean); lettering/export/upload gate EVERY
+  // cut including text panels. Text panels need no clean art, but they are still
+  // editable lettering targets before export (#488).
   const planDone = p.total > 0;
   const cleanDone = planDone && p.withClean === p.needClean;
-  const letterDone = cleanDone && p.withText === p.needClean;
+  const letterDone = cleanDone && p.withText === p.total;
   const exportDone = letterDone && p.exported === p.total;
   const uploadDone = exportDone && p.uploaded === p.total;
   const publishDone = uploadDone && published;
@@ -604,13 +606,13 @@ export function cartoonChecklist(input: { cuts: Cut[]; published?: boolean }): C
   const order: CartoonStepKey[] = ["plan", "clean", "letter", "export", "upload", "publish"];
   const currentIdx = order.findIndex((k) => !complete[k]);
 
-  // Clean/letter count image cuts (needClean); export/upload count every cut
+  // Clean counts image cuts (needClean); lettering/export/upload count every cut
   // (total). An all-text-panel episode has needClean === 0 → "no image cuts".
   const imageDetail = (done: number) => (p.needClean > 0 ? fraction(done, p.needClean) : "no image cuts");
   const detail: Record<CartoonStepKey, string | null> = {
     plan: fraction(p.total, p.total),
     clean: imageDetail(p.withClean),
-    letter: imageDetail(p.withText),
+    letter: fraction(p.withText, p.total),
     export: fraction(p.exported, p.total),
     upload: fraction(p.uploaded, p.total),
     publish: null,
@@ -702,7 +704,7 @@ export function previewFooterGuidance(ctx: PreviewFooterContext): string | null 
       if (p.withClean < p.needClean) {
         return "Genesis has a cut plan — generate the clean images for its cuts next.";
       }
-      if (p.withText < p.needClean) {
+      if (p.withText < p.total) {
         return "Genesis clean art is ready — review the cuts and add speech bubbles & captions next.";
       }
       if (p.exported < p.total) {

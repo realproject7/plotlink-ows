@@ -178,7 +178,7 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
     { label: "Opening text ready", status: "done" }, // the episode exists once it appears here
     { label: "Cut plan", status: c && c.total > 0 ? "done" : "todo", detail: c ? `${c.total} cut${c.total === 1 ? "" : "s"} planned` : "not started" },
     { label: "Clean images converted", status: c && c.needClean > 0 && c.withClean === c.needClean ? "done" : "todo", detail: c ? `${c.withClean} / ${c.needClean}` : null },
-    { label: "Cuts lettered", status: c && c.needClean > 0 && c.withText === c.needClean ? "done" : "todo", detail: c ? `${c.withText} / ${c.needClean}` : null },
+    { label: "Cuts lettered", status: c && c.total > 0 && c.withText === c.total ? "done" : "todo", detail: c ? `${c.withText} / ${c.total}` : null },
     { label: "Final images exported", status: c && c.total > 0 && c.exported === c.total ? "done" : "todo", detail: c ? `${c.exported} / ${c.total}` : null },
     { label: "Final images uploaded", status: c && c.total > 0 && c.uploaded === c.total ? "done" : "todo", detail: c ? `${c.uploaded} / ${c.total}` : null },
     { label: "Cover image", status: coverDone ? "done" : "todo", detail: coverDone ? null : "recommended before publishing" },

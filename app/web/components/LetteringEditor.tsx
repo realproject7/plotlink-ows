@@ -22,6 +22,8 @@ import {
 import { layoutBubbleText } from "@app-lib/bubble-text";
 import { cutLetteringChecklist, cutScriptLines, isExportStale, overlaysSignature, type ScriptLine } from "@app-lib/lettering-status";
 import { textPanelDimensions } from "@app-lib/cuts";
+import { buildLetteringPrompt } from "@app-lib/cartoon-prompt";
+import type { Cut as LibCut } from "@app-lib/cuts";
 import { useAuthedAsset } from "./asset-image";
 
 function toPixel(norm: number, size: number): number {
@@ -72,6 +74,10 @@ interface LetteringEditorProps {
   onExported?: () => void;
   language?: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
+  /** Focused-editor header label supplied by the review board (#488). */
+  targetLabel?: string;
+  /** When true, the Save button returns to the review board after persisting. */
+  returnOnSave?: boolean;
 }
 
 const TYPE_LABEL: Record<OverlayType, string> = {
@@ -106,7 +112,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
-export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onExported, language = "English", authFetch }: LetteringEditorProps) {
+export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onExported, language = "English", authFetch, targetLabel, returnOnSave = false }: LetteringEditorProps) {
   const bodyFont = getDefaultFont(language);
   const displayFont = getDisplayFont();
   const bodyFontFamily = getFontFamily(bodyFont);
@@ -176,6 +182,8 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [aiCopied, setAiCopied] = useState(false);
   const [imageBounds, setImageBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -355,9 +363,21 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
     };
   }, [imageBounds, updateOverlay]);
 
-  const handleSave = useCallback(() => {
-    onSave(overlays);
-  }, [overlays, onSave]);
+  const handleSave = useCallback(async () => {
+    setSaveError(null);
+    try {
+      await onSave(overlays);
+      if (returnOnSave) onClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save overlays");
+    }
+  }, [overlays, onSave, onClose, returnOnSave]);
+
+  const copyAiDraftPrompt = useCallback(() => {
+    navigator.clipboard?.writeText(buildLetteringPrompt(cut as unknown as LibCut, plotFile));
+    setAiCopied(true);
+    setTimeout(() => setAiCopied(false), 2000);
+  }, [cut, plotFile]);
 
   const handleExport = useCallback(async () => {
     // Block export when the cut plan contained overlays that could not be placed
@@ -515,25 +535,32 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" data-testid="focused-lettering-editor">
       {/* Toolbar */}
-      <div className="px-3 py-1.5 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-muted">Cut #{cut.id}</span>
+      <div className="px-4 py-3 border-b border-border bg-surface/40 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Focused lettering editor</span>
+            <span className="text-xs font-mono text-muted">{targetLabel ?? `Cut #${cut.id}`}</span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-muted">
+            Place bubbles, captions, SFX, or between-scene card text, then save back to the full cut review.
+          </p>
           <span className="text-[10px] text-muted" data-testid="overlay-count">{overlays.length} overlays</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <div className="flex items-center gap-1 ml-2">
             <button onClick={() => addOverlay("speech")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-speech">Speech</button>
             <button onClick={() => addOverlay("narration")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-narration">Narration</button>
             <button onClick={() => addOverlay("sfx")} className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5" data-testid="add-sfx">SFX</button>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
           {exportError && <span className="text-[10px] text-error">{exportError}</span>}
+          {saveError && <span className="text-[10px] text-error">{saveError}</span>}
           <button onClick={handleExport} disabled={exporting} className="px-3 py-1 text-xs border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50" data-testid="export-btn">
             {exporting ? "Exporting..." : "Export"}
           </button>
-          <button onClick={handleSave} className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim">Save</button>
-          <button onClick={onClose} className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded">Close</button>
+          <button onClick={() => { void handleSave(); }} className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim" data-testid="save-lettering-btn">Save</button>
+          <button onClick={onClose} className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded" data-testid="cancel-lettering-btn">Cancel</button>
         </div>
       </div>
 
@@ -635,7 +662,7 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
       <div className="flex-1 min-h-0 flex">
         <div
           ref={containerRef}
-          className="flex-1 min-w-0 relative overflow-hidden"
+          className="flex-1 min-w-0 relative overflow-hidden bg-[#f8f5ef]"
           onClick={handleBackgroundClick}
           data-testid="editor-surface"
         >
@@ -830,7 +857,21 @@ export function LetteringEditor({ storyName, cut, plotFile, onSave, onClose, onE
         </div>
 
         {/* Inspector panel */}
-        <div className="w-52 border-l border-border p-3 overflow-y-auto flex-shrink-0">
+        <div className="w-64 border-l border-border p-3 overflow-y-auto flex-shrink-0">
+          <div className="mb-3 rounded border border-accent/30 bg-accent/5 p-2 space-y-1.5" data-testid="ai-draft-current-target">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-accent">AI draft assist</p>
+            <p className="text-[11px] text-muted">
+              Copy a prompt scoped to {targetLabel ?? `cut ${cut.id}`}. Review and edit any drafted bubbles here before saving.
+            </p>
+            <button
+              type="button"
+              onClick={copyAiDraftPrompt}
+              className="rounded border border-accent/40 px-2 py-1 text-[11px] font-medium text-accent hover:bg-accent/10"
+              data-testid="copy-ai-lettering-current"
+            >
+              {aiCopied ? "Copied!" : "Copy AI draft prompt"}
+            </button>
+          </div>
           {/* Insert-from-script (#336): drop the cut's planned dialogue/narration/
               SFX straight into a prefilled overlay — no copy/paste out of JSON. */}
           {scriptLines.length > 0 && (

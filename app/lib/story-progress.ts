@@ -38,9 +38,8 @@ export interface EpisodeProgress {
   summary: string;
   published: boolean;
   /**
-   * Cartoon cut progress; null for fiction. `needClean`/`withText` count IMAGE
-   * cuts only (text panels are excluded), so the workflow coach (#429) can tell
-   * the clean-image stage from the lettering stage.
+   * Cartoon cut progress; null for fiction. `needClean`/`withClean` count image
+   * cuts only; `withText`, export, and upload count every cut including text panels.
    */
   cuts: { total: number; needClean: number; withClean: number; withText: number; exported: number; uploaded: number } | null;
   /**

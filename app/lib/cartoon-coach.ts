@@ -168,7 +168,7 @@ function coachForEpisode(ep: EpisodeProgress, undetectedClean: number): CartoonC
   }
 
   // 2) Lettering — place speech bubbles & captions in the cut workspace.
-  if (c.withText < c.needClean) {
+  if (c.withText < c.total) {
     return ui("Clean images ready", "Review cuts and start lettering", "open-lettering", file);
   }
 
