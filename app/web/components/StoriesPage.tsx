@@ -7,7 +7,7 @@ import { CartoonWorkflowNav, type CartoonWorkflowTab } from "./CartoonWorkflowNa
 import { StoryInfoPage } from "./StoryInfoPage";
 import { EpisodesPage } from "./EpisodesPage";
 import { CartoonPublishPage } from "./CartoonPublishPage";
-import { WorkflowCoach } from "./WorkflowCoach";
+import { CartoonNextAction } from "./CartoonNextAction";
 import { LANGUAGES, GENRES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
@@ -839,12 +839,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         )}
         {isCartoonStory && selectedStory && cartoonView !== null && (
           <div className="flex-shrink-0 border-b border-border" data-testid="workflow-context-next-action">
-            <WorkflowCoach
+            <CartoonNextAction
               storyName={selectedStory}
               authFetch={authFetch}
               refreshKey={cartoonPublishRefresh}
-              onAction={handleWorkflowNextAction}
-              showEmptyState
+              onCoachAction={handleWorkflowNextAction}
+              onOpenStoryInfo={() => setCartoonView("story-info")}
             />
           </div>
         )}

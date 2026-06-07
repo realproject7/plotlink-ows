@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress, EpisodeState } from "@app-lib/story-progress";
 import type { CartoonChecklistStep } from "@app-lib/cartoon-readiness";
-import { WorkflowCoachView } from "./WorkflowCoach";
+import { cartoonWorkflowActiveKey, CartoonNextActionView } from "./CartoonNextAction";
 
 interface StoryProgressPanelProps {
   storyName: string;
@@ -202,20 +202,6 @@ const GENESIS_STUB: EpisodeProgress = {
   state: "placeholder", summary: "", published: false, checklist: [], cuts: null,
 };
 
-/** The single Story-Info next step, when cover/metadata is the active gate. */
-function storyInfoNextStep(progress: StoryProgress): string {
-  if (progress.cover !== "present") {
-    return progress.cover === "invalid"
-      ? "Replace the cover image — it must be a valid WebP or JPEG."
-      : "Add a cover image before publishing.";
-  }
-  const missing: string[] = [];
-  if (!progress.metadata.language) missing.push("language");
-  if (!progress.metadata.genre) missing.push("genre");
-  if (!progress.metadata.title) missing.push("title");
-  return `Add the story ${missing.join(" and ") || "details"} before publishing.`;
-}
-
 function CartoonWorkflowMap({
   progress, storyName, onOpenFile, onOpenStoryInfo,
 }: {
@@ -224,76 +210,18 @@ function CartoonWorkflowMap({
   onOpenFile: (storyName: string, file: string) => void;
   onOpenStoryInfo?: () => void;
 }) {
-  const coach = progress.coach ?? null;
   const m = progress.metadata;
   const hasStructure = progress.setup.hasStructure;
-  const hasGenesis = progress.setup.hasGenesis;
   const coverDone = progress.cover === "present";
-  // Required publish metadata (title/language/genre) still hard-gates the active
-  // step. A missing COVER is a publish-readiness recommendation, NOT the primary
-  // step (#462) — it's kept out of the active-gate decision while an episode is
-  // mid-production, so the cut/lettering production CTA leads instead.
   const metadataIncomplete = !m.title || !m.language || !m.genre;
   const storyInfoIncomplete = metadataIncomplete || !coverDone;
-  // The active (first unpublished) episode and whether it still has production
-  // work to do (anything short of publish-ready).
-  const activeEp = progress.episodes.find((e) => !e.published) ?? null;
-  const productionPending = !!activeEp && activeEp.state !== "ready";
+  const activeKey = cartoonWorkflowActiveKey(progress);
 
-  // The SINGLE active gate, chosen in the same order buildStoryProgress derives
-  // its next step (structure → genesis → story info/cover → active episode), so
-  // the one CTA always matches the story-level next action and lands in its own
-  // section. `deriveCartoonCoach` agrees on every gate EXCEPT story info (it
-  // skips cover/metadata), so we own that gate here; the coach drives the rest.
-  // Crucially, every gate maps to a section that is ALWAYS rendered (Whitepaper,
-  // the always-present Genesis section, an episode, or the trailing block), so
-  // the CTA can never fall through the cracks (#444 review: it vanished when the
-  // bible was written but Genesis wasn't).
-  let activeKey: string | null;
-  if (!hasStructure) activeKey = "whitepaper";
-  else if (!hasGenesis) activeKey = "genesis.md";
-  else if (metadataIncomplete) activeKey = "story-info";
-  // #462: a mid-production episode leads over a missing cover — the cut/lettering
-  // production CTA is the primary step. A missing cover only becomes the active
-  // step once the active episode's production is complete (no work pending),
-  // where it reads as the publish-readiness recommendation.
-  else if (productionPending && coach?.episodeFile) activeKey = coach.episodeFile;
-  else if (!coverDone) activeKey = "story-info";
-  else activeKey = coach?.episodeFile ?? null;
-
-  // Story Info owns the CTA when metadata/cover is the gate. The coach carries
-  // no cover action, so route the standardized top CTA to the
-  // existing Story Info workflow page.
-  const storyInfoCta = (
-    <div className="m-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 shadow-sm" data-testid="story-info-cta">
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <span className="inline-flex rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
-            Story info
-          </span>
-          <p className="mt-1 text-sm text-foreground" data-testid="story-info-next-action">
-            <span className="font-semibold">Next: </span>
-            <span>{storyInfoNextStep(progress)}</span>
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenStoryInfo}
-          disabled={!onOpenStoryInfo}
-          className="flex-shrink-0 rounded bg-accent px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
-          data-testid="story-info-next-action-btn"
-        >
-          Next Action
-        </button>
-      </div>
-    </div>
-  );
-
-  const topNextAction = activeKey === "story-info" ? storyInfoCta : (
-    <WorkflowCoachView
-      coach={coach ?? null}
-      showEmptyState
-      onAction={(action, episodeFile) => {
+  const topNextAction = (
+    <CartoonNextActionView
+      progress={progress}
+      onOpenStoryInfo={onOpenStoryInfo}
+      onCoachAction={(action, episodeFile) => {
         if (action === "view-progress") return; // already here
         if (episodeFile) onOpenFile(storyName, episodeFile);
       }}

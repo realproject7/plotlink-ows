@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent, within } from "@testing-library/react";
 import { StoriesPage } from "./StoriesPage";
 
 // Capture props passed to the mocked child panels so tests can drive the
@@ -428,13 +428,37 @@ function makeTwoCartoonAuthFetch() {
     { name: "cartoon-a", title: "Story A", hasStructure: true, hasGenesis: true, contentType: "cartoon", agentProvider: "codex" },
     { name: "cartoon-b", title: "Story B", hasStructure: true, hasGenesis: true, contentType: "cartoon", agentProvider: "codex" },
   ];
+  const progress = {
+    name: "cartoon-a",
+    contentType: "cartoon",
+    metadata: { title: "Story A", language: "English", genre: "Science Fiction", isNsfw: false, contentType: "cartoon" },
+    setup: { hasStructure: true, hasGenesis: true },
+    cover: "missing",
+    episodes: [
+      {
+        file: "genesis.md",
+        label: "Episode 1 / Genesis",
+        kind: "genesis",
+        title: "Opening",
+        state: "ready",
+        summary: "Ready to publish",
+        published: false,
+        checklist: [],
+        cuts: { total: 0, needClean: 0, withClean: 0, withText: 0, exported: 0, uploaded: 0 },
+      },
+    ],
+    summary: { episodes: 1, published: 0, readyToPublish: 1, placeholders: 0, blocked: 0 },
+    nextAction: "Add a cover image before publishing.",
+    nextPrompt: null,
+    coach: null,
+  };
   const fn = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     if (url === "/api/wallet") return Promise.resolve({ ok: true, json: () => Promise.resolve({ address: "0xabc" }) });
     if (url === "/api/agent/readiness") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ claude: { installed: true }, codex: { installed: true, version: "codex-cli 0.135.0", imageGeneration: "enabled", auth: "ok" }, checkedAt: 1748000000000 }) });
     }
     if (url === "/api/stories" && !opts) return Promise.resolve({ ok: true, json: () => Promise.resolve({ stories }) });
-    if (url.endsWith("/progress")) return Promise.resolve({ ok: true, json: () => Promise.resolve({ contentType: "cartoon", episodes: [], cover: "missing" }) });
+    if (url.endsWith("/progress")) return Promise.resolve({ ok: true, json: () => Promise.resolve(progress) });
     // story detail (cartoon ⇒ no auto-open) and everything else.
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ contentType: "cartoon", files: [] }) });
   });
@@ -486,5 +510,25 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     expect(screen.getByTestId("nav-tab-publish")).toHaveAttribute("data-active", "true");
     expect(screen.getByTestId("nav-tab-genesis")).toHaveAttribute("data-active", "false");
     expect(screen.queryByTestId("mock-preview")).not.toBeInTheDocument();
+  }, 10000);
+
+  it("shows the Story Info next-action CTA on story-level right-pane pages when cover is missing (#487 RE1)", async () => {
+    const { fn } = makeTwoCartoonAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
+    childProps.onSelectStory!("cartoon-a");
+
+    fireEvent.click(await screen.findByTestId("nav-tab-publish"));
+    const publishCta = await screen.findByTestId("workflow-context-next-action");
+    expect(within(publishCta).getByTestId("story-info-next-action")).toHaveTextContent(/Next: Add a cover image before publishing/i);
+    expect(within(publishCta).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
+    expect(within(publishCta).queryByText("No next action available")).not.toBeInTheDocument();
+
+    fireEvent.click(within(publishCta).getByRole("button", { name: "Next Action" }));
+    await waitFor(() => expect(screen.getByTestId("nav-tab-story-info")).toHaveAttribute("data-active", "true"));
+
+    const storyInfoCta = screen.getByTestId("workflow-context-next-action");
+    expect(within(storyInfoCta).getByTestId("story-info-next-action")).toHaveTextContent(/Next: Add a cover image before publishing/i);
+    expect(within(storyInfoCta).queryByText("No next action available")).not.toBeInTheDocument();
   }, 10000);
 });
