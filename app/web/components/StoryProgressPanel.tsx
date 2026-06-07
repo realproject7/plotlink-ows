@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress, EpisodeState } from "@app-lib/story-progress";
 import type { CartoonChecklistStep } from "@app-lib/cartoon-readiness";
-import { WorkflowCoachView } from "./WorkflowCoach";
+import { cartoonWorkflowActiveKey, CartoonNextActionView } from "./CartoonNextAction";
 
 interface StoryProgressPanelProps {
   storyName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   /** Open a file from the map (the workflow steps link to their file). */
   onOpenFile: (storyName: string, file: string) => void;
+  /** Open the Story Info workflow page when metadata/cover is the next gate. */
+  onOpenStoryInfo?: () => void;
   /** Bumped by the parent to force a refresh (e.g. after a publish). */
   refreshKey?: number;
 }
@@ -18,15 +20,13 @@ interface StoryProgressPanelProps {
  * For CARTOON stories this is the writer's main production dashboard: a vertical
  * workflow map of numbered sections (Define Story Info → Story Whitepaper →
  * Genesis / Episode 1 → Episode 2 …), each with a checkbox checklist and a clear
- * status. The single next-action CTA is rendered inside the section it belongs to
- * (never a duplicated global bar), so a first-time creator understands the whole
- * webtoon workflow and where they are in it without reading terminal output or
- * raw file names.
+ * status. The single next-action CTA stays persistent above the map, while the
+ * current section still marks where that action belongs.
  *
  * FICTION keeps the simpler original layout — metadata, setup steps, a chapter
  * list — and is completely unaffected by the cartoon redesign.
  */
-export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKey = 0 }: StoryProgressPanelProps) {
+export function StoryProgressPanel({ storyName, authFetch, onOpenFile, onOpenStoryInfo, refreshKey = 0 }: StoryProgressPanelProps) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -56,7 +56,7 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKe
   }
 
   return progress.contentType === "cartoon"
-    ? <CartoonWorkflowMap progress={progress} storyName={storyName} onOpenFile={onOpenFile} />
+    ? <CartoonWorkflowMap progress={progress} storyName={storyName} onOpenFile={onOpenFile} onOpenStoryInfo={onOpenStoryInfo} />
     : <FictionProgressView progress={progress} storyName={storyName} onOpenFile={onOpenFile} />;
 }
 
@@ -128,13 +128,11 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
 }
 
 /**
- * One numbered workflow section: a status bullet + title + status badge, a nested
- * checklist, and — only for the active section — the single next-action CTA. The
- * header navigates to `openFile` when one is provided (sections whose dedicated
- * page does not exist yet, e.g. Story Info, render a plain header).
+ * One numbered workflow section: a status bullet + title + status badge, plus a
+ * nested checklist. The header navigates to `openFile` when one is provided.
  */
 function Section({
-  index, title, status, items, fileName, openFile, cta,
+  index, title, status, items, fileName, openFile,
 }: {
   index: number;
   title: string;
@@ -144,8 +142,6 @@ function Section({
   fileName?: string | null;
   /** Called to open the section's underlying file, or undefined for no navigation. */
   openFile?: () => void;
-  /** The single CTA node, rendered under this section when it is the active one. */
-  cta?: ReactNode;
 }) {
   const heading = (
     <div className="flex items-center gap-2 min-w-0">
@@ -163,7 +159,6 @@ function Section({
       <div className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-3">
         {items.map((it, i) => <ChecklistRow key={i} item={it} />)}
       </div>
-      {cta && <div className="mt-2 ml-1" data-testid="section-cta">{cta}</div>}
     </div>
   );
 }
@@ -207,88 +202,31 @@ const GENESIS_STUB: EpisodeProgress = {
   state: "placeholder", summary: "", published: false, checklist: [], cuts: null,
 };
 
-/** The single Story-Info next step, when cover/metadata is the active gate. */
-function storyInfoNextStep(progress: StoryProgress): string {
-  if (progress.cover !== "present") {
-    return progress.cover === "invalid"
-      ? "Replace the cover image — it must be a valid WebP or JPEG."
-      : "Add a cover image before publishing.";
-  }
-  const missing: string[] = [];
-  if (!progress.metadata.language) missing.push("language");
-  if (!progress.metadata.genre) missing.push("genre");
-  if (!progress.metadata.title) missing.push("title");
-  return `Add the story ${missing.join(" and ") || "details"} before publishing.`;
-}
-
 function CartoonWorkflowMap({
-  progress, storyName, onOpenFile,
-}: { progress: StoryProgress; storyName: string; onOpenFile: (storyName: string, file: string) => void }) {
-  const coach = progress.coach ?? null;
+  progress, storyName, onOpenFile, onOpenStoryInfo,
+}: {
+  progress: StoryProgress;
+  storyName: string;
+  onOpenFile: (storyName: string, file: string) => void;
+  onOpenStoryInfo?: () => void;
+}) {
   const m = progress.metadata;
   const hasStructure = progress.setup.hasStructure;
-  const hasGenesis = progress.setup.hasGenesis;
   const coverDone = progress.cover === "present";
-  // Required publish metadata (title/language/genre) still hard-gates the active
-  // step. A missing COVER is a publish-readiness recommendation, NOT the primary
-  // step (#462) — it's kept out of the active-gate decision while an episode is
-  // mid-production, so the cut/lettering production CTA leads instead.
   const metadataIncomplete = !m.title || !m.language || !m.genre;
   const storyInfoIncomplete = metadataIncomplete || !coverDone;
-  // The active (first unpublished) episode and whether it still has production
-  // work to do (anything short of publish-ready).
-  const activeEp = progress.episodes.find((e) => !e.published) ?? null;
-  const productionPending = !!activeEp && activeEp.state !== "ready";
+  const activeKey = cartoonWorkflowActiveKey(progress);
 
-  // The SINGLE active gate, chosen in the same order buildStoryProgress derives
-  // its next step (structure → genesis → story info/cover → active episode), so
-  // the one CTA always matches the story-level next action and lands in its own
-  // section. `deriveCartoonCoach` agrees on every gate EXCEPT story info (it
-  // skips cover/metadata), so we own that gate here; the coach drives the rest.
-  // Crucially, every gate maps to a section that is ALWAYS rendered (Whitepaper,
-  // the always-present Genesis section, an episode, or the trailing block), so
-  // the CTA can never fall through the cracks (#444 review: it vanished when the
-  // bible was written but Genesis wasn't).
-  let activeKey: string | null;
-  if (!hasStructure) activeKey = "whitepaper";
-  else if (!hasGenesis) activeKey = "genesis.md";
-  else if (metadataIncomplete) activeKey = "story-info";
-  // #462: a mid-production episode leads over a missing cover — the cut/lettering
-  // production CTA is the primary step. A missing cover only becomes the active
-  // step once the active episode's production is complete (no work pending),
-  // where it reads as the publish-readiness recommendation.
-  else if (productionPending && coach?.episodeFile) activeKey = coach.episodeFile;
-  else if (!coverDone) activeKey = "story-info";
-  else activeKey = coach?.episodeFile ?? null;
-
-  // The coach-driven CTA (setup prompts + episode actions), reused from the
-  // tested coach view so routing stays byte-identical to the old overview.
-  const coachCta = coach ? (
-    <WorkflowCoachView
-      coach={coach}
-      onAction={(action, episodeFile) => {
+  const topNextAction = (
+    <CartoonNextActionView
+      progress={progress}
+      onOpenStoryInfo={onOpenStoryInfo}
+      onCoachAction={(action, episodeFile) => {
         if (action === "view-progress") return; // already here
         if (episodeFile) onOpenFile(storyName, episodeFile);
       }}
     />
-  ) : null;
-
-  // Story Info owns the CTA when metadata/cover is the gate. There is no
-  // dedicated Story Info page yet (#439/§4) and the coach carries no cover
-  // action, so this is an informational next-step line (not a route) — still the
-  // one and only CTA, placed in the relevant section.
-  const storyInfoCta = (
-    <div className="flex items-center gap-2 px-3 py-2 bg-accent/5 border border-accent/30 rounded text-xs" data-testid="story-info-cta">
-      <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-accent flex-shrink-0">Story info</span>
-      <span className="min-w-0 flex-1 text-foreground"><span className="text-muted">Next: </span><span className="font-medium">{storyInfoNextStep(progress)}</span></span>
-    </div>
   );
-
-  // Return the one CTA for a section, or null — guarantees a single visible CTA.
-  const ctaFor = (key: string): ReactNode => {
-    if (key !== activeKey) return null;
-    return activeKey === "story-info" ? storyInfoCta : coachCta;
-  };
 
   const infoItems: ChecklistItem[] = [
     { label: "Public title", status: m.title ? "done" : "todo", detail: m.title ?? null },
@@ -307,6 +245,9 @@ function CartoonWorkflowMap({
   return (
     <div className="h-full overflow-y-auto" data-testid="story-progress-panel">
       <ProgressHeader progress={progress} />
+      <div className="border-b border-border" data-testid="persistent-next-action">
+        {topNextAction}
+      </div>
       <p className="px-4 pt-3 pb-1 text-[11px] font-medium text-muted uppercase tracking-wider">Production Progress</p>
 
       <Section
@@ -314,7 +255,6 @@ function CartoonWorkflowMap({
         title="Define Story Info"
         status={infoStatus}
         items={infoItems}
-        cta={ctaFor("story-info") ?? undefined}
       />
 
       <Section
@@ -324,7 +264,6 @@ function CartoonWorkflowMap({
         fileName="structure.md"
         openFile={hasStructure ? () => onOpenFile(storyName, "structure.md") : undefined}
         items={[{ label: "Planning document", status: hasStructure ? "done" : "todo", detail: hasStructure ? null : "Not written yet" }]}
-        cta={ctaFor("whitepaper") ?? undefined}
       />
 
       {/* Genesis / Episode 1 — always shown (a not-started stub before it's
@@ -332,28 +271,21 @@ function CartoonWorkflowMap({
       {genesisEp ? (
         <EpisodeSection
           index={++idx} ep={genesisEp} isActive={activeKey === genesisEp.file}
-          storyName={storyName} onOpenFile={onOpenFile} cta={ctaFor(genesisEp.file) ?? undefined}
+          storyName={storyName} onOpenFile={onOpenFile}
         />
       ) : (
         <EpisodeSection
           index={++idx} ep={GENESIS_STUB} isActive={activeKey === "genesis.md"} openingDone={false} canOpen={false}
-          storyName={storyName} onOpenFile={onOpenFile} cta={ctaFor("genesis.md") ?? undefined}
+          storyName={storyName} onOpenFile={onOpenFile}
         />
       )}
 
       {plotEps.map((ep) => (
         <EpisodeSection
           key={ep.file} index={++idx} ep={ep} isActive={activeKey === ep.file}
-          storyName={storyName} onOpenFile={onOpenFile} cta={ctaFor(ep.file) ?? undefined}
+          storyName={storyName} onOpenFile={onOpenFile}
         />
       ))}
-
-      {/* All episodes published with nothing queued → a trailing "start next" CTA. */}
-      {activeKey === null && coachCta && (
-        <div className="px-4 py-2.5 border-b border-border" data-testid="workflow-next-episode">
-          <div className="ml-1" data-testid="section-cta">{coachCta}</div>
-        </div>
-      )}
 
       <div className="px-4 py-2 text-[11px] text-muted flex flex-wrap gap-x-3" data-testid="progress-summary">
         <span>{progress.summary.published} published</span>
@@ -367,14 +299,13 @@ function CartoonWorkflowMap({
 
 /** A `progress-episode-<file>` section, kept testid-stable so clicking it opens the file. */
 function EpisodeSection({
-  index, ep, isActive, storyName, onOpenFile, cta, openingDone = true, canOpen = true,
+  index, ep, isActive, storyName, onOpenFile, openingDone = true, canOpen = true,
 }: {
   index: number;
   ep: EpisodeProgress;
   isActive: boolean;
   storyName: string;
   onOpenFile: (storyName: string, file: string) => void;
-  cta?: ReactNode;
   /** Whether the genesis opening text is already written (false for the stub). */
   openingDone?: boolean;
   /** Whether the header navigates to the file (false for the not-yet-written stub). */
@@ -408,7 +339,6 @@ function EpisodeSection({
       <div className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-3">
         {items.map((it, i) => <ChecklistRow key={i} item={it} />)}
       </div>
-      {cta && <div className="mt-2 ml-1" data-testid="section-cta">{cta}</div>}
     </div>
   );
 }

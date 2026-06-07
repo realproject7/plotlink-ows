@@ -24,53 +24,80 @@ interface WorkflowCoachViewProps {
   /** Run an app-driven step (the agent steps copy a prompt instead). */
   onAction: (action: CoachUiAction, episodeFile: string | null) => void;
   className?: string;
+  /** Show a clear completed state instead of disappearing when no coach exists. */
+  showEmptyState?: boolean;
 }
 
-export function WorkflowCoachView({ coach, onAction, className = "" }: WorkflowCoachViewProps) {
+export function WorkflowCoachView({ coach, onAction, className = "", showEmptyState = false }: WorkflowCoachViewProps) {
   // Track the prompt that was copied rather than a bare boolean, so the "Copied!"
   // confirmation derives to false the moment the coach (and its prompt) changes —
   // no reset effect, no stale confirmation under a new stage.
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
   const copied = copiedPrompt !== null && copiedPrompt === coach?.prompt;
 
-  if (!coach) return null;
+  if (coach === undefined) return null;
+  if (!coach) {
+    if (!showEmptyState) return null;
+    return (
+      <div
+        className={`m-3 rounded-lg border border-green-700/25 bg-green-950/5 px-4 py-3 ${className}`}
+        data-testid="workflow-coach"
+        data-state="complete"
+      >
+        <div className="flex items-start gap-3">
+          <span className="rounded-full bg-green-700/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-green-700">
+            Complete
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">No next action available</p>
+            <p className="mt-0.5 text-xs text-muted">This workflow has no queued next step right now.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 bg-accent/5 border-b border-accent/30 text-xs ${className}`}
+      className={`m-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 shadow-sm ${className}`}
       data-testid="workflow-coach"
       data-stage={coach.stageLabel}
       data-action-kind={coach.actionKind}
       data-ui-action={coach.uiAction ?? ""}
     >
-      <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-accent flex-shrink-0" data-testid="workflow-coach-stage">
-        {coach.stageLabel}
-      </span>
-      <span className="min-w-0 flex-1 text-foreground" data-testid="workflow-coach-action">
-        <span className="text-muted">Next: </span>
-        <span className="font-medium">{coach.action}</span>
-      </span>
-      {coach.actionKind === "agent" && coach.prompt ? (
-        <button
-          onClick={() => {
-            if (!coach.prompt) return;
-            const prompt = coach.prompt;
-            navigator.clipboard?.writeText(prompt).then(() => setCopiedPrompt(prompt)).catch(() => {});
-          }}
-          data-testid="workflow-coach-copy"
-          className="flex-shrink-0 rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-dim transition-colors"
-        >
-          {copied ? "Copied!" : "Copy prompt"}
-        </button>
-      ) : coach.actionKind === "ui" && coach.uiAction ? (
-        <button
-          onClick={() => onAction(coach.uiAction!, coach.episodeFile)}
-          data-testid="workflow-coach-do"
-          className="flex-shrink-0 rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-dim transition-colors"
-        >
-          {coach.action}
-        </button>
-      ) : null}
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="inline-flex rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-accent" data-testid="workflow-coach-stage">
+            {coach.stageLabel}
+          </span>
+          <p className="mt-1 text-sm text-foreground" data-testid="workflow-coach-action">
+            <span className="font-semibold">Next: </span>
+            <span>{coach.action}</span>
+          </p>
+          {copied && <p className="mt-1 text-[11px] font-medium text-accent">Prompt copied.</p>}
+        </div>
+        {coach.actionKind === "agent" && coach.prompt ? (
+          <button
+            onClick={() => {
+              if (!coach.prompt) return;
+              const prompt = coach.prompt;
+              navigator.clipboard?.writeText(prompt).then(() => setCopiedPrompt(prompt)).catch(() => {});
+            }}
+            data-testid="workflow-coach-copy"
+            className="flex-shrink-0 rounded bg-accent px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-accent-dim"
+          >
+            Next Action
+          </button>
+        ) : coach.actionKind === "ui" && coach.uiAction ? (
+          <button
+            onClick={() => onAction(coach.uiAction!, coach.episodeFile)}
+            data-testid="workflow-coach-do"
+            className="flex-shrink-0 rounded bg-accent px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-accent-dim"
+          >
+            Next Action
+          </button>
+        ) : null}
+    </div>
     </div>
   );
 }
@@ -83,6 +110,7 @@ interface WorkflowCoachProps {
   /** Bumped by the parent to reload after a state change (cut edit / publish). */
   refreshKey?: number;
   onAction: (action: CoachUiAction, episodeFile: string | null) => void;
+  showEmptyState?: boolean;
 }
 
 /**
@@ -92,8 +120,8 @@ interface WorkflowCoachProps {
  * previous file's coach can never linger under a different file when the new
  * request fails or 404s (the stale-state-on-error class flagged on #420/#427).
  */
-export function WorkflowCoach({ storyName, fileName, authFetch, refreshKey = 0, onAction }: WorkflowCoachProps) {
-  const [coach, setCoach] = useState<CartoonCoach | null>(null);
+export function WorkflowCoach({ storyName, fileName, authFetch, refreshKey = 0, onAction, showEmptyState = false }: WorkflowCoachProps) {
+  const [coach, setCoach] = useState<CartoonCoach | null | undefined>(undefined);
 
   // Reset the coach the instant the target changes (file switch / refresh),
   // during render — React's recommended way to reset state on a changing input.
@@ -108,7 +136,7 @@ export function WorkflowCoach({ storyName, fileName, authFetch, refreshKey = 0, 
   const targetKey = JSON.stringify([storyName, fileName ?? "", refreshKey]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   if (loadedKey !== targetKey) {
-    setCoach(null);
+    setCoach(undefined);
     setLoadedKey(targetKey);
   }
 
@@ -124,5 +152,5 @@ export function WorkflowCoach({ storyName, fileName, authFetch, refreshKey = 0, 
     return () => { cancelled = true; };
   }, [storyName, fileName, authFetch, refreshKey]);
 
-  return <WorkflowCoachView coach={coach} onAction={onAction} />;
+  return <WorkflowCoachView coach={coach} onAction={onAction} showEmptyState={showEmptyState} />;
 }

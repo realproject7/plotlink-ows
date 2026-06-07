@@ -7,11 +7,13 @@ import { CartoonWorkflowNav, type CartoonWorkflowTab } from "./CartoonWorkflowNa
 import { StoryInfoPage } from "./StoryInfoPage";
 import { EpisodesPage } from "./EpisodesPage";
 import { CartoonPublishPage } from "./CartoonPublishPage";
+import { CartoonNextAction } from "./CartoonNextAction";
 import { LANGUAGES, GENRES } from "../../../lib/genres";
 import { getContentTypeForPublish, resolveSelectedContentType, needsLegacyProviderRepair, attachCoverToStoryline, derivePublishTitle, shouldBlockDuplicatePlotPublish, isRawFilenameTitle, hasExplicitEpisodeTitle, isPreflightBlocked, formatPreflightBlock } from "../lib/publish-helpers";
 import { verifyPublicCartoonTitle, publicTitleWarning } from "../lib/verify-public-title";
 import { isCodexAuthUnclear, CODEX_AUTH_UNCLEAR_MESSAGE, type AgentReadiness } from "@app-lib/agent-readiness";
 import { cartoonGenesisReadiness } from "@app-lib/cartoon-readiness";
+import type { CoachUiAction } from "@app-lib/cartoon-coach";
 
 interface StoriesPageProps {
   token: string;
@@ -763,6 +765,27 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     }
   }, [selectedStory, handleSelectFile]);
 
+  const handleWorkflowNextAction = useCallback((action: CoachUiAction, episodeFile: string | null) => {
+    const story = selectedStory;
+    if (!story) return;
+    switch (action) {
+      case "view-progress":
+        setCartoonView(null);
+        setSelectedFile(null);
+        break;
+      case "publish":
+        setCartoonView("publish");
+        break;
+      case "open-cuts":
+      case "open-lettering":
+      case "upload":
+      case "refresh-assets":
+      case "generate-markdown":
+        if (episodeFile) handleSelectFile(story, episodeFile);
+        break;
+    }
+  }, [selectedStory, handleSelectFile]);
+
   // Keep the publish-control seeds in sync after a Story Info save (#439).
   const handleStoryInfoSaved = useCallback((patch: { genre?: string; language?: string; isNsfw?: boolean }) => {
     if (!selectedStory) return;
@@ -814,6 +837,17 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             onSelect={handleCartoonNav}
           />
         )}
+        {isCartoonStory && selectedStory && cartoonView !== null && (
+          <div className="flex-shrink-0 border-b border-border" data-testid="workflow-context-next-action">
+            <CartoonNextAction
+              storyName={selectedStory}
+              authFetch={authFetch}
+              refreshKey={cartoonPublishRefresh}
+              onCoachAction={handleWorkflowNextAction}
+              onOpenStoryInfo={() => setCartoonView("story-info")}
+            />
+          </div>
+        )}
         {isCartoonStory && cartoonView === "story-info" && selectedStory ? (
           <StoryInfoPage storyName={selectedStory} authFetch={authFetch} onSaved={handleStoryInfoSaved} />
         ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
@@ -836,6 +870,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             storyName={selectedStory}
             authFetch={authFetch}
             onOpenFile={handleSelectFile}
+            onOpenStoryInfo={() => setCartoonView("story-info")}
           />
         ) : (
         <PreviewPanel

@@ -32,6 +32,12 @@ describe("WorkflowCoachView (#429)", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("can render a clear completed state when there is no queued coach", () => {
+    render(<WorkflowCoachView coach={null} onAction={vi.fn()} showEmptyState />);
+    expect(screen.getByTestId("workflow-coach")).toHaveAttribute("data-state", "complete");
+    expect(screen.getByText("No next action available")).toBeInTheDocument();
+  });
+
   it("agent step: shows the action and copies the prompt", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });

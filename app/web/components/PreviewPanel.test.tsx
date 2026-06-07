@@ -57,7 +57,8 @@ describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
 
     // The coach loads for Genesis with an in-app (lettering) action.
     const doBtn = await screen.findByTestId("workflow-coach-do");
-    expect(doBtn).toHaveTextContent(/lettering/i);
+    expect(screen.getByTestId("workflow-coach-action")).toHaveTextContent(/Review cuts and start lettering/i);
+    expect(doBtn).toHaveTextContent("Next Action");
     // Before acting, the cut workspace isn't mounted.
     expect(screen.queryByTestId("cut-list-panel")).not.toBeInTheDocument();
 
