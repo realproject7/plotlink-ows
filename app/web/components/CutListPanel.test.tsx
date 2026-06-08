@@ -2337,7 +2337,9 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(
       await screen.findByTestId("lettering-review-state-1"),
     ).toHaveTextContent("No draft");
-    expect(screen.getByTestId("ai-draft-1")).toBeInTheDocument();
+    expect(screen.getByTestId("ai-draft-1")).toHaveTextContent(
+      "AI draft bubbles",
+    );
 
     fireEvent.click(screen.getByTestId("ai-draft-1"));
     expect(

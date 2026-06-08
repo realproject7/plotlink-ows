@@ -853,6 +853,34 @@ describe("LetteringEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("keeps the focused editor toolbar compact and moves guide copy behind Help (#501)", async () => {
+    render(
+      <LetteringEditor
+        storyName="story"
+        cut={makeCut({
+          dialogue: [{ speaker: "Mira", text: "We move now." }],
+        })}
+        plotFile="plot-01"
+        authFetch={makeAssetAuthFetch()}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        targetLabel="Cut 01"
+      />,
+    );
+
+    const toolbar = screen.getByTestId("lettering-toolbar");
+    expect(toolbar).toHaveTextContent("Focused lettering editor");
+    expect(toolbar).not.toHaveTextContent(
+      /Place bubbles, captions, SFX, or between-scene card text/i,
+    );
+    expect(screen.queryByTestId("lettering-help-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("lettering-help-toggle"));
+    expect(screen.getByTestId("lettering-help-panel")).toHaveTextContent(
+      /Add or select a bubble/i,
+    );
+  });
+
   // #310: the editor preview must wrap bubble dialogue into multiple lines
   // (shared layout with the export), not a single truncated label.
   it("renders wrapped multi-line bubble text in the preview (WYSIWYG)", async () => {
