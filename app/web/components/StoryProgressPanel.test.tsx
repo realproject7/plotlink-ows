@@ -133,6 +133,7 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
     const genesis = screen.getByTestId("workflow-section-3");
+    expect(genesis).toHaveTextContent("Active step: Ready to publish");
     expect(genesis).toHaveTextContent("Opening text");
     expect(genesis).toHaveTextContent("Create clean images");
     expect(genesis).toHaveTextContent("Upload final images");

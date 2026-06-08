@@ -16,6 +16,7 @@ import {
 } from "../lib/import-image";
 import { CodexImportPicker } from "./CodexImportPicker";
 import { FinishEpisodePanel } from "./FinishEpisodePanel";
+import { buildCartoonProductionStatus } from "@app-lib/cartoon-production-status";
 import {
   cartoonChecklist,
   checkMarkdownReadiness,
@@ -1679,8 +1680,8 @@ export function CutListPanel({
               </div>
               <p className="text-[10px] text-muted">
                 Per-cut actions stay on each card. Open workspace tools for
-                publish prep, asset recovery, narration cards, and workflow
-                guidance.
+                publish prep, asset recovery, narration cards, and blocked-step
+                details.
               </p>
             </div>
             <span className="flex-shrink-0 rounded border border-border bg-background px-2 py-1 text-[10px] text-muted">
@@ -1773,23 +1774,6 @@ export function CutListPanel({
           >
             {uploadProgress || "Upload & Prepare for Publish"}
           </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
-            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
-              1. Letter
-            </span>
-            <span aria-hidden>→</span>
-            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
-              2. Export
-            </span>
-            <span aria-hidden>→</span>
-            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
-              3. Upload
-            </span>
-            <span aria-hidden>→</span>
-            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
-              4. Prepare episode for publish
-            </span>
           </div>
           <div className="mt-1 text-[10px] text-muted">
             Use <span className="text-accent">Add narration/text panel</span>{" "}
@@ -2066,11 +2050,11 @@ function currentWorkflowLabel(
   markdownReady: boolean,
   published: boolean,
 ): string {
-  if (published) return "Published to PlotLink";
-  if (markdownReady) return "Ready to publish";
-  const current =
-    checklist.steps.find((step) => step.status === "current")
-    ?? checklist.steps.find((step) => step.status === "todo")
-    ?? checklist.steps[checklist.steps.length - 1];
-  return current?.label ?? "Review cuts";
+  return (
+    buildCartoonProductionStatus({
+      checklist,
+      markdownReady,
+      published,
+    })?.statusLabel ?? "Review cuts"
+  );
 }

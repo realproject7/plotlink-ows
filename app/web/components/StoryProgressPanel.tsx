@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress, EpisodeState } from "@app-lib/story-progress";
 import type { CartoonChecklistStep } from "@app-lib/cartoon-readiness";
+import { buildCartoonProductionStatus } from "@app-lib/cartoon-production-status";
 import { cartoonWorkflowActiveKey } from "./CartoonNextAction";
 
 interface StoryProgressPanelProps {
@@ -296,6 +297,11 @@ function EpisodeSection({
 }) {
   const status = episodeStatus(ep, isActive);
   const items = episodeItems(ep, openingDone);
+  const production = buildCartoonProductionStatus({
+    checklist: ep.checklist ? { steps: ep.checklist, nextStep: null } : null,
+    markdownReady: ep.state === "ready" || ep.published,
+    published: ep.published,
+  });
   const title = ep.title ? `${ep.label} · ${ep.title}` : ep.label;
   const heading = (
     <div className="flex items-center gap-2 min-w-0">
@@ -318,6 +324,13 @@ function EpisodeSection({
         </button>
       ) : (
         <div data-state={ep.state}>{heading}</div>
+      )}
+      {production?.statusLabel && (
+        <div className="mt-1 ml-1 text-[10px] text-muted">
+          <span className="font-medium text-foreground">Active step:</span>{" "}
+          {production.statusLabel}
+          {production.activeStep?.detail ? ` · ${production.activeStep.detail}` : ""}
+        </div>
       )}
       <div className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-3">
         {items.map((it, i) => <ChecklistRow key={i} item={it} />)}

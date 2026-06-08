@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { CartoonPublishPage } from "./CartoonPublishPage";
 import type { StoryProgress, EpisodeProgress } from "@app-lib/story-progress";
+import type { Cut } from "@app-lib/cuts";
 
 afterEach(cleanup);
 
@@ -25,6 +26,46 @@ function progress(o: Partial<StoryProgress> & { episodes: EpisodeProgress[] }): 
   };
 }
 
+function makeCut(id: number, overrides: Partial<Cut> = {}): Cut {
+  return {
+    id,
+    shotType: "medium",
+    description: "scene",
+    characters: [],
+    dialogue: [],
+    narration: "",
+    sfx: "",
+    cleanImagePath: null,
+    finalImagePath: null,
+    exportedAt: null,
+    uploadedCid: null,
+    uploadedUrl: null,
+    overlays: [],
+    ...overrides,
+  };
+}
+
+function cleanCuts(count: number): Cut[] {
+  return Array.from({ length: count }, (_, i) =>
+    makeCut(i + 1, {
+      cleanImagePath: `assets/genesis/cut-${i + 1}-clean.webp`,
+    }),
+  );
+}
+
+function uploadedCuts(count: number): Cut[] {
+  return Array.from({ length: count }, (_, i) =>
+    makeCut(i + 1, {
+      cleanImagePath: `assets/genesis/cut-${i + 1}-clean.webp`,
+      finalImagePath: `assets/genesis/cut-${i + 1}-final.webp`,
+      exportedAt: "2026-06-08T00:00:00Z",
+      uploadedCid: `Qm${i + 1}`,
+      uploadedUrl: `https://ipfs.example/${i + 1}`,
+      overlays: [{ id: `o-${i + 1}`, type: "speech", x: 0.1, y: 0.1, width: 0.2, height: 0.1, text: "hi" }],
+    }),
+  );
+}
+
 // A publishable Genesis opening (real H1 + multi-paragraph prose) so the migrated
 // title (#358) and prologue-readiness (#359) diagnostics don't block publish in
 // the ready-state tests. Override per test via the `files` map.
@@ -37,7 +78,7 @@ By dawn, nothing in the building — or the city beyond it — will be the same.
 function makeAuthFetch(p: StoryProgress | null, files?: Record<string, unknown>) {
   const map: Record<string, unknown> = {
     content: { content: GOOD_GENESIS },
-    cuts: { cuts: [], title: null },
+    cuts: { cuts: uploadedCuts(2), title: null },
     structure: { content: "# The Awakening\n" },
     ...files,
   };
@@ -56,12 +97,10 @@ const MIDWAY_CUTS = { total: 10, needClean: 10, withClean: 10, withText: 0, expo
 describe("CartoonPublishPage (#449)", () => {
   it("summarizes readiness for the active episode and disables Publish until ready", async () => {
     const p = progress({ cover: "present", episodes: [ep({ file: "genesis.md", state: "in-progress", summary: "3 / 10 cuts have uploaded images", cuts: MIDWAY_CUTS })] });
-    render(<CartoonPublishPage storyName="god-cell" authFetch={makeAuthFetch(p)} onOpenFile={vi.fn()} onOpenStoryInfo={vi.fn()} />);
+    render(<CartoonPublishPage storyName="god-cell" authFetch={makeAuthFetch(p, { cuts: { cuts: cleanCuts(10), title: null } })} onOpenFile={vi.fn()} onOpenStoryInfo={vi.fn()} />);
 
     expect(await screen.findByTestId("cartoon-publish-page")).toHaveTextContent("Publish Episode 1 / Genesis");
-    const checklist = screen.getByTestId("publish-checklist");
-    expect(checklist).toHaveTextContent("Cuts lettered");
-    expect(checklist).toHaveTextContent("Final images uploaded");
+    expect(await screen.findByTestId("publish-production-status")).toHaveTextContent("Active: Add speech bubbles & captions");
     // Not ready → the publish CTA is disabled and a reason is shown.
     expect(screen.getByTestId("publish-cta")).toBeDisabled();
     expect(screen.getByTestId("publish-blocked-reason")).toBeInTheDocument();
@@ -140,9 +179,7 @@ describe("CartoonPublishPage (#449)", () => {
 
     fireEvent.click(await screen.findByTestId("publish-add-cover"));
     expect(onOpenStoryInfo).toHaveBeenCalled();
-    // The cover check reads as not-done.
-    const coverRow = within(screen.getByTestId("publish-checklist")).getByText("Cover image");
-    expect(coverRow.closest("[data-testid='publish-check']")).toHaveAttribute("data-status", "todo");
+    expect(screen.getByTestId("publish-cover-status")).toHaveTextContent("Cover image: Missing");
   });
 
   it("shows an all-published state when every episode is published", async () => {
