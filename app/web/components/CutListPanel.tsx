@@ -284,6 +284,7 @@ function CutRow({
   onConvert,
   converting,
   rowRef,
+  featured = false,
 }: {
   cut: Cut;
   storyName: string;
@@ -307,6 +308,7 @@ function CutRow({
   onConvert: (cutId: number, pngPath: string) => Promise<boolean>;
   converting: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
+  featured?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -444,6 +446,9 @@ function CutRow({
     !!cut.narration ||
     cut.dialogue.length > 0 ||
     isTextPanel(cut);
+  const previewClassName = featured
+    ? "w-full rounded border border-border bg-white min-h-[14rem] md:min-h-[18rem] xl:min-h-[21rem]"
+    : "w-full rounded border border-border bg-white min-h-[11rem] md:min-h-[13rem]";
 
   return (
     <div
@@ -482,12 +487,12 @@ function CutRow({
             background={cut.background}
             aspectRatio={cut.aspectRatio}
             onClick={canOpenPreviewEditor ? onOpenEditor : undefined}
-            className="w-full"
+            className={previewClassName}
             testId={`cut-preview-${cut.id}`}
           />
         ) : (
           <div
-            className="w-full min-h-28 rounded border border-dashed border-border bg-surface/40 flex items-center justify-center text-[10px] text-muted"
+            className={`${featured ? "min-h-[14rem] md:min-h-[18rem] xl:min-h-[21rem]" : "min-h-28 md:min-h-40"} w-full rounded border border-dashed border-border bg-surface/40 flex items-center justify-center text-[10px] text-muted`}
             data-testid={`cut-card-noart-${cut.id}`}
           >
             {isTextPanel(cut)
@@ -1548,6 +1553,11 @@ export function CutListPanel({
   const canFinish =
     cutsFile.cuts.some((ct) => ct.finalImagePath && !ct.uploadedCid) ||
     (uploadStepDone && !episodeState.markdownReady);
+  const workflowLabel = currentWorkflowLabel(
+    finishChecklist,
+    episodeState.markdownReady,
+    episodeState.published,
+  );
 
   // PNG clean images awaiting conversion (#441): a friendly, batch-able step, not
   // a red unsupported-extension dump. Built from the disk-validated diagnostics.
@@ -1596,6 +1606,7 @@ export function CutListPanel({
       !cut.uploadedCid &&
       !cut.uploadedUrl,
   ).length;
+  const assetSummary = workspaceAssetSummary(assetDiagnostics);
 
   return (
     <div
@@ -1640,17 +1651,45 @@ export function CutListPanel({
           )}
         </div>
       </div>
-      {/* Lower-level / manual controls, collapsed by default so the board stays
-          focused on per-cut actions (#440). The guided Finish flow + per-cut
-          primary actions are the main path; these stay for power users. */}
       <details
-        className="border-b border-border flex-shrink-0"
-        data-testid="cut-advanced"
+        className="border-b border-border bg-surface/35 flex-shrink-0"
+        data-testid="cut-workspace-tools"
       >
-        <summary className="px-3 py-1.5 text-[10px] text-muted cursor-pointer hover:text-foreground">
-          Technical details
+        <summary className="list-none cursor-pointer px-3 py-2 hover:bg-surface/50">
+          <div className="flex items-start gap-3 justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="rounded-full border border-accent/30 bg-background px-2 py-0.5 font-medium text-accent">
+                  Workflow: {workflowLabel}
+                </span>
+                {assetSummary && (
+                  <span
+                    className="rounded-full border border-border bg-background px-2 py-0.5 text-muted"
+                    data-testid="workspace-asset-summary"
+                  >
+                    Assets: {assetSummary}
+                  </span>
+                )}
+                {conversionJobs.length > 0 && (
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-700">
+                    Convert {conversionJobs.length} PNG
+                    {conversionJobs.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-muted">
+                Per-cut actions stay on each card. Open workspace tools for
+                publish prep, asset recovery, narration cards, and workflow
+                guidance.
+              </p>
+            </div>
+            <span className="flex-shrink-0 rounded border border-border bg-background px-2 py-1 text-[10px] text-muted">
+              Workspace tools
+            </span>
+          </div>
         </summary>
-        <div className="px-3 py-2 flex flex-wrap items-center gap-2 text-[10px]">
+        <div className="border-t border-border px-3 py-2 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-[10px]">
           <span className="font-mono text-muted">
             {cutsFile.cuts.length} cuts
           </span>
@@ -1734,18 +1773,7 @@ export function CutListPanel({
           >
             {uploadProgress || "Upload & Prepare for Publish"}
           </button>
-        </div>
-      </details>
-      {/* Plain-language workflow + text-panel explainer (#360) so a non-technical
-          writer understands the order of operations and what a text panel is. */}
-      <details
-        className="px-3 py-1.5 border-b border-border bg-surface/40 flex-shrink-0"
-        data-testid="cartoon-workflow-help"
-      >
-        <summary className="cursor-pointer select-none text-[10px] text-muted hover:text-foreground">
-          Cut workflow help
-        </summary>
-        <div className="mt-1.5">
+          </div>
           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
             <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
               1. Letter
@@ -1768,6 +1796,103 @@ export function CutListPanel({
             for a narration or title card. It becomes a solid card exported as a
             final image.
           </div>
+          {conversionJobs.length > 0 && (
+            <div
+              className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px]"
+              data-testid="convert-artwork"
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="font-medium text-amber-700"
+                  data-testid="convert-artwork-count"
+                >
+                  {conversionJobs.length} PNG image
+                  {conversionJobs.length === 1 ? "" : "s"} found
+                </span>
+                <button
+                  onClick={() => convertAll(conversionJobs)}
+                  disabled={converting}
+                  data-testid="convert-all-btn"
+                  className="ml-auto px-2 py-0.5 border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
+                >
+                  {converting ? "Converting…" : "Convert all to WebP"}
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-muted">
+                PNG artwork is fine while drafting. Convert it before
+                lettering/export so PlotLink can publish it safely.
+              </p>
+              {convertResult && (
+                <p
+                  className="mt-1 text-[10px] text-muted"
+                  data-testid="convert-result"
+                >
+                  {convertResult}
+                </p>
+              )}
+              {conversionIssues.length > 0 && (
+                <details
+                  className="mt-1"
+                  data-testid="convert-technical-details"
+                >
+                  <summary className="text-[10px] text-muted cursor-pointer">
+                    Conversion notes
+                  </summary>
+                  <ul className="mt-1 ml-3 list-disc text-[10px] text-muted">
+                    {conversionIssues.map((m, i) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+          {assetDiagnostics &&
+            assetDiagnostics.length > 0 &&
+            (() => {
+              const s = summarizeAssetDiagnostics(assetDiagnostics);
+              const missing = assetDiagnostics.filter(
+                (d) => d.state === "missing",
+              );
+              return (
+                <div
+                  className="rounded border border-border bg-background p-2 text-[10px]"
+                  data-testid="asset-diagnostics"
+                >
+                  <span
+                    className="text-muted"
+                    data-testid="asset-diag-summary"
+                  >
+                    Assets: {s.uploaded} uploaded · {s.finalReady} final ·{" "}
+                    {s.cleanReady} clean · {s.planned} planned
+                    {s.needsConversion > 0
+                      ? ` · ${s.needsConversion} needs conversion`
+                      : ""}
+                    {s.missing > 0 ? ` · ${s.missing} missing` : ""}
+                  </span>
+                  {missing.length > 0 && (
+                    <ul
+                      className="mt-1 ml-3 list-disc text-error"
+                      data-testid="asset-diag-issues"
+                    >
+                      {missing.map((d) => (
+                        <li key={d.cutId}>{d.issue}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
+          <FinishEpisodePanel
+            checklist={finishChecklist}
+            issues={genWarnings}
+            onFinish={finishEpisode}
+            finishing={uploading}
+            progressText={uploadProgress}
+            canFinish={canFinish}
+            markdownReady={episodeState.markdownReady}
+            published={episodeState.published}
+          />
         </div>
       </details>
       {/* Stale bubble-renderer warning (#381): a final image lettered before the
@@ -1814,109 +1939,6 @@ export function CutListPanel({
           {syncResult}
         </div>
       )}
-      {/* Convert artwork step (#441, spec §8): PNG clean images are a normal
-          drafting intermediate, surfaced as a friendly batch conversion rather
-          than red "Unsupported extension" errors. The raw reasons stay available
-          under a collapsed "Technical details" disclosure. */}
-      {conversionJobs.length > 0 && (
-        <div
-          className="px-3 py-2 border-b border-amber-500/40 bg-amber-500/10 text-[11px] flex-shrink-0"
-          data-testid="convert-artwork"
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="font-medium text-amber-700"
-              data-testid="convert-artwork-count"
-            >
-              {conversionJobs.length} PNG image
-              {conversionJobs.length === 1 ? "" : "s"} found
-            </span>
-            <button
-              onClick={() => convertAll(conversionJobs)}
-              disabled={converting}
-              data-testid="convert-all-btn"
-              className="ml-auto px-2 py-0.5 border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
-            >
-              {converting ? "Converting…" : "Convert all to WebP"}
-            </button>
-          </div>
-          <p className="mt-1 text-[10px] text-muted">
-            PNG artwork is fine while drafting. Convert it before
-            lettering/export so PlotLink can publish it safely.
-          </p>
-          {convertResult && (
-            <p
-              className="mt-1 text-[10px] text-muted"
-              data-testid="convert-result"
-            >
-              {convertResult}
-            </p>
-          )}
-          {conversionIssues.length > 0 && (
-            <details className="mt-1" data-testid="convert-technical-details">
-              <summary className="text-[10px] text-muted cursor-pointer">
-                Technical details
-              </summary>
-              <ul className="mt-1 ml-3 list-disc text-[10px] text-muted">
-                {conversionIssues.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-      {/* Read-only per-cut asset state validated against disk (#427): a compact
-          state tally + a precise per-cut reason when a recorded path is broken,
-          so "files exist but aren't shown" / a typoed path is a clear diagnostic
-          rather than a generic publish warning. */}
-      {assetDiagnostics &&
-        assetDiagnostics.length > 0 &&
-        (() => {
-          const s = summarizeAssetDiagnostics(assetDiagnostics);
-          const missing = assetDiagnostics.filter((d) => d.state === "missing");
-          return (
-            <div
-              className="px-3 py-1.5 border-b border-border bg-surface/40 text-[10px] flex-shrink-0"
-              data-testid="asset-diagnostics"
-            >
-              <span className="text-muted" data-testid="asset-diag-summary">
-                Assets: {s.uploaded} uploaded · {s.finalReady} final ·{" "}
-                {s.cleanReady} clean · {s.planned} planned
-                {s.needsConversion > 0
-                  ? ` · ${s.needsConversion} needs conversion`
-                  : ""}
-                {s.missing > 0 ? ` · ${s.missing} missing` : ""}
-              </span>
-              {missing.length > 0 && (
-                <ul
-                  className="mt-1 ml-3 list-disc text-error"
-                  data-testid="asset-diag-issues"
-                >
-                  {missing.map((d) => (
-                    <li key={d.cutId}>{d.issue}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })()}
-      {/* Guided Finish-episode flow (#414): writer-language step status, one primary
-          "Finish episode" action that uploads finals then prepares the publish
-          markdown in order, and any blockers grouped by the step that fixes them —
-          replacing the old flat amber warning list. The lower-level controls in the
-          header above stay available for manual recovery. */}
-      <FinishEpisodePanel
-        checklist={finishChecklist}
-        issues={genWarnings}
-        onFinish={finishEpisode}
-        finishing={uploading}
-        progressText={uploadProgress}
-        canFinish={canFinish}
-        markdownReady={episodeState.markdownReady}
-        published={episodeState.published}
-      />
-
       {/* Full cut review (#488): all clean cuts are shown vertically first, with
           explicit between-scene slots for narration/title cards. */}
       <div
@@ -1965,6 +1987,7 @@ export function CutListPanel({
               conversionPng={conversionByCut.get(cut.id) ?? null}
               onConvert={convertCut}
               converting={converting}
+              featured={index === 0}
               rowRef={(el) => {
                 if (el) rowRefs.current.set(cut.id, el);
                 else rowRefs.current.delete(cut.id);
@@ -2021,4 +2044,33 @@ function BetweenSceneSlot({
       </button>
     </div>
   );
+}
+
+function workspaceAssetSummary(
+  assetDiagnostics: CutAssetDiagnostic[] | null,
+): string | null {
+  if (!assetDiagnostics || assetDiagnostics.length === 0) return null;
+  const s = summarizeAssetDiagnostics(assetDiagnostics);
+  const parts = [
+    `${s.cleanReady} clean`,
+    `${s.finalReady} final`,
+    `${s.uploaded} uploaded`,
+  ];
+  if (s.needsConversion > 0) parts.push(`${s.needsConversion} PNG`);
+  if (s.missing > 0) parts.push(`${s.missing} missing`);
+  return parts.join(" · ");
+}
+
+function currentWorkflowLabel(
+  checklist: ReturnType<typeof cartoonChecklist>,
+  markdownReady: boolean,
+  published: boolean,
+): string {
+  if (published) return "Published to PlotLink";
+  if (markdownReady) return "Ready to publish";
+  const current =
+    checklist.steps.find((step) => step.status === "current")
+    ?? checklist.steps.find((step) => step.status === "todo")
+    ?? checklist.steps[checklist.steps.length - 1];
+  return current?.label ?? "Review cuts";
 }

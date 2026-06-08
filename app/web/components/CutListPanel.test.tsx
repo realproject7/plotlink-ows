@@ -1861,7 +1861,7 @@ describe("CutListPanel stale bubble-renderer warning (#381)", () => {
         authFetch={mockAuthFetch({ ok: true, data: cutsData })}
       />,
     );
-    await screen.findByTestId("cartoon-workflow-help");
+    await screen.findByTestId("cut-workspace-tools");
     expect(
       screen.queryByTestId("stale-bubble-export-warning"),
     ).not.toBeInTheDocument();
@@ -1881,7 +1881,7 @@ describe("CutListPanel stale bubble-renderer warning (#381)", () => {
         authFetch={mockAuthFetch({ ok: true, data: cutsData })}
       />,
     );
-    await screen.findByTestId("cartoon-workflow-help");
+    await screen.findByTestId("cut-workspace-tools");
     expect(
       screen.queryByTestId("stale-bubble-export-warning"),
     ).not.toBeInTheDocument();
@@ -2221,15 +2221,17 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
       "Between-scene lettering",
     );
 
-    // Technical controls live under a collapsed-by-default Details disclosure.
-    const advanced = screen.getByTestId("cut-advanced");
-    expect(advanced.tagName.toLowerCase()).toBe("details");
-    expect(advanced).not.toHaveAttribute("open");
-    expect(within(advanced).getByTestId("sync-clean-btn")).toBeInTheDocument();
-    const help = screen.getByTestId("cartoon-workflow-help");
-    expect(help.tagName.toLowerCase()).toBe("details");
-    expect(help).not.toHaveAttribute("open");
-    expect(within(help).getByText("Cut workflow help")).toBeInTheDocument();
+    // Low-frequency workflow controls are collapsed into one workspace-tools disclosure.
+    const tools = screen.getByTestId("cut-workspace-tools");
+    expect(tools.tagName.toLowerCase()).toBe("details");
+    expect(tools).not.toHaveAttribute("open");
+    expect(within(tools).getByTestId("sync-clean-btn")).toBeInTheDocument();
+    expect(
+      within(tools).getByText(/Workflow: Create clean images/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/^Technical details$/i),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("finish-episode-details")).not.toHaveAttribute(
       "open",
     );
