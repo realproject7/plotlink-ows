@@ -152,6 +152,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
   const agentProviderMap = useRef<Map<string, "claude" | "codex">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
+  const workflowActionSeqRef = useRef(0);
   const renameRef = useRef<
     | ((
         oldName: string,
@@ -1069,10 +1070,11 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       const story = selectedStory;
       if (!story) return;
       const queueWorkflowAction = (nextAction: CoachUiAction) => {
-        setWorkflowActionRequest((prev) => ({
+        workflowActionSeqRef.current += 1;
+        setWorkflowActionRequest({
           action: nextAction,
-          seq: (prev?.seq ?? 0) + 1,
-        }));
+          seq: workflowActionSeqRef.current,
+        });
       };
       switch (action) {
         case "view-progress":

@@ -1040,9 +1040,18 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
         action: "open-lettering",
       }),
     );
+    const firstSeq = childProps.workflowActionRequest?.seq;
 
     fireEvent.click(screen.getByTestId("mock-handle-workflow-action"));
     await waitFor(() => expect(childProps.workflowActionRequest).toBeNull());
+
+    fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+    await waitFor(() =>
+      expect(childProps.workflowActionRequest).toMatchObject({
+        action: "open-lettering",
+      }),
+    );
+    expect(childProps.workflowActionRequest?.seq).toBeGreaterThan(firstSeq ?? 0);
   }, 10000);
 
   it("passes generate-markdown through to PreviewPanel instead of dropping it at file selection", async () => {
