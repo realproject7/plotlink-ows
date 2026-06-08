@@ -140,6 +140,13 @@ interface FileData {
 
 type Tab = "preview" | "edit";
 
+function workflowActionNeedsCuts(action: CoachUiAction | null | undefined): boolean {
+  return action === "open-cuts"
+    || action === "open-lettering"
+    || action === "upload"
+    || action === "refresh-assets";
+}
+
 export function PreviewPanel({
   storyName,
   fileName,
@@ -276,6 +283,10 @@ export function PreviewPanel({
 
   const prevFileRef = useRef<string | null>(null);
   const appliedWorkflowSeqRef = useRef(0);
+  const pendingWorkflowCutsRef = useRef(false);
+  pendingWorkflowCutsRef.current = workflowActionNeedsCuts(
+    workflowActionRequest?.action,
+  );
 
   const loadFile = useCallback(async () => {
     if (!storyName || !fileName) {
@@ -806,7 +817,7 @@ export function PreviewPanel({
     setDetectedCoverWarning(null);
     setCoverStatus("unknown");
     coverUserTouchedRef.current = false;
-    setGenesisEditMode("text");
+    setGenesisEditMode(pendingWorkflowCutsRef.current ? "cuts" : "text");
   }, [storyName, fileName]);
 
   // Auto-detect an agent-created cover (assets/cover.webp|jpg) for an UNPUBLISHED
