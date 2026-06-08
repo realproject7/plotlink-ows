@@ -51,27 +51,16 @@ function makeAuthFetch() {
   });
 }
 
-describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
-  it("a Genesis coach UI action lands on the actionable cut workspace, not the markdown editor", async () => {
+describe("PreviewPanel — cartoon file chrome", () => {
+  it("does not render the old top workflow coach in cartoon file views (#498)", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-
-    // The coach loads for Genesis with an in-app (lettering) action.
-    const doBtn = await screen.findByTestId("workflow-coach-do");
-    expect(screen.getByTestId("workflow-coach-action")).toHaveTextContent(/Review cuts and start lettering/i);
-    expect(doBtn).toHaveTextContent("Next Action");
-    // Before acting, the cut workspace isn't mounted.
-    expect(screen.queryByTestId("cut-list-panel")).not.toBeInTheDocument();
-
-    fireEvent.click(doBtn);
-
-    // After: the Genesis cut workspace is mounted and actionable — NOT the
-    // plain markdown textarea (the bug @re1 caught).
-    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+    expect(await screen.findByText("The story begins.")).toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-coach")).not.toBeInTheDocument();
   });
 
   it("Genesis Edit tab keeps the opening-text editor and reaches the cut workspace via the sub-toggle", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-    await screen.findByTestId("workflow-coach"); // wait for first render to settle
+    await screen.findByText("The story begins.");
 
     fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
     // Default Genesis Edit sub-view is the opening-text editor (prose preserved).
@@ -94,7 +83,7 @@ describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
       />,
     );
 
-    await screen.findByTestId("workflow-coach");
+    await screen.findByText("The story begins.");
 
     for (let i = 0; i < 2; i++) {
       fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));

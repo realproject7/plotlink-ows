@@ -119,30 +119,14 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(screen.getByTestId("workflow-section-4")).toHaveTextContent("Episode 2");
   });
 
-  it("places exactly one prominent persistent next-action CTA above the workflow map", async () => {
+  it("leaves next-action rendering to the surrounding right-pane shell", async () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
-    const nextAction = screen.getByTestId("persistent-next-action");
-    expect(within(nextAction).getAllByTestId("workflow-coach")).toHaveLength(1);
+    expect(screen.queryByTestId("persistent-next-action")).toBeNull();
     expect(screen.queryByTestId("section-cta")).toBeNull();
-
-    // The active step is Genesis (coach targets genesis.md, cover present), but
-    // the CTA is now persistent above the map rather than embedded in section 3.
     const genesisSection = screen.getByTestId("workflow-section-3");
     expect(genesisSection).toHaveAttribute("data-status", "current");
-
-    expect(within(nextAction).getByTestId("workflow-coach-action")).toHaveTextContent("Next: Publish Episode 1 / Genesis to PlotLink");
-    expect(within(nextAction).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
-    expect(within(nextAction).queryByRole("button", { name: /Publish Episode 1/i })).toBeNull();
-  });
-
-  it("clicking the active CTA routes to the episode it concerns", async () => {
-    const onOpenFile = vi.fn();
-    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={onOpenFile} />);
-    await screen.findByTestId("story-progress-panel");
-    fireEvent.click(screen.getByTestId("workflow-coach-do"));
-    expect(onOpenFile).toHaveBeenCalledWith("god-cell", "genesis.md");
   });
 
   it("shows per-step checklist items in the Genesis section", async () => {
@@ -173,18 +157,11 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
   // #444 RE1: when Story Info (cover/metadata) is incomplete and Genesis is
   // otherwise ready, the single CTA must be in Define Story Info, not Genesis.
   it("puts the single CTA in Story Info when the cover is missing (not in the ready Genesis)", async () => {
-    const onOpenStoryInfo = vi.fn();
-    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_NEEDS_COVER)} onOpenFile={vi.fn()} onOpenStoryInfo={onOpenStoryInfo} />);
+    render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_NEEDS_COVER)} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
     expect(screen.queryByTestId("section-cta")).toBeNull();
-    const nextAction = screen.getByTestId("persistent-next-action");
-    expect(within(nextAction).getByTestId("story-info-cta")).toBeInTheDocument();
-    expect(within(nextAction).getByTestId("story-info-next-action")).toHaveTextContent(/Next: Add a cover image/i);
-    const button = within(nextAction).getByRole("button", { name: "Next Action" });
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
-    expect(onOpenStoryInfo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("persistent-next-action")).toBeNull();
 
     const info = screen.getByTestId("workflow-section-1");
     expect(info).toHaveAttribute("data-status", "current");
@@ -201,10 +178,8 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_MIDPROD_NEEDS_COVER)} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
-    const nextAction = screen.getByTestId("persistent-next-action");
     expect(screen.queryByTestId("section-cta")).toBeNull();
-    expect(within(nextAction).getByTestId("workflow-coach-action")).toHaveTextContent(/Next: Review cuts and start lettering/i);
-    expect(within(nextAction).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
+    expect(screen.queryByTestId("persistent-next-action")).toBeNull();
 
     // Genesis (Episode 1) remains the current workflow section.
     const genesis = screen.getByTestId("workflow-section-3");
@@ -215,9 +190,6 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     const info = screen.getByTestId("workflow-section-1");
     expect(info).not.toHaveAttribute("data-status", "current");
     expect(within(info).getByText(/Missing/)).toBeInTheDocument();
-    // The cover CTA / "add a cover" wording must not appear anywhere.
-    expect(screen.queryByTestId("story-info-cta")).toBeNull();
-    expect(screen.queryByText(/Add a cover image/i)).toBeNull();
   });
 
   // #444 RE2: with the bible written but Genesis not yet written, the
@@ -226,10 +198,8 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch(CARTOON_NO_GENESIS)} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
-    const nextAction = screen.getByTestId("persistent-next-action");
     expect(screen.queryByTestId("section-cta")).toBeNull();
-    expect(within(nextAction).getByTestId("workflow-coach")).toHaveTextContent(/Write the Genesis/i);
-    expect(within(nextAction).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
+    expect(screen.queryByTestId("persistent-next-action")).toBeNull();
 
     // Whitepaper is complete; the Genesis (Episode 1) section is the current step.
     expect(screen.getByTestId("workflow-section-2")).toHaveAttribute("data-status", "done");

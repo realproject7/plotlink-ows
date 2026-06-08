@@ -780,7 +780,7 @@ function makeTwoCartoonAuthFetch() {
         ok: true,
         json: () => Promise.resolve({ stories }),
       });
-    if (url.endsWith("/progress"))
+    if (url.includes("/progress"))
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(progress),
@@ -847,15 +847,16 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     expect(screen.queryByTestId("mock-preview")).not.toBeInTheDocument();
   }, 10000);
 
-  it("shows the Story Info next-action CTA on story-level right-pane pages when cover is missing (#487 RE1)", async () => {
+  it("shows the persistent Story Info next-action CTA at the bottom of cartoon right-pane pages when cover is missing (#487 RE1)", async () => {
     const { fn } = makeTwoCartoonAuthFetch();
     render(<StoriesPage token="t" authFetch={fn} />);
     await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
     childProps.onSelectStory!("cartoon-a");
 
     fireEvent.click(await screen.findByTestId("nav-tab-publish"));
+    expect(screen.queryByTestId("workflow-context-next-action")).not.toBeInTheDocument();
     const publishCta = await screen.findByTestId(
-      "workflow-context-next-action",
+      "workflow-persistent-next-action",
     );
     expect(
       within(publishCta).getByTestId("story-info-next-action"),
@@ -877,12 +878,28 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
       ),
     );
 
-    const storyInfoCta = screen.getByTestId("workflow-context-next-action");
+    const storyInfoCta = screen.getByTestId("workflow-persistent-next-action");
     expect(
       within(storyInfoCta).getByTestId("story-info-next-action"),
     ).toHaveTextContent(/Next: Add a cover image before publishing/i);
     expect(
       within(storyInfoCta).queryByText("No next action available"),
     ).not.toBeInTheDocument();
+  }, 10000);
+
+  it("keeps the persistent CTA on file-backed cartoon routes without restoring the old top strip", async () => {
+    const { fn } = makeTwoCartoonAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("cartoon-a", "genesis.md");
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+
+    expect(screen.queryByTestId("workflow-context-next-action")).not.toBeInTheDocument();
+    const cta = await screen.findByTestId("workflow-persistent-next-action");
+    expect(within(cta).getByTestId("story-info-next-action")).toHaveTextContent(
+      /Next: Add a cover image before publishing/i,
+    );
+    expect(within(cta).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
   }, 10000);
 });
