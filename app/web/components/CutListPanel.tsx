@@ -413,7 +413,9 @@ function CutRow({
     !cut.uploadedUrl &&
     canDraftLettering(cut);
   const aiDraftLabel =
-    (cut.overlays?.length ?? 0) > 0 ? "Re-draft with AI" : "AI draft lettering";
+    (cut.overlays?.length ?? 0) > 0
+      ? "Re-draft bubbles with AI"
+      : "AI draft bubbles";
 
   const primary: { label: string; onClick: () => void; testid: string } | null =
     board.key === "convert"

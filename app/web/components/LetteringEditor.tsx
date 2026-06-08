@@ -224,6 +224,7 @@ export function LetteringEditor({
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const [imageBounds, setImageBounds] = useState({
     x: 0,
     y: 0,
@@ -681,6 +682,23 @@ export function LetteringEditor({
     displayFontFamily,
   ]);
   const warningCount = Object.keys(overlayWarnings).length;
+  const checklistChips: Array<{
+    key: string;
+    label: string;
+    done: boolean;
+  }> = [
+    { key: "clean-image", label: "Clean", done: checklist.hasCleanImage },
+    { key: "script-text", label: "Script", done: checklist.hasScriptText },
+    {
+      key: "bubbles",
+      label: checklist.bubblesPlaced
+        ? `Bubbles ${checklist.bubblesPlaced}`
+        : "Bubbles",
+      done: checklist.bubblesPlaced > 0,
+    },
+    { key: "exported", label: "Exported", done: checklist.exported },
+    { key: "uploaded", label: "Uploaded", done: checklist.uploaded },
+  ];
 
   const isTextPanel = cut.kind === "text";
   const isNarrationCut = !cut.cleanImagePath;
@@ -708,42 +726,81 @@ export function LetteringEditor({
       data-testid="focused-lettering-editor"
     >
       {/* Toolbar */}
-      <div className="px-4 py-3 border-b border-border bg-surface/40 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
-              Focused lettering editor
-            </span>
-            <span className="text-xs font-mono text-muted">
-              {targetLabel ?? `Cut #${cut.id}`}
-            </span>
-          </div>
-          <p className="mt-0.5 text-[11px] text-muted">
-            Place bubbles, captions, SFX, or between-scene card text, then save
-            back to the full cut review.
-          </p>
-          <span className="text-[10px] text-muted" data-testid="overlay-count">
-            {overlays.length} overlays
-          </span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+      <div
+        className="px-3 py-2 border-b border-border bg-surface/40 flex items-center justify-between gap-2 flex-wrap"
+        data-testid="lettering-toolbar"
+      >
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <button
             onClick={onClose}
-            className="px-3 py-1 text-xs border border-border rounded text-muted hover:text-foreground"
+            className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:text-foreground"
             data-testid="return-to-cut-review-btn"
           >
             Back to cut review
           </button>
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
+            Focused lettering editor
+          </span>
+          <span className="text-[11px] font-mono text-muted">
+            {targetLabel ?? `Cut #${cut.id}`}
+          </span>
+          <span
+            className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted"
+            data-testid="overlay-count"
+          >
+            {overlays.length} overlays
+          </span>
+          {checklistChips.map((chip) => (
+            <span
+              key={chip.key}
+              data-testid={`lettering-check-${chip.key}`}
+              data-done={chip.done ? "true" : "false"}
+              className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                chip.done
+                  ? "border-green-700/30 bg-green-700/10 text-green-700"
+                  : "border-border bg-background text-muted"
+              }`}
+            >
+              {chip.done ? "✓ " : "○ "}
+              {chip.label}
+            </span>
+          ))}
+          {cut.aiDraft?.status === "generated" && (
+            <span
+              className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] text-accent"
+              data-testid="ai-draft-current-target"
+            >
+              AI draft ready
+            </span>
+          )}
+          {staleExport && (
+            <span
+              className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700"
+              data-testid="lettering-stale-chip"
+            >
+              Re-export needed
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {onToggleWorkspaceVisible && (
             <button
               onClick={onToggleWorkspaceVisible}
-              className="px-3 py-1 text-xs border border-border rounded text-muted hover:border-accent hover:text-accent"
+              className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:border-accent hover:text-accent"
               data-testid="toggle-work-area-btn"
             >
               {workspaceVisible ? "Hide work area" : "Show work area"}
             </button>
           )}
-          <div className="flex items-center gap-1 ml-2">
+          <button
+            type="button"
+            onClick={() => setShowHelp((prev) => !prev)}
+            className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:border-accent hover:text-accent"
+            data-testid="lettering-help-toggle"
+          >
+            {showHelp ? "Hide help" : "Help"}
+          </button>
+          <div className="flex items-center gap-1">
             <button
               onClick={() => addOverlay("speech")}
               className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
@@ -767,15 +824,19 @@ export function LetteringEditor({
             </button>
           </div>
           {exportError && (
-            <span className="text-[10px] text-error">{exportError}</span>
+            <span className="text-[10px] text-error max-w-[18rem]">
+              {exportError}
+            </span>
           )}
           {saveError && (
-            <span className="text-[10px] text-error">{saveError}</span>
+            <span className="text-[10px] text-error max-w-[18rem]">
+              {saveError}
+            </span>
           )}
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="px-3 py-1 text-xs border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+            className="px-2.5 py-1 text-[11px] border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50"
             data-testid="export-btn"
           >
             {exporting ? "Exporting..." : "Export"}
@@ -784,20 +845,31 @@ export function LetteringEditor({
             onClick={() => {
               void handleSave();
             }}
-            className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent-dim"
+            className="px-2.5 py-1 text-[11px] bg-accent text-white rounded hover:bg-accent-dim"
             data-testid="save-lettering-btn"
           >
             Save
           </button>
           <button
             onClick={onClose}
-            className="px-3 py-1 text-xs text-muted hover:text-foreground border border-border rounded"
+            className="px-2.5 py-1 text-[11px] text-muted hover:text-foreground border border-border rounded"
             data-testid="cancel-lettering-btn"
           >
             Cancel
           </button>
         </div>
       </div>
+
+      {showHelp && (
+        <div
+          className="px-3 py-1.5 border-b border-border bg-background text-[10px] text-muted"
+          data-testid="lettering-help-panel"
+        >
+          Add or select a bubble, edit it in the inspector, then Save to return
+          to cut review. Use Export after the overlay layout is ready. Text cards
+          use narration overlays on the canvas.
+        </div>
+      )}
 
       {invalidOverlayCount > 0 && !acknowledgedInvalid ? (
         <div
@@ -856,40 +928,9 @@ export function LetteringEditor({
         </div>
       )}
 
-      {/* Per-cut lettering checklist (#336): shows how far this cut has come so
-          the writer can finish it from the editor without inspecting cuts.json. */}
-      <div
-        className="px-3 py-1 border-b border-border flex items-center gap-3 flex-wrap text-[10px] text-muted"
-        data-testid="lettering-checklist"
-      >
-        {(
-          [
-            ["clean-image", "Clean image", checklist.hasCleanImage],
-            ["script-text", "Script text", checklist.hasScriptText],
-            [
-              "bubbles",
-              `Bubbles placed${checklist.bubblesPlaced ? ` (${checklist.bubblesPlaced})` : ""}`,
-              checklist.bubblesPlaced > 0,
-            ],
-            ["exported", "Final exported", checklist.exported],
-            ["uploaded", "Uploaded", checklist.uploaded],
-          ] as [string, string, boolean][]
-        ).map(([key, label, done]) => (
-          <span
-            key={key}
-            data-testid={`lettering-check-${key}`}
-            data-done={done ? "true" : "false"}
-            className={`flex items-center gap-1 ${done ? "text-green-700" : "text-muted/70"}`}
-          >
-            <span aria-hidden>{done ? "✓" : "○"}</span>
-            {label}
-          </span>
-        ))}
-      </div>
-
       {/* Stale-export warning (#336, re1): bubbles changed since the recorded
           export/upload, so the final image/uploaded URL are out of date. The
-          checklist already marks export/upload incomplete; this says why. */}
+          compact toolbar chips already mark export/upload incomplete; this says why. */}
       {staleExport && (
         <div
           className="px-3 py-1 border-b border-border bg-amber-500/10 text-[10px] text-amber-700"
@@ -1175,55 +1216,16 @@ export function LetteringEditor({
 
         {/* Inspector panel */}
         <div className="w-64 border-l border-border p-3 overflow-y-auto flex-shrink-0">
-          {cut.aiDraft?.status === "generated" && (
-            <div
-              className="mb-3 rounded border border-accent/30 bg-accent/5 p-2 space-y-1"
-              data-testid="ai-draft-current-target"
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
-                AI draft ready
-              </p>
-              <p className="text-[11px] text-muted">
-                These first-pass overlays came from the cut script. Review and
-                tune them here before exporting the final panel.
-              </p>
-            </div>
-          )}
-          {/* Insert-from-script (#336): drop the cut's planned dialogue/narration/
-              SFX straight into a prefilled overlay — no copy/paste out of JSON. */}
-          {scriptLines.length > 0 && (
-            <div className="mb-3 space-y-1.5" data-testid="script-insert-panel">
-              <span className="text-[10px] font-medium text-muted">
-                From script
-              </span>
-              <div className="flex flex-col gap-1">
-                {scriptLines.map((line) => (
-                  <button
-                    key={line.key}
-                    onClick={() => addScriptLine(line)}
-                    data-testid={`script-insert-${line.key}`}
-                    title={`Add ${line.type} overlay with this text`}
-                    className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
-                  >
-                    <span className="font-medium text-accent">
-                      + {TYPE_LABEL[line.type]}
-                    </span>{" "}
-                    <span className="text-muted">
-                      {line.speaker ? `${line.speaker}: ` : ""}
-                      {line.text.length > 32
-                        ? `${line.text.slice(0, 32)}…`
-                        : line.text}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {selectedOverlay ? (
             <div className="space-y-3">
-              <p className="text-xs font-medium text-foreground">
-                {TYPE_LABEL[selectedOverlay.type]}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-foreground">
+                  {TYPE_LABEL[selectedOverlay.type]}
+                </p>
+                <span className="text-[10px] text-muted">
+                  #{overlays.findIndex((o) => o.id === selectedOverlay.id) + 1}
+                </span>
+              </div>
 
               {selectedOverlay.speaker !== undefined && (
                 <label className="block space-y-1">
@@ -1629,11 +1631,80 @@ export function LetteringEditor({
               >
                 {confirmDelete ? "Click again to delete" : "Delete"}
               </button>
+
+              {scriptLines.length > 0 && (
+                <div
+                  className="space-y-1.5 border-t border-border pt-3"
+                  data-testid="script-insert-panel"
+                >
+                  <span className="text-[10px] font-medium text-muted">
+                    Add from script
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    {scriptLines.map((line) => (
+                      <button
+                        key={line.key}
+                        onClick={() => addScriptLine(line)}
+                        data-testid={`script-insert-${line.key}`}
+                        title={`Add ${line.type} overlay with this text`}
+                        className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                      >
+                        <span className="font-medium text-accent">
+                          + {TYPE_LABEL[line.type]}
+                        </span>{" "}
+                        <span className="text-muted">
+                          {line.speaker ? `${line.speaker}: ` : ""}
+                          {line.text.length > 32
+                            ? `${line.text.slice(0, 32)}…`
+                            : line.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
-            <p className="text-xs text-muted" data-testid="inspector-empty">
-              Select an overlay to inspect.
-            </p>
+            <div className="space-y-3">
+              <p className="text-xs text-muted" data-testid="inspector-empty">
+                Select or add an overlay to inspect it.
+              </p>
+              {cut.aiDraft?.status === "generated" && (
+                <div className="rounded border border-accent/30 bg-accent/5 p-2 text-[10px] text-muted">
+                  AI drafted overlays are editable here before export.
+                </div>
+              )}
+              {/* Insert-from-script (#336): drop the cut's planned dialogue/narration/
+                  SFX straight into a prefilled overlay — no copy/paste out of JSON. */}
+              {scriptLines.length > 0 && (
+                <div className="space-y-1.5" data-testid="script-insert-panel">
+                  <span className="text-[10px] font-medium text-muted">
+                    Add from script
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    {scriptLines.map((line) => (
+                      <button
+                        key={line.key}
+                        onClick={() => addScriptLine(line)}
+                        data-testid={`script-insert-${line.key}`}
+                        title={`Add ${line.type} overlay with this text`}
+                        className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
+                      >
+                        <span className="font-medium text-accent">
+                          + {TYPE_LABEL[line.type]}
+                        </span>{" "}
+                        <span className="text-muted">
+                          {line.speaker ? `${line.speaker}: ` : ""}
+                          {line.text.length > 32
+                            ? `${line.text.slice(0, 32)}…`
+                            : line.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
