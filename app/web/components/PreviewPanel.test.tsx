@@ -82,4 +82,39 @@ describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
     fireEvent.click(screen.getByTestId("genesis-edit-mode-cuts"));
     expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
   });
+
+  it("keeps the opening-text save bar and episode footer outside the editor body after repeated tab/subview switches (#504)", async () => {
+    render(
+      <PreviewPanel
+        storyName="god-cell"
+        fileName="genesis.md"
+        authFetch={makeAuthFetch()}
+        contentType="cartoon"
+        hasGenesis
+      />,
+    );
+
+    await screen.findByTestId("workflow-coach");
+
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
+      expect(await screen.findByTestId("prose-editor-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("prose-editor-savebar")).toHaveTextContent(
+        "No changes",
+      );
+      expect(screen.getByTestId("preview-panel-footer")).toBeInTheDocument();
+      expect(screen.getByTestId("cartoon-review-publish")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("genesis-edit-mode-cuts"));
+      expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("genesis-edit-mode-text"));
+      expect(await screen.findByTestId("prose-editor-textarea")).toBeInTheDocument();
+      expect(screen.getByTestId("prose-editor-savebar")).toBeInTheDocument();
+      expect(screen.getByTestId("preview-panel-footer")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /^Preview/ }));
+      expect(await screen.findByText("The story begins.")).toBeInTheDocument();
+    }
+  });
 });

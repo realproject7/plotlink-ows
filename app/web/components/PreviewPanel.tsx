@@ -1213,7 +1213,8 @@ export function PreviewPanel({
   // Plain prose editor (fiction files + the Genesis "Opening text" sub-view).
   const proseEditor = (
     <div
-      className="flex-1 min-h-0 flex flex-col"
+      className="flex-1 min-h-0 flex flex-col overflow-hidden"
+      data-testid="prose-editor-shell"
       style={{ background: "var(--paper-bg)" }}
     >
       <textarea
@@ -1231,8 +1232,12 @@ export function PreviewPanel({
           color: "var(--text)",
         }}
         spellCheck={false}
+        data-testid="prose-editor-textarea"
       />
-      <div className="px-3 py-1.5 border-t border-border flex items-center justify-between">
+      <div
+        className="shrink-0 px-3 py-1.5 border-t border-border flex items-center justify-between bg-surface/95"
+        data-testid="prose-editor-savebar"
+      >
         <span className="text-xs text-muted">
           {dirty ? "Unsaved changes" : "No changes"}
         </span>
@@ -1248,7 +1253,7 @@ export function PreviewPanel({
   );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 flex flex-col">
       {/* Header with file path + tabs */}
       {!hideFocusedEditorChrome && (
         <div className="border-b border-border">
@@ -1475,7 +1480,10 @@ export function PreviewPanel({
 
       {/* Action bar */}
       {!hideFocusedEditorChrome && (
-        <div className="px-3 py-2 border-t border-border flex items-center justify-between">
+        <div
+          className="shrink-0 px-3 py-2 border-t border-border flex items-center justify-between bg-surface/95"
+          data-testid="preview-panel-footer"
+        >
           {fileName === "structure.md" ? (
             <p
               className="text-muted text-xs italic"
