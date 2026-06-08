@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { LetteringEditor } from "./LetteringEditor";
-import { AssetImage, assetUrl } from "./asset-image";
+import { assetUrl } from "./asset-image";
+import { CutOverlayPreview } from "./CutOverlayPreview";
 import { buildCodexTaskPrompt } from "@app-lib/cartoon-prompt";
 import type { Cut as LibCut } from "@app-lib/cuts";
 import { isTextPanel, isStaleTailedExport } from "@app-lib/cuts";
@@ -265,6 +266,7 @@ function CutRow({
   cut,
   storyName,
   plotFile,
+  language,
   expanded,
   onToggle,
   authFetch,
@@ -286,6 +288,7 @@ function CutRow({
   cut: Cut;
   storyName: string;
   plotFile: string;
+  language?: string;
   expanded: boolean;
   onToggle: () => void;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
@@ -436,6 +439,11 @@ function CutRow({
               }
             : null; // exported / uploaded — the next action is the episode-level upload/publish
   const reviewState = letteringReviewState(cut);
+  const canOpenPreviewEditor =
+    !!cut.cleanImagePath ||
+    !!cut.narration ||
+    cut.dialogue.length > 0 ||
+    isTextPanel(cut);
 
   return (
     <div
@@ -463,13 +471,19 @@ function CutRow({
             {board.label}
           </span>
         </div>
-        {thumbPath ? (
-          <AssetImage
+        {thumbPath || isTextPanel(cut) ? (
+          <CutOverlayPreview
             storyName={storyName}
             assetPath={thumbPath}
             authFetch={authFetch}
             alt={`Cut ${cut.id} artwork`}
-            className="w-full max-h-[32rem] object-contain rounded border border-border bg-white"
+            overlays={cut.overlays}
+            language={language}
+            background={cut.background}
+            aspectRatio={cut.aspectRatio}
+            onClick={canOpenPreviewEditor ? onOpenEditor : undefined}
+            className="w-full"
+            testId={`cut-preview-${cut.id}`}
           />
         ) : (
           <div
@@ -1926,6 +1940,7 @@ export function CutListPanel({
               cut={cut}
               storyName={storyName}
               plotFile={plotFile}
+              language={language}
               expanded={expandedCut === cut.id}
               onToggle={() =>
                 setExpandedCut(expandedCut === cut.id ? null : cut.id)
