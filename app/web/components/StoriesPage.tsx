@@ -1300,17 +1300,19 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         </div>
         {!focusedLetteringMode && isCartoonStory && selectedStory && (
           <div
-            className="flex-shrink-0 border-t border-border bg-background/95 backdrop-blur"
+            className="pointer-events-none absolute bottom-4 right-4 z-10 w-[min(22rem,calc(100%-2rem))]"
             data-testid="workflow-persistent-next-action"
           >
-            <CartoonNextAction
-              storyName={selectedStory}
-              fileName={cartoonView === null ? selectedFile : null}
-              authFetch={authFetch}
-              refreshKey={cartoonPublishRefresh}
-              onCoachAction={handleWorkflowNextAction}
-              onOpenStoryInfo={() => setCartoonView("story-info")}
-            />
+            <div className="pointer-events-auto rounded-xl border border-border/80 bg-background/95 shadow-lg backdrop-blur">
+              <CartoonNextAction
+                storyName={selectedStory}
+                fileName={cartoonView === null ? selectedFile : null}
+                authFetch={authFetch}
+                refreshKey={cartoonPublishRefresh}
+                onCoachAction={handleWorkflowNextAction}
+                onOpenStoryInfo={() => setCartoonView("story-info")}
+              />
+            </div>
           </div>
         )}
         {publishProgress && (
