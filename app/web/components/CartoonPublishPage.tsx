@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress } from "@app-lib/story-progress";
-import { cartoonGenesisReadiness, classifyCartoonReadiness, groupCartoonIssues } from "@app-lib/cartoon-readiness";
+import { cartoonChecklist, cartoonGenesisReadiness, classifyCartoonReadiness, groupCartoonIssues } from "@app-lib/cartoon-readiness";
 import type { Cut } from "@app-lib/cuts";
+import { CartoonProductionStatus } from "./CartoonProductionStatus";
 import { derivePublishTitle, isRawFilenameTitle, hasExplicitEpisodeTitle } from "../lib/publish-helpers";
 
 interface CartoonPublishPageProps {
@@ -22,9 +23,6 @@ interface CartoonPublishPageProps {
   isNsfw?: boolean;
   refreshKey?: number;
 }
-
-type CheckState = "done" | "todo";
-interface PublishCheck { label: string; status: CheckState; detail?: string | null }
 
 /**
  * Dedicated cartoon "Publish" workflow page (#449, spec §10).
@@ -172,18 +170,8 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
     );
   }
 
-  const c = active.cuts;
   const coverDone = progress.cover === "present";
-  const checks: PublishCheck[] = [
-    { label: "Opening text ready", status: "done" }, // the episode exists once it appears here
-    { label: "Cut plan", status: c && c.total > 0 ? "done" : "todo", detail: c ? `${c.total} cut${c.total === 1 ? "" : "s"} planned` : "not started" },
-    { label: "Clean images converted", status: c && c.needClean > 0 && c.withClean === c.needClean ? "done" : "todo", detail: c ? `${c.withClean} / ${c.needClean}` : null },
-    { label: "Cuts lettered", status: c && c.total > 0 && c.withText === c.total ? "done" : "todo", detail: c ? `${c.withText} / ${c.total}` : null },
-    { label: "Final images exported", status: c && c.total > 0 && c.exported === c.total ? "done" : "todo", detail: c ? `${c.exported} / ${c.total}` : null },
-    { label: "Final images uploaded", status: c && c.total > 0 && c.uploaded === c.total ? "done" : "todo", detail: c ? `${c.uploaded} / ${c.total}` : null },
-    { label: "Cover image", status: coverDone ? "done" : "todo", detail: coverDone ? null : "recommended before publishing" },
-    { label: "Publish to PlotLink", status: active.published ? "done" : "todo" },
-  ];
+  const checklist = cartoonChecklist({ cuts: activeCuts ?? [], published: active.published });
 
   const ready = active.state === "ready";
   const blocked = active.state === "blocked";
@@ -247,17 +235,38 @@ export function CartoonPublishPage({ storyName, authFetch, onOpenFile, onOpenSto
   return (
     <div className="h-full overflow-y-auto px-4 py-4" data-testid="cartoon-publish-page">
       <h2 className="text-base font-serif text-foreground">Publish {active.label}</h2>
-      <p className="mt-0.5 text-[11px] text-muted">Finalize this episode: convert, letter, export, upload, then publish to PlotLink.</p>
+      <p className="mt-0.5 text-[11px] text-muted">Publish stays focused on readiness and blockers. Open production details only if you need the full step map.</p>
 
-      <ul className="mt-3 flex flex-col gap-1.5 max-w-xl" data-testid="publish-checklist">
-        {checks.map((ck, i) => (
-          <li key={i} className="flex items-baseline gap-2 text-xs" data-testid="publish-check" data-status={ck.status}>
-            <span className={`flex-shrink-0 ${ck.status === "done" ? "text-green-700" : "text-muted"}`} aria-hidden>{ck.status === "done" ? "✓" : "○"}</span>
-            <span className={ck.status === "done" ? "text-foreground" : "text-muted"}>{ck.label}</span>
-            {ck.detail && <span className="text-muted">· {ck.detail}</span>}
-          </li>
-        ))}
-      </ul>
+      <div className="mt-3 max-w-xl" data-testid="publish-checklist">
+        <CartoonProductionStatus
+          checklist={checklist}
+          markdownReady={ready}
+          published={active.published}
+          title="Episode production"
+          subtitle={coverDone
+            ? "Cover and publish readiness are checked below."
+            : "Episode production is tracked here; cover readiness is checked below."}
+          rootTestId="publish-production-status"
+          detailsTestId="publish-production-details"
+          stepTestIdPrefix="publish-step"
+        />
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+          <span
+            className={`rounded-full border px-2 py-0.5 ${coverDone ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}
+            data-testid="publish-cover-status"
+          >
+            Cover image: {coverDone ? "Ready" : "Missing"}
+          </span>
+          {isGenesisActive && (
+            <span
+              className={`rounded-full border px-2 py-0.5 ${metaReady ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}
+              data-testid="publish-metadata-status"
+            >
+              Story info: {metaReady ? "Ready" : "Set genre & language"}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Migrated episode diagnostics (#461): the publish title (#358), Genesis
           prologue readiness (#359), and grouped publish issues (#360) that used
