@@ -2195,7 +2195,7 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(header).toHaveTextContent("열네 개의 점");
     await waitFor(() =>
       expect(screen.getByTestId("cut-board-summary")).toHaveTextContent(
-        "3 cuts · 2 artwork found · 1 converted · 0 lettered · 0 uploaded",
+        "3 cuts · 1 clean · 0 lettered · 0 uploaded",
       ),
     );
 

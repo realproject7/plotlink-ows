@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { PreviewPanel } from "./PreviewPanel";
 import { installObjectUrlStub } from "./asset-test-utils";
 
@@ -56,30 +56,28 @@ function plotAuthFetch() {
 
 describe("PreviewPanel bottom panel polish (#420)", () => {
   // #461: the cartoon genesis episode no longer hosts the cover picker / cover
-  // status badge (the cover moved to Story Info + the Publish tab). The compact
-  // per-cut production status summary below is production guidance and stays.
+  // status badge (the cover moved to Story Info + the Publish tab).
   it("does not show the cover status badge in the cartoon genesis episode", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={genesisAuthFetch()}
       onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" genre="Science Fiction" language="Korean" hasGenesis onViewPublish={vi.fn()} />);
 
-    await screen.findByTestId("cartoon-review-publish");
+    await screen.findByText("No cuts yet");
     expect(screen.queryByTestId("cartoon-cover-status")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cover-details")).not.toBeInTheDocument();
   });
 
-  it("shows a compact cartoon production status summary with a View-progress link", async () => {
+  it("moves the cartoon production status summary into the scrollable cut board", async () => {
     const onViewProgress = vi.fn();
     render(<PreviewPanel storyName="god-cell" fileName="plot-01.md" authFetch={plotAuthFetch()}
       onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis onViewProgress={onViewProgress} />);
 
-    const summary = await screen.findByTestId("cartoon-status-summary");
-    expect(summary).toHaveTextContent("Cuts:");
-    expect(summary).toHaveTextContent("Clean: 1/2"); // 1 of 2 image cuts has a clean image
-    expect(summary).toHaveTextContent("Lettered: 1/2");
-    expect(summary).toHaveTextContent("Uploaded: 0/2");
-
-    fireEvent.click(screen.getByTestId("status-view-progress"));
-    expect(onViewProgress).toHaveBeenCalledTimes(1);
+    const summary = await screen.findByTestId("cut-board-end-summary");
+    expect(summary).toHaveTextContent("2 cuts");
+    expect(summary).toHaveTextContent("1 clean"); // 1 of 2 image cuts has a clean image
+    expect(summary).toHaveTextContent("1 lettered");
+    expect(summary).toHaveTextContent("0 uploaded");
+    expect(screen.queryByTestId("cartoon-status-summary")).not.toBeInTheDocument();
+    expect(onViewProgress).not.toHaveBeenCalled();
   });
 
   it("does NOT keep a prior plot's tallies when switching to a plot whose readiness fetch fails (@re1)", async () => {
@@ -103,12 +101,13 @@ describe("PreviewPanel bottom panel polish (#420)", () => {
 
     const { rerender } = render(<PreviewPanel storyName="god-cell" fileName="plot-01.md" authFetch={authFetch}
       onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis />);
-    expect(await screen.findByTestId("cartoon-status-summary")).toHaveTextContent("Uploaded: 0/2");
+    expect(await screen.findByTestId("cut-board-end-summary")).toHaveTextContent("0 uploaded");
 
     rerender(<PreviewPanel storyName="god-cell" fileName="plot-02.md" authFetch={authFetch}
       onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis />);
 
     // The stale plot-01 tallies must be gone after switching to the failing plot.
-    await waitFor(() => expect(screen.queryByTestId("cartoon-status-summary")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("cut-board-end-summary")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("cartoon-status-summary")).not.toBeInTheDocument();
   });
 });

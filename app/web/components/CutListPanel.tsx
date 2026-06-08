@@ -111,6 +111,12 @@ interface CutListPanelProps {
   workspaceVisible?: boolean;
   /** Restore/fold the wider app work area while staying in the editor. */
   onWorkspaceVisibleChange?: (visible: boolean) => void;
+  /** Episode-centric cartoon screen mode: preview board or direct lettering edit. */
+  mode?: "preview" | "edit";
+  /** Called when the focused editor closes back to the episode cut board. */
+  onExitFocusedEditor?: () => void;
+  /** Let the parent episode header own title/status chrome; render tools at the scroll end. */
+  compactEpisodeChrome?: boolean;
 }
 
 type CutStatus = "missing" | "clean" | "lettered" | "uploaded" | "text";
@@ -452,6 +458,57 @@ function CutRow({
   const previewClassName = featured
     ? "w-full rounded border border-border bg-white min-h-[14rem] md:min-h-[18rem] xl:min-h-[21rem]"
     : "w-full rounded border border-border bg-white min-h-[11rem] md:min-h-[13rem]";
+  const actionControls = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {atLetteringStage ? (
+        <>
+          <button
+            onClick={onOpenEditor}
+            data-testid={`add-bubbles-${cut.id}`}
+            className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
+          >
+            {bubblesPlaced > 0 ? "Review lettering" : "Open focused editor"}
+          </button>
+          {canAiDraft && (
+            <button
+              onClick={onAiDraft}
+              disabled={aiDrafting}
+              data-testid={`ai-draft-${cut.id}`}
+              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+            >
+              {aiDrafting ? "Drafting…" : aiDraftLabel}
+            </button>
+          )}
+        </>
+      ) : primary ? (
+        <button
+          onClick={primary.onClick}
+          disabled={board.key === "convert" && (convertingThis || converting)}
+          data-testid={primary.testid}
+          className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim disabled:opacity-50"
+        >
+          {primary.label}
+        </button>
+      ) : null}
+      {!atLetteringStage && !primary && canAiDraft && (
+        <button
+          onClick={onAiDraft}
+          disabled={aiDrafting}
+          data-testid={`ai-draft-${cut.id}`}
+          className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+        >
+          {aiDrafting ? "Drafting…" : aiDraftLabel}
+        </button>
+      )}
+      <button
+        onClick={onToggle}
+        data-testid={`cut-details-${cut.id}`}
+        className="px-2.5 py-1 text-[11px] rounded border border-border text-muted hover:border-accent hover:text-accent"
+      >
+        {expanded ? "Hide details" : "Open details"}
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -479,6 +536,7 @@ function CutRow({
             {board.label}
           </span>
         </div>
+        {actionControls}
         {thumbPath || isTextPanel(cut) ? (
           <CutOverlayPreview
             storyName={storyName}
@@ -517,57 +575,6 @@ function CutRow({
         >
           {cut.description || "No description"}
         </button>
-        <div className="flex items-center gap-2 flex-wrap">
-          {atLetteringStage ? (
-            <>
-              <button
-                onClick={onOpenEditor}
-                data-testid={`add-bubbles-${cut.id}`}
-                className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim"
-              >
-                {bubblesPlaced > 0 ? "Review lettering" : "Open focused editor"}
-              </button>
-              {canAiDraft && (
-                <button
-                  onClick={onAiDraft}
-                  disabled={aiDrafting}
-                  data-testid={`ai-draft-${cut.id}`}
-                  className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
-                >
-                  {aiDrafting ? "Drafting…" : aiDraftLabel}
-                </button>
-              )}
-            </>
-          ) : primary ? (
-            <button
-              onClick={primary.onClick}
-              disabled={
-                board.key === "convert" && (convertingThis || converting)
-              }
-              data-testid={primary.testid}
-              className="px-2.5 py-1 text-[11px] font-medium rounded bg-accent text-white hover:bg-accent-dim disabled:opacity-50"
-            >
-              {primary.label}
-            </button>
-          ) : null}
-          {!atLetteringStage && !primary && canAiDraft && (
-            <button
-              onClick={onAiDraft}
-              disabled={aiDrafting}
-              data-testid={`ai-draft-${cut.id}`}
-              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
-            >
-              {aiDrafting ? "Drafting…" : aiDraftLabel}
-            </button>
-          )}
-          <button
-            onClick={onToggle}
-            data-testid={`cut-details-${cut.id}`}
-            className="px-2.5 py-1 text-[11px] rounded border border-border text-muted hover:border-accent hover:text-accent"
-          >
-            {expanded ? "Hide details" : "Open details"}
-          </button>
-        </div>
       </div>
 
       {expanded && (
@@ -803,6 +810,9 @@ export function CutListPanel({
   onFocusedLetteringModeChange,
   workspaceVisible = false,
   onWorkspaceVisibleChange,
+  mode = "preview",
+  onExitFocusedEditor,
+  compactEpisodeChrome = false,
 }: CutListPanelProps) {
   const [cutsFile, setCutsFile] = useState<CutsFile | null>(null);
   // Latest onCutsChanged in a ref so loadCuts can notify the parent without
@@ -815,6 +825,7 @@ export function CutListPanel({
   const [error, setError] = useState<string | null>(null);
   const [expandedCut, setExpandedCut] = useState<number | null>(null);
   const [editingCutId, setEditingCutId] = useState<number | null>(null);
+  const autoOpenedEditRef = useRef(false);
   const [generating, setGenerating] = useState(false);
   const [genWarnings, setGenWarnings] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -887,6 +898,30 @@ export function CutListPanel({
     return () => onFocusedLetteringModeChange?.(false);
   }, [editingCutId, onFocusedLetteringModeChange]);
 
+  useEffect(() => {
+    if (mode !== "edit") {
+      autoOpenedEditRef.current = false;
+      return;
+    }
+    if (
+      autoOpenedEditRef.current ||
+      editingCutId !== null ||
+      !cutsFile?.cuts.length
+    ) {
+      return;
+    }
+    const firstEditable =
+      cutsFile.cuts.find(
+        (cut) =>
+          cut.cleanImagePath ||
+          cut.narration ||
+          cut.dialogue.length > 0 ||
+          isTextPanel(cut),
+      ) ?? cutsFile.cuts[0];
+    autoOpenedEditRef.current = true;
+    setEditingCutId(firstEditable.id);
+  }, [mode, editingCutId, cutsFile]);
+
   // Scroll a deep-linked, expanded cut into view once its row is on screen. Runs
   // when the target is set and again after the cut plan loads (rows mount). Best
   // effort: `scrollIntoView` is a no-op/undefined under jsdom.
@@ -911,7 +946,14 @@ export function CutListPanel({
         return;
       }
       const parsed = await res.json();
-      setCutsFile(parsed);
+      const normalized: CutsFile = {
+        ...parsed,
+        version: typeof parsed?.version === "number" ? parsed.version : 1,
+        plotFile:
+          typeof parsed?.plotFile === "string" ? parsed.plotFile : plotFile,
+        cuts: Array.isArray(parsed?.cuts) ? parsed.cuts : [],
+      };
+      setCutsFile(normalized);
       setError(null);
       // Read the episode's publish markdown + on-chain status so the Finish panel
       // can show "Episode sequence prepared" / "Ready to publish" / "Published"
@@ -925,7 +967,7 @@ export function CutListPanel({
           const fd = await fileRes.json();
           const content: string =
             typeof fd?.content === "string" ? fd.content : "";
-          const cuts = Array.isArray(parsed?.cuts) ? parsed.cuts : [];
+          const cuts = normalized.cuts;
           const markdownReady =
             content.length > 0 && checkMarkdownReadiness(content, cuts).ready;
           const published =
@@ -1479,6 +1521,10 @@ export function CutListPanel({
     editingCutId !== null
       ? cutsFile.cuts.find((c) => c.id === editingCutId)
       : null;
+  const editingCutIndex =
+    editingCutId !== null
+      ? cutsFile.cuts.findIndex((c) => c.id === editingCutId)
+      : -1;
 
   if (editingCut) {
     return (
@@ -1515,8 +1561,19 @@ export function CutListPanel({
           }
         }}
         onExported={() => loadCuts()}
+        hasPreviousCut={editingCutIndex > 0}
+        hasNextCut={editingCutIndex >= 0 && editingCutIndex < cutsFile.cuts.length - 1}
+        onPreviousCut={() => {
+          const previous = cutsFile.cuts[editingCutIndex - 1];
+          if (previous) setEditingCutId(previous.id);
+        }}
+        onNextCut={() => {
+          const next = cutsFile.cuts[editingCutIndex + 1];
+          if (next) setEditingCutId(next.id);
+        }}
         onClose={() => {
           setEditingCutId(null);
+          onExitFocusedEditor?.();
           loadCuts();
         }}
       />
@@ -1611,88 +1668,55 @@ export function CutListPanel({
   ).length;
   const assetSummary = workspaceAssetSummary(assetDiagnostics);
 
-  return (
+  const compactEndSummary = (
     <div
-      className="h-full min-h-[22rem] flex flex-col overflow-hidden"
-      data-testid="cut-list-panel"
+      className="rounded border border-border bg-surface/45 px-3 py-2 text-xs text-muted"
+      data-testid="cut-board-end-summary"
     >
-      {/* Episode header + creator-facing progress summary (#440). */}
-      <div
-        className="px-3 py-2 border-b border-border flex-shrink-0"
-        data-testid="cut-board-header"
-      >
-        <div className="flex items-start gap-3 justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-serif text-foreground truncate">
-                {episodeLabel}
-              </span>
-              {episodeTitle && (
-                <span className="text-muted truncate">· {episodeTitle}</span>
-              )}
-            </div>
-            <div
-              className="mt-0.5 text-[10px] text-muted"
-              data-testid="cut-board-summary"
-            >
-              {boardSummary.cuts} cuts · {boardSummary.artwork} artwork found ·{" "}
-              {boardSummary.converted} converted · {boardSummary.lettered}{" "}
-              lettered · {boardSummary.uploaded} uploaded
-            </div>
-          </div>
-          {aiDraftEligibleCount > 0 && (
-            <button
-              onClick={draftAllUnletteredCuts}
-              disabled={aiDraftingAll}
-              data-testid="ai-draft-all-btn"
-              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
-            >
-              {aiDraftingAll
-                ? "Drafting…"
-                : `AI draft all unlettered (${aiDraftEligibleCount})`}
-            </button>
-          )}
-        </div>
-      </div>
-      <details
-        className="border-b border-border bg-surface/35 flex-shrink-0"
-        data-testid="cut-workspace-tools"
-      >
-        <summary className="list-none cursor-pointer px-3 py-2 hover:bg-surface/50">
-          <div className="flex items-start gap-3 justify-between">
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                <span className="rounded-full border border-accent/30 bg-background px-2 py-0.5 font-medium text-accent">
-                  Workflow: {workflowLabel}
-                </span>
-                {assetSummary && (
-                  <span
-                    className="rounded-full border border-border bg-background px-2 py-0.5 text-muted"
-                    data-testid="workspace-asset-summary"
-                  >
-                    Assets: {assetSummary}
-                  </span>
-                )}
-                {conversionJobs.length > 0 && (
-                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-700">
-                    Convert {conversionJobs.length} PNG
-                    {conversionJobs.length === 1 ? "" : "s"}
-                  </span>
-                )}
-              </div>
-              <p className="text-[10px] text-muted">
-                Per-cut actions stay on each card. Open workspace tools for
-                publish prep, asset recovery, narration cards, and blocked-step
-                details.
-              </p>
-            </div>
-            <span className="flex-shrink-0 rounded border border-border bg-background px-2 py-1 text-[10px] text-muted">
-              Workspace tools
+      <span className="font-medium text-foreground">
+        {episodeLabel}
+        {episodeTitle ? ` · ${episodeTitle}` : ""}
+      </span>
+      <span className="ml-2">
+        {boardSummary.cuts} cuts · {boardSummary.converted} clean ·{" "}
+        {boardSummary.lettered} lettered · {boardSummary.uploaded} uploaded
+      </span>
+    </div>
+  );
+
+  const workspaceTools = (
+    <details
+      className="border-b border-border bg-surface/35 flex-shrink-0"
+      data-testid="cut-workspace-tools"
+    >
+      <summary className="list-none cursor-pointer px-3 py-1 hover:bg-surface/50">
+        <div className="flex items-center gap-2 justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="rounded-full border border-accent/30 bg-background px-2 py-0.5 font-medium text-accent">
+              Workflow: {workflowLabel}
             </span>
+            {assetSummary && (
+              <span
+                className="rounded-full border border-border bg-background px-2 py-0.5 text-muted"
+                data-testid="workspace-asset-summary"
+              >
+                Assets: {assetSummary}
+              </span>
+            )}
+            {conversionJobs.length > 0 && (
+              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-700">
+                Convert {conversionJobs.length} PNG
+                {conversionJobs.length === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
-        </summary>
-        <div className="border-t border-border px-3 py-2 space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="flex-shrink-0 rounded border border-border bg-background px-2 py-1 text-[10px] text-muted">
+            Workspace tools
+          </span>
+        </div>
+      </summary>
+      <div className="border-t border-border px-3 py-2 space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-[10px]">
           <span className="font-mono text-muted">
             {cutsFile.cuts.length} cuts
           </span>
@@ -1776,111 +1800,156 @@ export function CutListPanel({
           >
             {uploadProgress || "Upload & Prepare for Publish"}
           </button>
-          </div>
-          <div className="mt-1 text-[10px] text-muted">
-            Use <span className="text-accent">Add narration/text panel</span>{" "}
-            for a narration or title card. It becomes a solid card exported as a
-            final image.
-          </div>
-          {conversionJobs.length > 0 && (
-            <div
-              className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px]"
-              data-testid="convert-artwork"
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className="font-medium text-amber-700"
-                  data-testid="convert-artwork-count"
-                >
-                  {conversionJobs.length} PNG image
-                  {conversionJobs.length === 1 ? "" : "s"} found
-                </span>
-                <button
-                  onClick={() => convertAll(conversionJobs)}
-                  disabled={converting}
-                  data-testid="convert-all-btn"
-                  className="ml-auto px-2 py-0.5 border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
-                >
-                  {converting ? "Converting…" : "Convert all to WebP"}
-                </button>
-              </div>
-              <p className="mt-1 text-[10px] text-muted">
-                PNG artwork is fine while drafting. Convert it before
-                lettering/export so PlotLink can publish it safely.
+        </div>
+        <div className="mt-1 text-[10px] text-muted">
+          Use <span className="text-accent">Add narration/text panel</span>{" "}
+          for a narration or title card. It becomes a solid card exported as a
+          final image.
+        </div>
+        {conversionJobs.length > 0 && (
+          <div
+            className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px]"
+            data-testid="convert-artwork"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className="font-medium text-amber-700"
+                data-testid="convert-artwork-count"
+              >
+                {conversionJobs.length} PNG image
+                {conversionJobs.length === 1 ? "" : "s"} found
+              </span>
+              <button
+                onClick={() => convertAll(conversionJobs)}
+                disabled={converting}
+                data-testid="convert-all-btn"
+                className="ml-auto px-2 py-0.5 border border-amber-500/50 text-amber-800 rounded hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                {converting ? "Converting…" : "Convert all to WebP"}
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-muted">
+              PNG artwork is fine while drafting. Convert it before
+              lettering/export so PlotLink can publish it safely.
+            </p>
+            {convertResult && (
+              <p
+                className="mt-1 text-[10px] text-muted"
+                data-testid="convert-result"
+              >
+                {convertResult}
               </p>
-              {convertResult && (
-                <p
-                  className="mt-1 text-[10px] text-muted"
-                  data-testid="convert-result"
+            )}
+            {conversionIssues.length > 0 && (
+              <details
+                className="mt-1"
+                data-testid="convert-technical-details"
+              >
+                <summary className="text-[10px] text-muted cursor-pointer">
+                  Conversion notes
+                </summary>
+                <ul className="mt-1 ml-3 list-disc text-[10px] text-muted">
+                  {conversionIssues.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+        {assetDiagnostics &&
+          assetDiagnostics.length > 0 &&
+          (() => {
+            const s = summarizeAssetDiagnostics(assetDiagnostics);
+            const missing = assetDiagnostics.filter(
+              (d) => d.state === "missing",
+            );
+            return (
+              <div
+                className="rounded border border-border bg-background p-2 text-[10px]"
+                data-testid="asset-diagnostics"
+              >
+                <span
+                  className="text-muted"
+                  data-testid="asset-diag-summary"
                 >
-                  {convertResult}
-                </p>
-              )}
-              {conversionIssues.length > 0 && (
-                <details
-                  className="mt-1"
-                  data-testid="convert-technical-details"
-                >
-                  <summary className="text-[10px] text-muted cursor-pointer">
-                    Conversion notes
-                  </summary>
-                  <ul className="mt-1 ml-3 list-disc text-[10px] text-muted">
-                    {conversionIssues.map((m, i) => (
-                      <li key={i}>{m}</li>
+                  Assets: {s.uploaded} uploaded · {s.finalReady} final ·{" "}
+                  {s.cleanReady} clean · {s.planned} planned
+                  {s.needsConversion > 0
+                    ? ` · ${s.needsConversion} needs conversion`
+                    : ""}
+                  {s.missing > 0 ? ` · ${s.missing} missing` : ""}
+                </span>
+                {missing.length > 0 && (
+                  <ul
+                    className="mt-1 ml-3 list-disc text-error"
+                    data-testid="asset-diag-issues"
+                  >
+                    {missing.map((d) => (
+                      <li key={d.cutId}>{d.issue}</li>
                     ))}
                   </ul>
-                </details>
-              )}
-            </div>
+                )}
+              </div>
+            );
+          })()}
+        <FinishEpisodePanel
+          checklist={finishChecklist}
+          issues={genWarnings}
+          onFinish={finishEpisode}
+          finishing={uploading}
+          progressText={uploadProgress}
+          canFinish={canFinish}
+          markdownReady={episodeState.markdownReady}
+          published={episodeState.published}
+        />
+      </div>
+    </details>
+  );
+
+  return (
+    <div
+      className="h-full min-h-[22rem] flex flex-col overflow-hidden"
+      data-testid="cut-list-panel"
+    >
+      {/* Episode header + creator-facing progress summary (#440). */}
+      {!compactEpisodeChrome && (
+        <div
+          className="px-3 py-1 border-b border-border flex-shrink-0"
+          data-testid="cut-board-header"
+        >
+        <div className="flex items-center gap-3 justify-between">
+          <div className="flex items-center gap-2 min-w-0 text-xs">
+            <span className="font-serif text-foreground truncate">
+              {episodeLabel}
+            </span>
+            {episodeTitle && (
+              <span className="text-muted truncate">· {episodeTitle}</span>
+            )}
+            <span
+              className="text-[10px] text-muted whitespace-nowrap"
+              data-testid="cut-board-summary"
+            >
+              {boardSummary.cuts} cuts · {boardSummary.converted} clean ·{" "}
+              {boardSummary.lettered} lettered · {boardSummary.uploaded} uploaded
+            </span>
+          </div>
+          {aiDraftEligibleCount > 0 && (
+            <button
+              onClick={draftAllUnletteredCuts}
+              disabled={aiDraftingAll}
+              data-testid="ai-draft-all-btn"
+              className="px-2.5 py-1 text-[11px] rounded border border-accent/40 text-accent hover:bg-accent/5 disabled:opacity-50"
+            >
+              {aiDraftingAll
+                ? "Drafting…"
+                : `AI draft all unlettered (${aiDraftEligibleCount})`}
+            </button>
           )}
-          {assetDiagnostics &&
-            assetDiagnostics.length > 0 &&
-            (() => {
-              const s = summarizeAssetDiagnostics(assetDiagnostics);
-              const missing = assetDiagnostics.filter(
-                (d) => d.state === "missing",
-              );
-              return (
-                <div
-                  className="rounded border border-border bg-background p-2 text-[10px]"
-                  data-testid="asset-diagnostics"
-                >
-                  <span
-                    className="text-muted"
-                    data-testid="asset-diag-summary"
-                  >
-                    Assets: {s.uploaded} uploaded · {s.finalReady} final ·{" "}
-                    {s.cleanReady} clean · {s.planned} planned
-                    {s.needsConversion > 0
-                      ? ` · ${s.needsConversion} needs conversion`
-                      : ""}
-                    {s.missing > 0 ? ` · ${s.missing} missing` : ""}
-                  </span>
-                  {missing.length > 0 && (
-                    <ul
-                      className="mt-1 ml-3 list-disc text-error"
-                      data-testid="asset-diag-issues"
-                    >
-                      {missing.map((d) => (
-                        <li key={d.cutId}>{d.issue}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })()}
-          <FinishEpisodePanel
-            checklist={finishChecklist}
-            issues={genWarnings}
-            onFinish={finishEpisode}
-            finishing={uploading}
-            progressText={uploadProgress}
-            canFinish={canFinish}
-            markdownReady={episodeState.markdownReady}
-            published={episodeState.published}
-          />
         </div>
-      </details>
+      </div>
+      )}
+      {!compactEpisodeChrome && workspaceTools}
       {/* Stale bubble-renderer warning (#381): a final image lettered before the
           current seamless-tail renderer may show the old separate-tail seam.
           Mark those cuts so the writer re-exports (open lettering → Export) and
@@ -1902,11 +1971,12 @@ export function CutListPanel({
           Codex generation is complete even if the terminal session is still
           connected — no more guessing whether it is still Working. */}
       {detectConfirmed &&
+        !compactEpisodeChrome &&
         imageCutCount > 0 &&
         stats.missing === 0 &&
         staleByCut.size === 0 && (
           <div
-            className="px-3 py-1 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1 flex-shrink-0"
+            className="px-3 py-0.5 border-b border-border bg-green-600/10 text-[10px] text-green-700 flex items-center gap-1 flex-shrink-0"
             data-testid="clean-assets-ready"
           >
             <span aria-hidden>✓</span>
@@ -1988,6 +2058,12 @@ export function CutListPanel({
           disabled={addingPanel}
           onAdd={() => addTextPanelAt(cutsFile.cuts.length)}
         />
+        {compactEpisodeChrome && (
+          <>
+            {compactEndSummary}
+            {workspaceTools}
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { PreviewPanel } from "./PreviewPanel";
 import { installObjectUrlStub } from "./asset-test-utils";
 
@@ -39,40 +39,34 @@ function makeAuthFetch(content: string, cuts: unknown) {
   });
 }
 
-describe("cartoon Publish Preview vs Cut Inspector separation (#289)", () => {
-  it("defaults to Publish Preview, which shows the markdown but NOT cuts.json planning prose", async () => {
+describe("cartoon episode preview routing", () => {
+  it("renders the episode cut board, not publish markdown prose", async () => {
     const authFetch = makeAuthFetch(PUBLISH_MD, { version: 1, plotFile: "plot-01", cuts: [uploadedCut] });
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} contentType="cartoon" onPublish={vi.fn()} />);
 
-    await waitFor(() => expect(screen.getByTestId("cartoon-publish-preview")).toBeInTheDocument());
-    // Publish summary present; planning description/dialogue absent from publish view.
-    expect(screen.getByTestId("cartoon-publish-summary")).toHaveTextContent("1 image");
-    expect(screen.queryByText("PLANNING_DESCRIPTION_TEXT")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("cut-list-panel")).toBeInTheDocument());
+    expect(screen.getByTestId("cut-board-end-summary")).toHaveTextContent("1 cuts");
+    expect(screen.queryByTestId("cartoon-publish-preview")).not.toBeInTheDocument();
+    expect(screen.getByTestId("cut-desc-1")).toHaveTextContent("PLANNING_DESCRIPTION_TEXT");
     expect(screen.queryByText(/PLANNING_DIALOGUE_TEXT/)).not.toBeInTheDocument();
   });
 
-  it("switching to Cut Inspector reveals the cuts.json planning metadata", async () => {
+  it("the cut board can reveal cuts.json planning metadata in card details", async () => {
     const authFetch = makeAuthFetch(PUBLISH_MD, { version: 1, plotFile: "plot-01", cuts: [uploadedCut] });
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} contentType="cartoon" onPublish={vi.fn()} />);
 
-    await waitFor(() => expect(screen.getByTestId("cartoon-mode-inspect")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("cartoon-mode-inspect"));
-
-    await waitFor(() => {
-      expect(screen.getByText("PLANNING_DESCRIPTION_TEXT")).toBeInTheDocument();
-    });
-    // The publish preview surface is no longer mounted in inspector mode.
+    await screen.findByTestId("cut-list-panel");
+    expect(screen.getByTestId("cut-desc-1")).toHaveTextContent("PLANNING_DESCRIPTION_TEXT");
     expect(screen.queryByTestId("cartoon-publish-preview")).not.toBeInTheDocument();
   });
 
-  it("Publish Preview surfaces leftover non-image prose in the markdown (#286 signal)", async () => {
+  it("leftover non-image markdown prose is not shown in the episode cut preview", async () => {
     const md = `Placeholder only. OWS should generate the publish markdown from cuts.json.\n\n${PUBLISH_MD}`;
     const authFetch = makeAuthFetch(md, { version: 1, plotFile: "plot-01", cuts: [uploadedCut] });
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} contentType="cartoon" onPublish={vi.fn()} />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("cartoon-nonimage-prose")).toHaveTextContent("Placeholder only");
-    });
+    await screen.findByTestId("cut-list-panel");
+    expect(screen.queryByText(/Placeholder only/)).not.toBeInTheDocument();
   });
 
   it("fiction preview is unchanged (no cartoon mode toggle)", async () => {

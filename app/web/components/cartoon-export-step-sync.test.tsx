@@ -80,10 +80,9 @@ describe("cartoon export → cut workspace sync (#343)", () => {
         />,
       );
 
-      // Open the cut editor: Edit tab → expand cut → Open editor.
+      // Open the cut editor: Edit tab auto-opens the first editable cut.
       fireEvent.click(await screen.findByRole("button", { name: /^Edit/ }));
-      fireEvent.click(await screen.findByText("Opening shot"));
-      fireEvent.click(await screen.findByText("Open editor"));
+      await screen.findByTestId("focused-lettering-editor");
 
       // Export the cut (export-cut mocked so it succeeds in jsdom).
       const img = await screen.findByRole("img");

@@ -143,15 +143,15 @@ describe("PreviewPanel auto-detected cover (#296)", () => {
       <PreviewPanel storyName="my-story" fileName="genesis.md" authFetch={authFetch} onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" />,
     );
 
-    // Published genesis → Edit Story is the cover surface; open it.
-    const editBtn = await screen.findByRole("button", { name: "Edit Story" });
-    fireEvent.click(editBtn);
-    await screen.findByRole("button", { name: "Save Changes" });
-
-    // No auto-detected cover preview leaked in; Save uploads no cover.
+    // Published cartoon episode no longer exposes the old Edit Story cover
+    // surface; cover editing now belongs to Story Info / Publish.
+    await screen.findByText("No cuts yet");
+    expect(screen.queryByRole("button", { name: "Edit Story" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).not.toBeInTheDocument();
+    // No auto-detected cover preview leaked into the episode; no upload happens.
     expect(screen.queryByAltText("Cover preview")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
-    await waitFor(() => expect(calls.some((c) => c.includes("/api/publish/update-storyline"))).toBe(true));
+    await waitFor(() => expect(calls.some((c) => c.includes("/api/stories/"))).toBe(true));
+    expect(calls.some((c) => c.includes("/api/publish/update-storyline"))).toBe(false);
     expect(calls.some((c) => c.includes("/api/publish/upload-cover"))).toBe(false);
 
     vi.unstubAllGlobals();

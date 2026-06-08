@@ -5,8 +5,6 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES, canonicalizeGenre } from "../../../lib/genres";
 import type { CoachUiAction } from "@app-lib/cartoon-coach";
-import { CartoonPreview } from "./CartoonPreview";
-import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
 import {
   classifyCartoonReadiness,
@@ -147,6 +145,37 @@ function workflowActionNeedsCuts(action: CoachUiAction | null | undefined): bool
     || action === "refresh-assets";
 }
 
+function cartoonEpisodeLabel(fileName: string | null): string {
+  if (fileName === "genesis.md") return "epi-01 (Genesis)";
+  const m = fileName?.match(/^plot-(\d+)\.md$/);
+  if (!m) return fileName ?? "";
+  const episodeNumber = parseInt(m[1], 10) + 1;
+  return `epi-${String(episodeNumber).padStart(2, "0")}`;
+}
+
+function extractMarkdownTitle(content: string | null | undefined): string | null {
+  const title = content?.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim();
+  return title || null;
+}
+
+function cartoonEpisodeNumberLabel(fileName: string | null): string | null {
+  if (fileName === "genesis.md") return "Episode 1";
+  const m = fileName?.match(/^plot-(\d+)\.md$/);
+  if (!m) return null;
+  return `Episode ${parseInt(m[1], 10) + 1}`;
+}
+
+function cartoonEpisodeHeaderTitle(
+  fileName: string | null,
+  title: string | null,
+): string | null {
+  const trimmedTitle = title?.trim();
+  if (!trimmedTitle) return null;
+  if (/^Episode\s+\d+\s*[—-]\s*/i.test(trimmedTitle)) return trimmedTitle;
+  const episodeLabel = cartoonEpisodeNumberLabel(fileName);
+  return episodeLabel ? `${episodeLabel} — ${trimmedTitle}` : trimmedTitle;
+}
+
 export function PreviewPanel({
   storyName,
   fileName,
@@ -172,21 +201,6 @@ export function PreviewPanel({
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
-  // Cartoon preview sub-mode: "publish" = exact PlotLink-bound markdown;
-  // "inspect" = cuts.json planning inspector. Kept distinct so planning prose
-  // does not masquerade as publish content (#289).
-  const [cartoonPreviewMode, setCartoonPreviewMode] = useState<
-    "publish" | "inspect"
-  >("publish");
-  // Cartoon Genesis is a hybrid (a prose opening + its own genesis.cuts.json image
-  // cuts), so its Edit tab offers two sub-views: the opening-text editor and the
-  // cut workspace (#429). Plots use the cut workspace directly; fiction never sees
-  // this. Defaults to "text" so opening Edit on Genesis is unchanged; the workflow
-  // coach's cut actions switch it to "cuts" so lettering/upload/refresh land on a
-  // real, actionable workspace instead of the markdown editor.
-  const [genesisEditMode, setGenesisEditMode] = useState<"text" | "cuts">(
-    "text",
-  );
   // #371: a deep-link request from the Cut Inspector's per-cut CTA into the Edit
   // tab for that exact cut. `seq` makes repeated clicks (even on the same cut)
   // re-trigger the focus/expand effect in CutListPanel; it is cleared once
@@ -196,10 +210,6 @@ export function PreviewPanel({
     openEditor: boolean;
     seq: number;
   } | null>(null);
-  const handleEditCut = useCallback((cutId: number, openEditor: boolean) => {
-    setActiveTab("edit");
-    setCutFocus((prev) => ({ cutId, openEditor, seq: (prev?.seq ?? 0) + 1 }));
-  }, []);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -402,9 +412,9 @@ export function PreviewPanel({
           setCartoonTotalCuts(result.totalCuts);
           setCartoonCutProgress(summarizeCutProgress(cuts));
           // Cut plan's episode title for the publish-title display (#358).
-          setCartoonEpisodeTitle(
-            typeof cutsData.title === "string" ? cutsData.title : null,
-          );
+          const cutsTitle =
+            typeof cutsData.title === "string" ? cutsData.title.trim() : "";
+          setCartoonEpisodeTitle(cutsTitle || extractMarkdownTitle(content));
         }
       } catch {
         if (!cancelled) {
@@ -565,7 +575,6 @@ export function PreviewPanel({
       case "upload":
       case "refresh-assets":
         setActiveTab("edit");
-        setGenesisEditMode("cuts");
         break;
       case "generate-markdown":
         handleGenerateMarkdown();
@@ -817,7 +826,7 @@ export function PreviewPanel({
     setDetectedCoverWarning(null);
     setCoverStatus("unknown");
     coverUserTouchedRef.current = false;
-    setGenesisEditMode(pendingWorkflowCutsRef.current ? "cuts" : "text");
+    if (pendingWorkflowCutsRef.current) setActiveTab("edit");
   }, [storyName, fileName]);
 
   // Auto-detect an agent-created cover (assets/cover.webp|jpg) for an UNPUBLISHED
@@ -1000,6 +1009,13 @@ export function PreviewPanel({
   // readiness block — those move to the Publish tab — and show only the opening
   // content, production next-step guidance, and a compact "Review publish" CTA.
   const isCartoonEpisode = isCartoonGenesis || isCartoonPlot;
+  const cartoonEpisodeDisplayTitle =
+    isCartoonEpisode
+      ? cartoonEpisodeHeaderTitle(
+          fileName,
+          cartoonEpisodeTitle || extractMarkdownTitle(fileData?.content),
+        )
+      : null;
   const isPublished =
     fileData?.status === "published" ||
     fileData?.status === "published-not-indexed";
@@ -1263,20 +1279,34 @@ export function PreviewPanel({
       {/* Header with file path + tabs */}
       {!hideFocusedEditorChrome && (
         <div className="border-b border-border">
-          <div className="px-3 py-1.5 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-mono text-muted">
+          <div
+            className={
+              isCartoonEpisode
+                ? "px-3 py-1.5 flex items-center justify-between gap-3"
+                : "px-3 py-1.5 flex items-center justify-between"
+            }
+          >
+            <div className="flex items-center gap-2 text-xs text-muted min-w-0">
               {onViewProgress && (
                 <button
                   onClick={onViewProgress}
                   data-testid="view-progress-btn"
-                  className="text-accent hover:underline font-sans"
+                  className="text-accent hover:underline"
                   title="Story progress overview"
                 >
                   ← Progress
                 </button>
               )}
-              <span>
-                {storyName}/{fileName}
+              <span
+                className={
+                  isCartoonEpisode
+                    ? "font-medium text-foreground truncate"
+                    : "font-mono"
+                }
+              >
+                {isCartoonEpisode
+                  ? `${cartoonEpisodeLabel(fileName)}${cartoonEpisodeDisplayTitle ? ` · ${cartoonEpisodeDisplayTitle}` : ""}`
+                  : `${storyName}/${fileName}`}
               </span>
               {fileData?.status === "published" && (
                 <span className="text-green-700 font-medium">Published</span>
@@ -1293,89 +1323,95 @@ export function PreviewPanel({
                 <span className="text-amber-700 font-medium">Pending</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-mono ${overLimit ? "text-error font-medium" : "text-muted"}`}
-              >
-                {charCount.toLocaleString()}
-                {charLimit !== null
-                  ? `/${charLimit.toLocaleString()}`
-                  : " chars"}
-              </span>
-              {overLimit && (
-                <span className="text-error text-xs font-medium">
-                  {(charCount - charLimit).toLocaleString()} over limit
+            {isCartoonEpisode ? (
+              <div className="flex items-center gap-1 rounded border border-border bg-surface/40 p-0.5">
+                <button
+                  onClick={() => setActiveTab("preview")}
+                  className={`px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors ${
+                    activeTab === "preview"
+                      ? "bg-accent text-white"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Preview
+                </button>
+                <button
+                  onClick={() => setActiveTab("edit")}
+                  className={`px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors ${
+                    activeTab === "edit"
+                      ? "bg-accent text-white"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Edit
+                  {dirty && <span className="ml-1 text-amber-200">*</span>}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs font-mono ${overLimit ? "text-error font-medium" : "text-muted"}`}
+                >
+                  {charCount.toLocaleString()}
+                  {charLimit !== null
+                    ? `/${charLimit.toLocaleString()}`
+                    : " chars"}
                 </span>
-              )}
+                {overLimit && (
+                  <span className="text-error text-xs font-medium">
+                    {(charCount - charLimit).toLocaleString()} over limit
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {!isCartoonEpisode && (
+            <div className="flex px-3 gap-1">
+              <button
+                onClick={() => setActiveTab("preview")}
+                className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === "preview"
+                    ? "border-accent text-accent"
+                    : "border-transparent text-muted hover:text-foreground"
+                }`}
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => setActiveTab("edit")}
+                className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === "edit"
+                    ? "border-accent text-accent"
+                    : "border-transparent text-muted hover:text-foreground"
+                }`}
+              >
+                Edit
+                {dirty && <span className="ml-1 text-amber-600">*</span>}
+              </button>
             </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex px-3 gap-1">
-            <button
-              onClick={() => setActiveTab("preview")}
-              className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
-                activeTab === "preview"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-foreground"
-              }`}
-            >
-              Preview
-            </button>
-            <button
-              onClick={() => setActiveTab("edit")}
-              className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
-                activeTab === "edit"
-                  ? "border-accent text-accent"
-                  : "border-transparent text-muted hover:text-foreground"
-              }`}
-            >
-              Edit
-              {dirty && <span className="ml-1 text-amber-600">*</span>}
-            </button>
-          </div>
+          )}
         </div>
       )}
 
       {/* Content area */}
       {activeTab === "preview" ? (
-        isCartoonPlot ? (
+        isCartoonEpisode ? (
           <div
             className="flex-1 min-h-0 flex flex-col"
             style={{ background: "var(--paper-bg)" }}
           >
-            {/* Two explicit modes: Publish Preview (exact PlotLink markdown) vs
-                Cut Inspector (cuts.json planning metadata) — see #289. */}
-            <div className="flex gap-1 px-3 py-1 border-b border-border">
-              <button
-                data-testid="cartoon-mode-publish"
-                onClick={() => setCartoonPreviewMode("publish")}
-                className={`px-2 py-0.5 text-[11px] rounded ${cartoonPreviewMode === "publish" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
-              >
-                Publish Preview
-              </button>
-              <button
-                data-testid="cartoon-mode-inspect"
-                onClick={() => setCartoonPreviewMode("inspect")}
-                className={`px-2 py-0.5 text-[11px] rounded ${cartoonPreviewMode === "inspect" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
-              >
-                Cut Inspector
-              </button>
-            </div>
             <div className="flex-1 min-h-0">
-              {cartoonPreviewMode === "publish" ? (
-                <CartoonPublishPreview
-                  content={fileData?.content ?? ""}
-                  stage={cartoonStage}
-                />
-              ) : (
-                <CartoonPreview
-                  storyName={storyName!}
-                  fileName={fileName!}
-                  authFetch={authFetch}
-                  onEditCut={handleEditCut}
-                />
-              )}
+              <CutListPanel
+                storyName={storyName!}
+                fileName={fileName!}
+                authFetch={authFetch}
+                language={language}
+                mode="preview"
+                onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
+                focusRequest={cutFocus}
+                onFocusHandled={() => setCutFocus(null)}
+                compactEpisodeChrome
+              />
             </div>
           </div>
         ) : (
@@ -1397,7 +1433,7 @@ export function PreviewPanel({
             )}
           </div>
         )
-      ) : isCartoonPlot ? (
+      ) : isCartoonEpisode ? (
         <div
           className="flex-1 min-h-[22rem] overflow-hidden"
           style={{ background: "var(--paper-bg)" }}
@@ -1407,66 +1443,23 @@ export function PreviewPanel({
             fileName={fileName!}
             authFetch={authFetch}
             language={language}
+            mode="edit"
             onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
             focusRequest={cutFocus}
             onFocusHandled={() => setCutFocus(null)}
             onFocusedLetteringModeChange={onFocusedLetteringModeChange}
             workspaceVisible={focusedLetteringWorkspaceVisible}
             onWorkspaceVisibleChange={onFocusedLetteringWorkspaceVisibleChange}
+            onExitFocusedEditor={() => setActiveTab("preview")}
+            compactEpisodeChrome
           />
-        </div>
-      ) : isCartoonGenesis ? (
-        // Genesis Edit tab: opening-text editor vs. its cut workspace (#429), so
-        // the coach's lettering/upload/refresh actions for Episode 1 are actionable
-        // and Genesis cuts get the same workspace as plots — without losing the
-        // hand-written opening prose editor.
-        <div
-          className="flex-1 min-h-0 flex flex-col"
-          style={{ background: "var(--paper-bg)" }}
-        >
-          <div className="flex gap-1 px-3 py-1 border-b border-border">
-            <button
-              data-testid="genesis-edit-mode-text"
-              onClick={() => setGenesisEditMode("text")}
-              className={`px-2 py-0.5 text-[11px] rounded ${genesisEditMode === "text" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
-            >
-              Opening text
-            </button>
-            <button
-              data-testid="genesis-edit-mode-cuts"
-              onClick={() => setGenesisEditMode("cuts")}
-              className={`px-2 py-0.5 text-[11px] rounded ${genesisEditMode === "cuts" ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
-            >
-              Cuts
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            {genesisEditMode === "cuts" ? (
-              <CutListPanel
-                storyName={storyName!}
-                fileName={fileName!}
-                authFetch={authFetch}
-                language={language}
-                onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
-                focusRequest={cutFocus}
-                onFocusHandled={() => setCutFocus(null)}
-                onFocusedLetteringModeChange={onFocusedLetteringModeChange}
-                workspaceVisible={focusedLetteringWorkspaceVisible}
-                onWorkspaceVisibleChange={
-                  onFocusedLetteringWorkspaceVisibleChange
-                }
-              />
-            ) : (
-              proseEditor
-            )}
-          </div>
         </div>
       ) : (
         proseEditor
       )}
 
       {/* Action bar */}
-      {!hideFocusedEditorChrome && (
+      {!hideFocusedEditorChrome && !isCartoonEpisode && (
         <div
           className="shrink-0 px-3 py-2 border-t border-border flex items-center justify-between bg-surface/95"
           data-testid="preview-panel-footer"
@@ -1939,9 +1932,7 @@ export function PreviewPanel({
                 cut/lettering editor gets the height — the cover stays available
                 in the Opening-text/Preview view, Story Info, and the Publish page,
                 and the auto-detect effect still loads it for publish. */}
-              {isGenesis &&
-                contentType !== "cartoon" &&
-                !(activeTab === "edit" && genesisEditMode === "cuts") && (
+              {isGenesis && contentType !== "cartoon" && (
                   <div
                     className="flex flex-col gap-1.5"
                     data-testid="prepublish-cover"
@@ -2077,7 +2068,7 @@ export function PreviewPanel({
                       </div>
                     </div>
                   </div>
-                )}
+              )}
               {/* Public title shown + validated before publish (#358). #461: moved
                 to the Publish tab for cartoon — fiction keeps it inline. */}
               {!isCartoonEpisode && renderPublishTitle()}

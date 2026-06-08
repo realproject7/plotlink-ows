@@ -124,6 +124,22 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     return files[0]?.file ?? null;
   };
 
+  const isEpisodeFile = (file: string) =>
+    file === "genesis.md" || /^plot-\d+\.md$/.test(file);
+
+  const cartoonEpisodeMeta = (file: string): { label: string; sort: number } | null => {
+    if (file === "genesis.md") {
+      return { label: "epi-01 (Genesis)", sort: 1 };
+    }
+    const m = file.match(/^plot-(\d+)\.md$/);
+    if (!m) return null;
+    const n = parseInt(m[1], 10) + 1;
+    return {
+      label: `epi-${String(n).padStart(2, "0")}`,
+      sort: n,
+    };
+  };
+
   const handleStoryClick = (story: StoryInfo) => {
     toggleExpand(story.name);
     // Cartoon: a root-row click opens the story-level progress overview (#418) on
@@ -139,8 +155,18 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
     }
   };
 
-  // Sort files: structure first, genesis, then plots in order
-  const sortFiles = (files: FileStatus[]) => {
+  // Sort files: structure first, genesis, then plots in order. Cartoon stories
+  // show only episode files to avoid leaking the markdown implementation model.
+  const sortFiles = (files: FileStatus[], contentType?: "fiction" | "cartoon") => {
+    if (contentType === "cartoon") {
+      return [...files]
+        .filter((f) => isEpisodeFile(f.file))
+        .sort((a, b) => {
+          const aa = cartoonEpisodeMeta(a.file)?.sort ?? 999;
+          const bb = cartoonEpisodeMeta(b.file)?.sort ?? 999;
+          return aa - bb;
+        });
+    }
     const order = (f: string) => {
       if (f === "structure.md") return 0;
       if (f === "genesis.md") return 1;
@@ -238,27 +264,35 @@ export function StoryBrowser({ authFetch, selectedStory, selectedFile, onSelectF
                 {story.contentType === "cartoon" && (
                   <span className="bg-accent/10 text-accent rounded px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0">Cartoon</span>
                 )}
-                <span className="ml-auto flex-shrink-0 text-xs text-muted">
-                  {story.publishedCount}/{story.files.length}
-                </span>
-              </button>
-              {expanded.has(story.name) && (
-                <div className="pl-4">
-                  {sortFiles(story.files).map((f) => {
-                    const isSelected = selectedStory === story.name && selectedFile === f.file;
-                    return (
-                      <button
-                        key={f.file}
+	                <span className="ml-auto flex-shrink-0 text-xs text-muted">
+	                  {story.contentType === "cartoon"
+	                    ? `${sortFiles(story.files, "cartoon").length} ep`
+	                    : `${story.publishedCount}/${story.files.length}`}
+	                </span>
+	              </button>
+	              {expanded.has(story.name) && (
+	                <div className="pl-4">
+	                  {sortFiles(story.files, story.contentType).map((f) => {
+	                    const isSelected = selectedStory === story.name && selectedFile === f.file;
+	                    const cartoonMeta =
+	                      story.contentType === "cartoon"
+	                        ? cartoonEpisodeMeta(f.file)
+	                        : null;
+	                    return (
+	                      <button
+	                        key={f.file}
                         onClick={() => onSelectFile(story.name, f.file)}
                         className={`w-full px-3 py-1.5 text-left flex items-center gap-2 text-xs hover:bg-surface ${
                           isSelected ? "bg-surface font-medium" : ""
                         }`}
-                      >
-                        <span className={STATUS_COLOR[f.status]}>{STATUS_ICON[f.status]}</span>
-                        <span className="truncate font-mono">{f.file}</span>
-                      </button>
-                    );
-                  })}
+	                      >
+	                        <span className={STATUS_COLOR[f.status]}>{STATUS_ICON[f.status]}</span>
+	                        <span className={story.contentType === "cartoon" ? "truncate" : "truncate font-mono"}>
+	                          {cartoonMeta?.label ?? f.file}
+	                        </span>
+	                      </button>
+	                    );
+	                  })}
                 </div>
               )}
             </div>

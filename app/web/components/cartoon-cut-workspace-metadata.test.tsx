@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import { installObjectUrlStub } from "./asset-test-utils";
 
 // #450: the cartoon publish controls must not duplicate Story Info metadata —
@@ -39,8 +39,8 @@ describe("cartoon publish controls are free of Story Info metadata (#450)", () =
   // #461: the cartoon episode has no inline publish controls at all now — no
   // genre/language selects, no adult-content flag, no inline publish button, and
   // no cover picker. The publish action + cover live on the Publish tab, metadata
-  // on Story Info. The episode shows the compact "Review publish checklist" CTA.
-  it("shows no inline publish controls on the cartoon episode — only the Review-publish CTA", async () => {
+  // on Story Info.
+  it("shows no inline publish controls on the cartoon episode", async () => {
     render(
       <PreviewPanel
         storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
@@ -48,7 +48,7 @@ describe("cartoon publish controls are free of Story Info metadata (#450)", () =
         onViewPublish={vi.fn()}
       />,
     );
-    await screen.findByTestId("cartoon-review-publish");
+    await screen.findByText("No cuts yet");
     expect(screen.queryByText("Publish to PlotLink")).not.toBeInTheDocument();
     expect(screen.queryByTestId("publish-genre-select")).not.toBeInTheDocument();
     expect(screen.queryByTestId("publish-language-select")).not.toBeInTheDocument();
@@ -57,19 +57,7 @@ describe("cartoon publish controls are free of Story Info metadata (#450)", () =
     // The cover-at-publish picker is gone from the episode (it moved to the
     // Publish tab / Story Info).
     expect(screen.queryByTestId("prepublish-cover")).not.toBeInTheDocument();
-  });
-
-  it("routes the cartoon episode's Review-publish CTA to the Publish tab", async () => {
-    const onViewPublish = vi.fn();
-    render(
-      <PreviewPanel
-        storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
-        onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
-        onViewPublish={onViewPublish}
-      />,
-    );
-    fireEvent.click(await screen.findByTestId("cartoon-review-publish"));
-    expect(onViewPublish).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("cartoon-review-publish")).not.toBeInTheDocument();
   });
 
   it("keeps fiction's inline genre/language selects unchanged", async () => {

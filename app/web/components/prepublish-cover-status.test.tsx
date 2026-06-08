@@ -46,7 +46,7 @@ function renderGenesis(authFetch: ReturnType<typeof makeAuthFetch>, contentType:
       onViewPublish={vi.fn()}
     />,
   );
-  return contentType === "cartoon" ? screen.findByTestId("cartoon-review-publish") : screen.findByTestId("prepublish-cover");
+  return contentType === "cartoon" ? screen.findByText("No cuts yet") : screen.findByTestId("prepublish-cover");
 }
 
 describe("PreviewPanel cartoon cover status (#312)", () => {

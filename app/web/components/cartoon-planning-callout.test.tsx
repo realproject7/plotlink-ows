@@ -47,14 +47,14 @@ describe("cartoon episode publish controls moved off the episode (#461)", () => 
     const fetch = makePlanningAuthFetch();
     render(<PreviewPanel storyName="story" fileName="plot-01.md" authFetch={fetch} contentType="cartoon" onPublish={vi.fn()} onViewPublish={vi.fn()} />);
 
-    // The episode offers the compact "Review publish checklist" CTA instead.
-    await screen.findByTestId("cartoon-review-publish");
+    await screen.findByTestId("cut-list-panel");
     expect(screen.queryByTestId("cartoon-planning-callout")).not.toBeInTheDocument();
     expect(screen.queryByTestId("generate-md-preview-btn")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cartoon-awaiting-upload")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cartoon-step-guide")).not.toBeInTheDocument();
     expect(screen.queryByTestId("publish-disabled-reason")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cartoon-review-publish")).not.toBeInTheDocument();
     // No inline publish button on the cartoon episode.
     expect(screen.queryByText("Publish to PlotLink")).not.toBeInTheDocument();
   });

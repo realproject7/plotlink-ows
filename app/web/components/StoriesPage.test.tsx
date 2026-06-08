@@ -916,7 +916,7 @@ function makeWorkflowActionAuthFetch(coachAction: "open-lettering" | "generate-m
 }
 
 describe("StoriesPage cartoon workflow nav routing (#439)", () => {
-  it("routes file-backed nav tabs to the CURRENT story after a left-tree switch to another story (#445 RE1)", async () => {
+  it("keeps cartoon nav episode-centric after a left-tree switch to another story", async () => {
     const { fn } = makeTwoCartoonAuthFetch();
     render(<StoriesPage token="t" authFetch={fn} />);
     await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
@@ -928,20 +928,18 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     childProps.onSelectFile!("cartoon-b", "genesis.md");
     await waitFor(() => expect(childProps.previewStory).toBe("cartoon-b"));
 
-    // The nav now shows story B; clicking Whitepaper must open B's structure.md,
-    // not story A's (the stale-ref bug).
-    fireEvent.click(screen.getByTestId("nav-tab-whitepaper"));
-    await waitFor(() => {
-      expect(childProps.previewStory).toBe("cartoon-b");
-      expect(childProps.previewFile).toBe("structure.md");
-    });
+    expect(screen.queryByTestId("nav-tab-whitepaper")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("nav-tab-genesis")).not.toBeInTheDocument();
+    expect(screen.getByTestId("nav-tab-episodes")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
 
-    // Genesis / Publish tabs likewise stay on the current story.
-    fireEvent.click(screen.getByTestId("nav-tab-genesis"));
-    await waitFor(() => {
-      expect(childProps.previewStory).toBe("cartoon-b");
-      expect(childProps.previewFile).toBe("genesis.md");
-    });
+    // Episodes is a top-level page for the current story and does not jump to
+    // structure/genesis implementation files.
+    fireEvent.click(screen.getByTestId("nav-tab-episodes"));
+    await screen.findByTestId("episodes-page");
+    expect(childProps.previewStory).toBe("cartoon-b");
   }, 10000);
 
   // #449: the Publish tab opens its own readiness page and stays selected,
@@ -954,17 +952,14 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
 
     fireEvent.click(await screen.findByTestId("nav-tab-publish"));
 
-    // The dedicated publish page renders; the Publish tab is active; the Genesis
-    // file view is NOT shown (no mock-preview, Genesis tab not active).
+    // The dedicated publish page renders; the Publish tab is active; the episode
+    // file view is NOT shown (no mock-preview).
     await screen.findByTestId("cartoon-publish-page");
     expect(screen.getByTestId("nav-tab-publish")).toHaveAttribute(
       "data-active",
       "true",
     );
-    expect(screen.getByTestId("nav-tab-genesis")).toHaveAttribute(
-      "data-active",
-      "false",
-    );
+    expect(screen.queryByTestId("nav-tab-genesis")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mock-preview")).not.toBeInTheDocument();
   }, 10000);
 
@@ -1009,7 +1004,7 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     ).not.toBeInTheDocument();
   }, 10000);
 
-  it("keeps the persistent CTA on file-backed cartoon routes without restoring the old top strip", async () => {
+  it("hides the persistent CTA on file-backed cartoon routes so the cut view owns the viewport", async () => {
     const { fn } = makeTwoCartoonAuthFetch();
     render(<StoriesPage token="t" authFetch={fn} />);
     await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
@@ -1018,23 +1013,25 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
 
     expect(screen.queryByTestId("workflow-context-next-action")).not.toBeInTheDocument();
-    const cta = await screen.findByTestId("workflow-persistent-next-action");
-    expect(within(cta).getByTestId("story-info-next-action")).toHaveTextContent(
-      /Next: Add a cover image before publishing/i,
-    );
-    expect(within(cta).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("workflow-persistent-next-action"),
+    ).not.toBeInTheDocument();
   }, 10000);
 
   it("passes open-lettering through to PreviewPanel as a one-shot workflow action request", async () => {
     const { fn } = makeWorkflowActionAuthFetch("open-lettering");
     render(<StoriesPage token="t" authFetch={fn} />);
-    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
-
-    childProps.onSelectFile!("cartoon-a", "genesis.md");
-    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+    await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
+    childProps.onSelectStory!("cartoon-a");
 
     const cta = await screen.findByTestId("workflow-persistent-next-action");
+    await waitFor(() =>
+      expect(
+        within(cta).getByRole("button", { name: "Next Action" }),
+      ).toBeInTheDocument(),
+    );
     fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
 
     await waitFor(() =>
       expect(childProps.workflowActionRequest).toMatchObject({
@@ -1046,7 +1043,14 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     fireEvent.click(screen.getByTestId("mock-handle-workflow-action"));
     await waitFor(() => expect(childProps.workflowActionRequest).toBeNull());
 
-    fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+    childProps.onSelectStory!("cartoon-a");
+    const nextCta = await screen.findByTestId("workflow-persistent-next-action");
+    await waitFor(() =>
+      expect(
+        within(nextCta).getByRole("button", { name: "Next Action" }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(within(nextCta).getByRole("button", { name: "Next Action" }));
     await waitFor(() =>
       expect(childProps.workflowActionRequest).toMatchObject({
         action: "open-lettering",
@@ -1058,13 +1062,17 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
   it("passes generate-markdown through to PreviewPanel instead of dropping it at file selection", async () => {
     const { fn } = makeWorkflowActionAuthFetch("generate-markdown");
     render(<StoriesPage token="t" authFetch={fn} />);
-    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
-
-    childProps.onSelectFile!("cartoon-a", "genesis.md");
-    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+    await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
+    childProps.onSelectStory!("cartoon-a");
 
     const cta = await screen.findByTestId("workflow-persistent-next-action");
+    await waitFor(() =>
+      expect(
+        within(cta).getByRole("button", { name: "Next Action" }),
+      ).toBeInTheDocument(),
+    );
     fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
 
     await waitFor(() =>
       expect(childProps.workflowActionRequest).toMatchObject({

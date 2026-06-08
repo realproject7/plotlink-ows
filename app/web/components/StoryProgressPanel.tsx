@@ -137,7 +137,7 @@ function Section({
   title: string;
   status: SectionStatus;
   items: ChecklistItem[];
-  /** Power-user secondary text (real file name), shown small. */
+  /** Secondary text, shown small. */
   fileName?: string | null;
   /** Called to open the section's underlying file, or undefined for no navigation. */
   openFile?: () => void;
@@ -169,6 +169,14 @@ function episodeStatus(ep: EpisodeProgress, isActive: boolean): SectionStatus {
   if (ep.state === "placeholder") return "not-started";
   if (ep.state === "blocked") return "needs-action";
   return "needs-action";
+}
+
+function episodeDisplayLabel(ep: EpisodeProgress): string {
+  if (ep.file === "genesis.md") return "epi-01 (Genesis)";
+  const m = ep.file.match(/^plot-(\d+)\.md$/);
+  if (!m) return ep.label;
+  const episodeNumber = parseInt(m[1], 10) + 1;
+  return `epi-${String(episodeNumber).padStart(2, "0")}`;
 }
 
 /** Build the rendered checklist for a cartoon episode from its production checklist. */
@@ -243,9 +251,8 @@ function CartoonWorkflowMap({
 
       <Section
         index={++idx}
-        title="Story Whitepaper"
+        title="Story Bible"
         status={whitepaperStatus}
-        fileName="structure.md"
         openFile={hasStructure ? () => onOpenFile(storyName, "structure.md") : undefined}
         items={[{ label: "Planning document", status: hasStructure ? "done" : "todo", detail: hasStructure ? null : "Not written yet" }]}
       />
@@ -302,12 +309,12 @@ function EpisodeSection({
     markdownReady: ep.state === "ready" || ep.published,
     published: ep.published,
   });
-  const title = ep.title ? `${ep.label} · ${ep.title}` : ep.label;
+  const label = episodeDisplayLabel(ep);
+  const title = ep.title ? `${label} · ${ep.title}` : label;
   const heading = (
     <div className="flex items-center gap-2 min-w-0">
       <span className={`flex-shrink-0 ${SECTION_TONE[status]}`} aria-hidden>{SECTION_ICON[status]}</span>
       <span className="text-xs font-medium text-foreground truncate">{index}. {title}</span>
-      <span className="text-[10px] text-muted truncate">{ep.file}</span>
       <span className={`ml-auto text-[10px] font-medium ${SECTION_TONE[status]} flex-shrink-0`}>{SECTION_LABEL[status]}</span>
     </div>
   );

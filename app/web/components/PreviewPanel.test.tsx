@@ -75,25 +75,28 @@ function makeGenerateMarkdownAuthFetch() {
 describe("PreviewPanel — cartoon file chrome", () => {
   it("does not render the old top workflow coach in cartoon file views (#498)", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-    expect(await screen.findByText("The story begins.")).toBeInTheDocument();
+    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-coach")).not.toBeInTheDocument();
   });
 
-  it("Genesis Edit tab keeps the opening-text editor and reaches the cut workspace via the sub-toggle", async () => {
+  it("Cartoon episode Preview shows the cut board and Edit opens the focused lettering editor", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-    await screen.findByText("The story begins.");
+    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
-    // Default Genesis Edit sub-view is the opening-text editor (prose preserved).
-    expect(await screen.findByTestId("genesis-edit-mode-text")).toBeInTheDocument();
-    expect(screen.queryByTestId("cut-list-panel")).not.toBeInTheDocument();
-
-    // The cut workspace is reachable via the "Cuts" sub-toggle.
-    fireEvent.click(screen.getByTestId("genesis-edit-mode-cuts"));
-    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+    expect(await screen.findByTestId("focused-lettering-editor")).toBeInTheDocument();
+    expect(screen.queryByTestId("genesis-edit-mode-text")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("genesis-edit-mode-cuts")).not.toBeInTheDocument();
   });
 
-  it("keeps the opening-text save bar and episode footer outside the editor body after repeated tab/subview switches (#504)", async () => {
+  it("merges the cartoon episode file label and markdown title into one compact header row", async () => {
+    render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
+    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+
+    expect(screen.getByText("epi-01 (Genesis) · Episode 1 — Opening")).toBeInTheDocument();
+  });
+
+  it("keeps cartoon episode Preview/Edit as cut board and focused editor after repeated switches", async () => {
     render(
       <PreviewPanel
         storyName="god-cell"
@@ -104,27 +107,14 @@ describe("PreviewPanel — cartoon file chrome", () => {
       />,
     );
 
-    await screen.findByText("The story begins.");
+    await screen.findByTestId("cut-list-panel");
 
     for (let i = 0; i < 2; i++) {
       fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
-      expect(await screen.findByTestId("prose-editor-shell")).toBeInTheDocument();
-      expect(screen.getByTestId("prose-editor-savebar")).toHaveTextContent(
-        "No changes",
-      );
-      expect(screen.getByTestId("preview-panel-footer")).toBeInTheDocument();
-      expect(screen.getByTestId("cartoon-review-publish")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId("genesis-edit-mode-cuts"));
-      expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId("genesis-edit-mode-text"));
-      expect(await screen.findByTestId("prose-editor-textarea")).toBeInTheDocument();
-      expect(screen.getByTestId("prose-editor-savebar")).toBeInTheDocument();
-      expect(screen.getByTestId("preview-panel-footer")).toBeInTheDocument();
+      expect(await screen.findByTestId("focused-lettering-editor")).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: /^Preview/ }));
-      expect(await screen.findByText("The story begins.")).toBeInTheDocument();
+      expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
     }
   });
 
@@ -140,8 +130,7 @@ describe("PreviewPanel — cartoon file chrome", () => {
       />,
     );
 
-    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("genesis-edit-mode-cuts")).toBeInTheDocument();
+    expect(await screen.findByTestId("focused-lettering-editor")).toBeInTheDocument();
   });
 
   it("applies a generate-markdown workflow request through the generation endpoint", async () => {
@@ -157,7 +146,7 @@ describe("PreviewPanel — cartoon file chrome", () => {
       />,
     );
 
-    await screen.findByText("The story begins.");
+    await screen.findByTestId("cut-list-panel");
     expect(
       calls.some((url) => url.includes("/cuts/genesis/generate-markdown")),
     ).toBe(true);

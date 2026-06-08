@@ -69,13 +69,14 @@ describe("PreviewPanel cartoon scaffold states (#422)", () => {
         onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
         genre="Science Fiction" language="Korean" hasGenesis />,
     );
-    const summary = await screen.findByTestId("genesis-cuts-summary");
-    expect(summary).toHaveTextContent(/2 planned/);
+    const summary = await screen.findByTestId("cut-board-end-summary");
+    expect(summary).toHaveTextContent(/2 cuts/);
     // #451: the summary distinguishes clean / lettered / uploaded.
     expect(summary).toHaveTextContent(/0 clean/);
     expect(summary).toHaveTextContent(/0 uploaded/);
-    // No clean art yet → still nudges clean-image generation.
-    expect(await screen.findByTestId("cartoon-not-started")).toHaveTextContent(/generate the clean images/i);
+    // No clean art yet → the cut cards expose the artwork action directly.
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent("Needs image");
+    expect(screen.getByTestId("card-addart-1")).toHaveTextContent("Add artwork");
   });
 
   it("a placeholder plot (empty cuts) reads as not-started, not a publish error, with no inline publish (#461)", async () => {
@@ -88,13 +89,12 @@ describe("PreviewPanel cartoon scaffold states (#422)", () => {
         onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon" hasGenesis
         onViewPublish={vi.fn()} />,
     );
-    const callout = await screen.findByTestId("cartoon-not-started");
-    expect(callout).toHaveTextContent(/hasn't been started — expand its cut plan/i);
+    expect(await screen.findByText("No cuts yet")).toBeInTheDocument();
     // Not an error: the red publish-issues block must not render.
     expect(screen.queryByTestId("cartoon-publish-issues")).not.toBeInTheDocument();
-    // #461: no inline publish control on the cartoon episode — just the compact
-    // CTA that routes to the Publish tab (where readiness is gated).
+    // #461: no inline publish control or persistent publish CTA on the cartoon
+    // episode file view.
     expect(screen.queryByText("Publish to PlotLink")).not.toBeInTheDocument();
-    expect(await screen.findByTestId("cartoon-review-publish")).toBeInTheDocument();
+    expect(screen.queryByTestId("cartoon-review-publish")).not.toBeInTheDocument();
   });
 });

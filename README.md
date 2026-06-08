@@ -271,6 +271,23 @@ npm run app:start    # Serve production build
 
 See [`.env.example`](.env.example) for configuration options.
 
+### Release Checklist
+
+For manual npm releases, always update GitHub Releases as part of publish
+preparation. The release tag must match the npm version (`vX.Y.Z`), and the
+release page should be created or updated before running `npm publish`.
+
+```bash
+npm run preflight
+git push origin main --follow-tags
+gh release create "v$(node -p 'require("./package.json").version')" --generate-notes --latest
+npm publish
+```
+
+Prefer `npm run release:patch`, `npm run release:minor`, or
+`npm run release:major` when the version bump is straightforward; those scripts
+already include GitHub Release creation.
+
 ---
 
 ## 🔗 Links

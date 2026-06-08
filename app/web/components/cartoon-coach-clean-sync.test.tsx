@@ -2,9 +2,9 @@ import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { installObjectUrlStub } from "./asset-test-utils";
 
-// #451: once a cartoon Genesis has converted/present clean images, the next-step
-// surfaces must advance to lettering — NOT keep saying "generate clean images"
-// (or jump to "upload"). This covers the Genesis preview footer + cut summary.
+// #451: once a cartoon Genesis has converted/present clean images, the cut board
+// must advance to lettering — NOT keep saying "generate clean images" (or jump
+// to "upload").
 vi.mock("../lib/import-image", () => ({ importImageToCompliantBlob: (f: File) => Promise.resolve(f) }));
 
 import { PreviewPanel } from "./PreviewPanel";
@@ -42,17 +42,20 @@ function makeAuthFetch() {
 }
 
 describe("Genesis next-step advances to lettering once clean images exist (#451)", () => {
-  it("the Genesis footer says add speech bubbles, not 'generate clean images' or 'upload'", async () => {
+  it("the Genesis cut cards say to open lettering, not 'generate clean images' or 'upload'", async () => {
     render(
       <PreviewPanel
         storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch() as never}
         onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
       />,
     );
-    const card = await screen.findByTestId("cartoon-not-started");
-    await waitFor(() => expect(card).toHaveTextContent(/clean art is ready.*speech bubbles/i));
-    expect(card).not.toHaveTextContent(/generate the clean images/i);
-    expect(card).not.toHaveTextContent(/upload them/i);
+    const action = await screen.findByTestId("add-bubbles-1");
+    expect(action).toHaveTextContent(/open focused editor/i);
+    expect(screen.getByTestId("cut-card-status-1")).toHaveTextContent(
+      "Ready for lettering",
+    );
+    expect(screen.queryByText(/generate the clean images/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/upload them/i)).not.toBeInTheDocument();
   });
 
   it("the Genesis cut summary distinguishes clean / lettered / exported / uploaded", async () => {
@@ -62,7 +65,7 @@ describe("Genesis next-step advances to lettering once clean images exist (#451)
         onPublish={vi.fn()} publishingFile={null} walletAddress={WALLET} contentType="cartoon"
       />,
     );
-    const summary = await screen.findByTestId("genesis-cuts-summary");
+    const summary = await screen.findByTestId("cut-board-end-summary");
     await waitFor(() => expect(summary).toHaveTextContent("4 clean"));
     expect(summary).toHaveTextContent("0 lettered");
     expect(summary).toHaveTextContent("0 uploaded");

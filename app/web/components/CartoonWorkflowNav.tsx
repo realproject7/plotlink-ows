@@ -3,9 +3,9 @@
  *
  * A normal webtoon creator should not need the file tree: this compact tab bar
  * sits above the right-panel content whenever a CARTOON story is selected and
- * routes between the workflow pages — Progress, Story Info, Whitepaper, Genesis /
- * Episode 1, Episodes, Publish. The left file tree stays for power users; opening
- * a file directly just reflects the closest workflow tab here.
+ * routes between the workflow pages — Progress, Story Info, Episodes, Publish.
+ * Episode files are selected from the left story browser; opening any episode
+ * keeps the workflow tab on Episodes.
  *
  * Fiction renders no nav (the caller only mounts this for cartoon stories), so
  * the fiction UX is unchanged.
@@ -14,16 +14,12 @@
 export type CartoonWorkflowTab =
   | "progress"
   | "story-info"
-  | "whitepaper"
-  | "genesis"
   | "episodes"
   | "publish";
 
 const TABS: { key: CartoonWorkflowTab; label: string }[] = [
   { key: "progress", label: "Progress" },
   { key: "story-info", label: "Story Info" },
-  { key: "whitepaper", label: "Whitepaper" },
-  { key: "genesis", label: "Genesis / Ep 1" },
   { key: "episodes", label: "Episodes" },
   { key: "publish", label: "Publish" },
 ];

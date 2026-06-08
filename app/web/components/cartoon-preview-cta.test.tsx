@@ -77,52 +77,44 @@ function renderInspector() {
 
 async function openInspector() {
   renderInspector();
-  await waitFor(() => expect(screen.getByTestId("cartoon-mode-inspect")).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId("cartoon-mode-inspect"));
-  await screen.findByTestId("cut-1-cta");
+  await screen.findByTestId("lettering-review-board");
 }
 
 describe("Preview→lettering next-action CTA for cartoon cuts (#371)", () => {
-  it("shows a creator-facing next-action CTA per cut (image cuts and text panels)", async () => {
+  it("shows creator-facing actions per cut on the episode preview board", async () => {
     await openInspector();
-    expect(screen.getByTestId("cut-1-cta")).toHaveTextContent("Letter this cut");
-    expect(screen.getByTestId("cut-2-cta")).toHaveTextContent("Add clean art for this cut");
-    expect(screen.getByTestId("cut-3-cta")).toHaveTextContent("Letter this cut"); // text panel
-    expect(screen.getByTestId("cut-4-cta")).toHaveTextContent("Review final panel");
-    // No markdown/schema jargon in any CTA.
+    expect(screen.getByTestId("add-bubbles-1")).toHaveTextContent("Open focused editor");
+    expect(screen.getByTestId("card-addart-2")).toHaveTextContent("Add artwork");
+    expect(screen.getByTestId("cut-preview-3")).toBeInTheDocument();
+    expect(screen.getByTestId("cut-preview-4")).toBeInTheDocument();
     for (const id of [1, 2, 3, 4]) {
-      expect(screen.getByTestId(`cut-${id}-cta`).textContent ?? "").not.toMatch(/markdown|generate md|cuts\.json|schema/i);
+      expect(screen.getByTestId(`cut-card-${id}`).textContent ?? "").not.toMatch(/markdown|generate md|cuts\.json|schema/i);
     }
   });
 
-  it("clicking 'Letter this cut' on a clean image cut jumps to the Edit tab and opens that cut's lettering editor", async () => {
+  it("clicking the lettering action on a clean image cut opens the focused editor", async () => {
     await openInspector();
-    fireEvent.click(screen.getByTestId("cut-1-cta"));
-    // The lettering editor for the cut is now mounted (Edit tab content).
-    await screen.findByTestId("editor-surface");
-    // The Cut Inspector / cut list is no longer shown.
-    expect(screen.queryByTestId("cut-1-cta")).not.toBeInTheDocument();
-  });
-
-  it("clicking 'Letter this cut' on a text/interstitial panel opens its editor too", async () => {
-    await openInspector();
-    fireEvent.click(screen.getByTestId("cut-3-cta"));
+    fireEvent.click(screen.getByTestId("add-bubbles-1"));
     await screen.findByTestId("editor-surface");
   });
 
-  it("clicking 'Add clean art for this cut' jumps to the Edit tab and expands that cut's row (no editor)", async () => {
+  it("clicking the lettering action on a text/interstitial panel opens its editor too", async () => {
     await openInspector();
-    fireEvent.click(screen.getByTestId("cut-2-cta"));
-    // Edit tab cut list is shown with cut 2's row expanded (its upload-clean action visible).
+    fireEvent.click(screen.getByTestId("cut-preview-3"));
+    await screen.findByTestId("editor-surface");
+  });
+
+  it("clicking Add artwork expands the cut row without opening the editor", async () => {
+    await openInspector();
+    fireEvent.click(screen.getByTestId("card-addart-2"));
     await screen.findByTestId("cut-list-panel");
     await waitFor(() => expect(screen.getByText("Upload clean image")).toBeInTheDocument());
-    // The lettering editor is NOT opened for an art-less cut.
     expect(screen.queryByTestId("editor-surface")).not.toBeInTheDocument();
   });
 
-  it("'Review final panel' on a finished cut opens its editor for review", async () => {
+  it("Review cut on a finished cut opens its editor for review", async () => {
     await openInspector();
-    fireEvent.click(screen.getByTestId("cut-4-cta"));
+    fireEvent.click(screen.getByTestId("cut-preview-4"));
     await screen.findByTestId("editor-surface");
   });
 });

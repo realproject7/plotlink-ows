@@ -1011,9 +1011,8 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     selectedStory,
   );
 
-  // Cartoon-only right-panel workflow nav (#439). The active tab follows the
-  // open non-file view (Story Info / Episodes) or the closest file: structure.md
-  // ⇒ Whitepaper, genesis.md ⇒ Genesis / Ep 1, plot-NN ⇒ Episodes, else Progress.
+  // Cartoon-only right-panel workflow nav. Cartoon users work from episodes in
+  // the left browser; the top nav stays at story/workflow level only.
   const isCartoonStory = !!selectedStory && selectedContentType === "cartoon";
   const activeCartoonTab: CartoonWorkflowTab =
     cartoonView === "story-info"
@@ -1022,13 +1021,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         ? "episodes"
         : cartoonView === "publish"
           ? "publish"
-          : selectedFile === "structure.md"
-            ? "whitepaper"
-            : selectedFile === "genesis.md"
-              ? "genesis"
-              : selectedFile && /^plot-\d+\.md$/.test(selectedFile)
-                ? "episodes"
-                : "progress";
+          : selectedFile &&
+              (selectedFile === "genesis.md" || /^plot-\d+\.md$/.test(selectedFile))
+            ? "episodes"
+            : "progress";
 
   const handleCartoonNav = useCallback(
     (tab: CartoonWorkflowTab) => {
@@ -1048,12 +1044,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
           break;
         case "episodes":
           setCartoonView("episodes");
-          break;
-        case "whitepaper":
-          handleSelectFile(story, "structure.md");
-          break;
-        case "genesis":
-          handleSelectFile(story, "genesis.md");
           break;
         // Publish opens its own readiness page and stays on the Publish tab (#449),
         // instead of visually routing to the Genesis file view.
@@ -1298,7 +1288,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             />
           )}
         </div>
-        {!focusedLetteringMode && isCartoonStory && selectedStory && (
+        {!focusedLetteringMode &&
+          isCartoonStory &&
+          selectedStory &&
+          !selectedFile && (
           <div
             className="pointer-events-none absolute bottom-4 right-4 z-10 w-[min(22rem,calc(100%-2rem))]"
             data-testid="workflow-persistent-next-action"

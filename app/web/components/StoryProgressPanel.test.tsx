@@ -108,15 +108,14 @@ function makeAuthFetch(progress: StoryProgress | null = CARTOON_READY) {
 }
 
 describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
-  it("renders numbered sections in workflow order: Story Info → Whitepaper → Episode 1 → Episode 2", async () => {
+  it("renders numbered sections in workflow order: Story Info → Story Bible → episodes", async () => {
     render(<StoryProgressPanel storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     await screen.findByTestId("story-progress-panel");
 
     expect(screen.getByTestId("workflow-section-1")).toHaveTextContent("Define Story Info");
-    expect(screen.getByTestId("workflow-section-2")).toHaveTextContent("Story Whitepaper");
-    // Genesis is Episode 1; plot-01 is Episode 2.
-    expect(screen.getByTestId("workflow-section-3")).toHaveTextContent("Episode 1 / Genesis");
-    expect(screen.getByTestId("workflow-section-4")).toHaveTextContent("Episode 2");
+    expect(screen.getByTestId("workflow-section-2")).toHaveTextContent("Story Bible");
+    expect(screen.getByTestId("workflow-section-3")).toHaveTextContent("epi-01 (Genesis)");
+    expect(screen.getByTestId("workflow-section-4")).toHaveTextContent("epi-02");
   });
 
   it("leaves next-action rendering to the surrounding right-pane shell", async () => {
@@ -202,10 +201,10 @@ describe("StoryProgressPanel — cartoon workflow map (#438)", () => {
     expect(screen.queryByTestId("section-cta")).toBeNull();
     expect(screen.queryByTestId("persistent-next-action")).toBeNull();
 
-    // Whitepaper is complete; the Genesis (Episode 1) section is the current step.
+    // Story Bible is complete; epi-01 (Genesis) is the current step.
     expect(screen.getByTestId("workflow-section-2")).toHaveAttribute("data-status", "done");
     const genesis = screen.getByTestId("workflow-section-3");
-    expect(genesis).toHaveTextContent("Episode 1 / Genesis");
+    expect(genesis).toHaveTextContent("epi-01 (Genesis)");
     expect(genesis).toHaveAttribute("data-status", "current");
   });
 

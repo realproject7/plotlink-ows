@@ -68,7 +68,7 @@ describe("StoryBrowser story-root click → progress overview (#418)", () => {
     fireEvent.click(root);
     expect(onSelectFile).toHaveBeenLastCalledWith("god-cell", "");
     // File list expanded → a specific file row is now reachable and opens that file.
-    fireEvent.click((await screen.findByText("genesis.md")).closest("button")!);
+    fireEvent.click((await screen.findByText("epi-01 (Genesis)")).closest("button")!);
     expect(onSelectFile).toHaveBeenLastCalledWith("god-cell", "genesis.md");
   });
 

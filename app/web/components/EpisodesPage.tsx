@@ -49,11 +49,18 @@ export function EpisodesPage({ storyName, authFetch, onOpenFile }: EpisodesPageP
   const activeCount = episodes.filter((ep) => !ep.published).length;
   const blockedCount = episodes.filter((ep) => ep.state === "blocked").length;
   const readyCount = episodes.filter((ep) => ep.state === "ready").length;
+  const displayLabel = (ep: EpisodeProgress) => {
+    if (ep.file === "genesis.md") return "epi-01 (Genesis)";
+    const m = ep.file.match(/^plot-(\d+)\.md$/);
+    if (!m) return ep.label;
+    const episodeNumber = parseInt(m[1], 10) + 1;
+    return `epi-${String(episodeNumber).padStart(2, "0")}`;
+  };
 
   return (
     <div className="h-full overflow-y-auto px-4 py-4" data-testid="episodes-page">
       <h2 className="text-base font-serif text-foreground">Episodes</h2>
-      <p className="mt-0.5 text-[11px] text-muted">Genesis is Episode 1; each plot file is the next episode.</p>
+      <p className="mt-0.5 text-[11px] text-muted">Open an episode to preview its cuts or edit lettering.</p>
       <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]" data-testid="episodes-summary">
         <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
           {episodes.length} total
@@ -75,7 +82,7 @@ export function EpisodesPage({ storyName, authFetch, onOpenFile }: EpisodesPageP
       </div>
 
       {episodes.length === 0 ? (
-        <p className="mt-4 text-xs text-muted italic" data-testid="episodes-empty">No episodes yet — write the Genesis to start Episode 1.</p>
+        <p className="mt-4 text-xs text-muted italic" data-testid="episodes-empty">No episodes yet.</p>
       ) : (
         <ol className="mt-3 flex flex-col gap-1">
           {episodes.map((ep) => (
@@ -88,9 +95,8 @@ export function EpisodesPage({ storyName, authFetch, onOpenFile }: EpisodesPageP
               >
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium text-foreground">{ep.label}</span>
+                    <span className="text-xs font-medium text-foreground">{displayLabel(ep)}</span>
                     {ep.title && <span className="text-[11px] text-muted truncate">· {ep.title}</span>}
-                    <span className="ml-auto text-[10px] text-muted">{ep.file}</span>
                   </span>
                   <span className="block text-[11px] text-muted">{ep.summary}</span>
                 </span>

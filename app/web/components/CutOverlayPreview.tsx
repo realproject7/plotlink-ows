@@ -103,11 +103,19 @@ export function CutOverlayPreview({
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => {
+    const update = () => {
       setStageSize({
         width: el.clientWidth,
         height: el.clientHeight,
       });
+    };
+    if (typeof ResizeObserver === "undefined") {
+      update();
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const observer = new ResizeObserver(() => {
+      update();
     });
     observer.observe(el);
     return () => observer.disconnect();

@@ -8,6 +8,16 @@
 // It is READ-ONLY and safe: it never runs `npm audit fix`, never publishes,
 // never needs `npm login`, and never prints secrets/passphrases/wallet data.
 //
+// Manual publish checklist:
+//   1. Run this preflight.
+//   2. Commit the release version/build artifacts.
+//   3. Create or update the matching GitHub Release page for `vX.Y.Z`.
+//   4. Run `npm publish`.
+//
+// Prefer `npm run release:patch|minor|major` when possible; those scripts create
+// the GitHub Release before publishing. If you publish manually, do not skip the
+// GitHub Release page.
+//
 // It reports + checks four things, and exits non-zero on any blocking issue:
 //   1. Expected Node/npm toolchain (from package.json engines / packageManager).
 //   2. A production `npm audit --omit=dev` summary (reported; high/critical warn).

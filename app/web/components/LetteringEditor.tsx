@@ -90,6 +90,11 @@ interface LetteringEditorProps {
   workspaceVisible?: boolean;
   /** Toggle the surrounding app work area while staying in the editor. */
   onToggleWorkspaceVisible?: () => void;
+  /** Move to adjacent cuts while staying in the focused editor. */
+  onPreviousCut?: () => void;
+  onNextCut?: () => void;
+  hasPreviousCut?: boolean;
+  hasNextCut?: boolean;
 }
 
 const TYPE_LABEL: Record<OverlayType, string> = {
@@ -138,6 +143,10 @@ export function LetteringEditor({
   returnOnSave = false,
   workspaceVisible = false,
   onToggleWorkspaceVisible,
+  onPreviousCut,
+  onNextCut,
+  hasPreviousCut = false,
+  hasNextCut = false,
 }: LetteringEditorProps) {
   const bodyFont = getDefaultFont(language);
   const displayFont = getDisplayFont();
@@ -243,6 +252,17 @@ export function LetteringEditor({
     origW: number;
     origH: number;
   } | null>(null);
+
+  useEffect(() => {
+    const nextOverlays = overlayNormalization.overlays as Overlay[];
+    setOverlays(nextOverlays);
+    setSelectedId(null);
+    setAcknowledgedInvalid(false);
+    setConfirmDelete(false);
+    setExportError(null);
+    setSaveError(null);
+    setExportBaselineSig(overlaysSignature(nextOverlays));
+  }, [cut.id, overlayNormalization]);
 
   const updateImageBounds = useCallback(() => {
     const container = containerRef.current;
@@ -727,19 +747,19 @@ export function LetteringEditor({
     >
       {/* Toolbar */}
       <div
-        className="px-3 py-2 border-b border-border bg-surface/40 flex items-center justify-between gap-2 flex-wrap"
+        className="px-3 py-1.5 border-b border-border bg-surface/55 grid grid-cols-[minmax(14rem,1fr)_auto_minmax(12rem,1fr)] items-center gap-2"
         data-testid="lettering-toolbar"
       >
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
             className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:text-foreground"
             data-testid="return-to-cut-review-btn"
           >
-            Back to cut review
+            Cut review
           </button>
-          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
-            Focused lettering editor
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-accent whitespace-nowrap">
+            Lettering
           </span>
           <span className="text-[11px] font-mono text-muted">
             {targetLabel ?? `Cut #${cut.id}`}
@@ -756,6 +776,10 @@ export function LetteringEditor({
               data-testid={`lettering-check-${chip.key}`}
               data-done={chip.done ? "true" : "false"}
               className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                chip.key === "exported" || chip.key === "uploaded"
+                  ? "hidden xl:inline-flex"
+                  : ""
+              } ${
                 chip.done
                   ? "border-green-700/30 bg-green-700/10 text-green-700"
                   : "border-border bg-background text-muted"
@@ -765,6 +789,7 @@ export function LetteringEditor({
               {chip.label}
             </span>
           ))}
+          <span className="sr-only">Focused lettering editor</span>
           {cut.aiDraft?.status === "generated" && (
             <span
               className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] text-accent"
@@ -773,16 +798,31 @@ export function LetteringEditor({
               AI draft ready
             </span>
           )}
-          {staleExport && (
-            <span
-              className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-700"
-              data-testid="lettering-stale-chip"
-            >
-              Re-export needed
-            </span>
-          )}
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div className="flex items-center justify-center gap-1 rounded border border-border bg-background px-1 py-0.5">
+          <button
+            onClick={() => addOverlay("speech")}
+            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
+            data-testid="add-speech"
+          >
+            Speech
+          </button>
+          <button
+            onClick={() => addOverlay("narration")}
+            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
+            data-testid="add-narration"
+          >
+            Narration
+          </button>
+          <button
+            onClick={() => addOverlay("sfx")}
+            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
+            data-testid="add-sfx"
+          >
+            SFX
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5 justify-end min-w-0">
           {onToggleWorkspaceVisible && (
             <button
               onClick={onToggleWorkspaceVisible}
@@ -800,29 +840,6 @@ export function LetteringEditor({
           >
             {showHelp ? "Hide help" : "Help"}
           </button>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => addOverlay("speech")}
-              className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
-              data-testid="add-speech"
-            >
-              Speech
-            </button>
-            <button
-              onClick={() => addOverlay("narration")}
-              className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
-              data-testid="add-narration"
-            >
-              Narration
-            </button>
-            <button
-              onClick={() => addOverlay("sfx")}
-              className="px-2 py-0.5 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
-              data-testid="add-sfx"
-            >
-              SFX
-            </button>
-          </div>
           {exportError && (
             <span className="text-[10px] text-error max-w-[18rem]">
               {exportError}
@@ -1034,6 +1051,33 @@ export function LetteringEditor({
             >
               Narration cut
             </div>
+          )}
+
+          {(onPreviousCut || onNextCut) && (
+            <>
+              <button
+                type="button"
+                onClick={onPreviousCut}
+                disabled={!hasPreviousCut}
+                className="absolute left-3 top-1/2 z-20 flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded border border-border bg-background/85 text-2xl text-accent shadow-sm hover:bg-background disabled:opacity-30 disabled:hover:bg-background/85"
+                data-testid="previous-cut-btn"
+                aria-label="Previous cut"
+              >
+                <span aria-hidden>‹</span>
+                <span className="sr-only">Previous cut</span>
+              </button>
+              <button
+                type="button"
+                onClick={onNextCut}
+                disabled={!hasNextCut}
+                className="absolute right-3 top-1/2 z-20 flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded border border-border bg-background/85 text-2xl text-accent shadow-sm hover:bg-background disabled:opacity-30 disabled:hover:bg-background/85"
+                data-testid="next-cut-btn"
+                aria-label="Next cut"
+              >
+                <span aria-hidden>›</span>
+                <span className="sr-only">Next cut</span>
+              </button>
+            </>
           )}
 
           {/* Speech balloons, drawn under the overlay boxes (which carry the
