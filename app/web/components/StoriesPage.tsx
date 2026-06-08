@@ -1196,7 +1196,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
       {/* Preview — takes remaining space. With a story but no file selected, show
           the story-level progress overview (#418) instead of the empty state. */}
       <div
-        className="min-w-0 flex flex-col"
+        className="min-w-0 min-h-0 flex flex-col"
         style={
           hideFocusedLetteringWorkspace
             ? { flex: "1 0 0" }
@@ -1228,74 +1228,76 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               />
             </div>
           )}
-        {isCartoonStory && cartoonView === "story-info" && selectedStory ? (
-          <StoryInfoPage
-            storyName={selectedStory}
-            authFetch={authFetch}
-            onSaved={handleStoryInfoSaved}
-          />
-        ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
-          <EpisodesPage
-            storyName={selectedStory}
-            authFetch={authFetch}
-            onOpenFile={handleSelectFile}
-          />
-        ) : isCartoonStory && cartoonView === "publish" && selectedStory ? (
-          <CartoonPublishPage
-            storyName={selectedStory}
-            authFetch={authFetch}
-            onOpenFile={handleSelectFile}
-            onOpenStoryInfo={() => setCartoonView("story-info")}
-            onPublish={handlePublish}
-            publishingFile={publishingFile}
-            genre={storyGenres[selectedStory]}
-            language={storyLanguages[selectedStory]}
-            isNsfw={storyNsfw[selectedStory]}
-            refreshKey={cartoonPublishRefresh}
-          />
-        ) : selectedStory && !selectedFile ? (
-          <StoryProgressPanel
-            storyName={selectedStory}
-            authFetch={authFetch}
-            onOpenFile={handleSelectFile}
-            onOpenStoryInfo={() => setCartoonView("story-info")}
-          />
-        ) : (
-          <PreviewPanel
-            storyName={selectedStory}
-            fileName={selectedFile}
-            authFetch={authFetch}
-            onPublish={handlePublish}
-            publishingFile={publishingFile}
-            walletAddress={walletAddress}
-            contentType={
-              resolveSelectedContentType(
-                selectedStory,
-                storyContentTypes,
-                contentTypeMap.current,
-              ) || "fiction"
-            }
-            language={selectedStory ? storyLanguages[selectedStory] : undefined}
-            genre={selectedStory ? storyGenres[selectedStory] : undefined}
-            isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
-            hasGenesis={
-              selectedStory ? genesisStories.has(selectedStory) : false
-            }
-            onViewProgress={() => setSelectedFile(null)}
-            onOpenFile={(file) =>
-              selectedStory && handleSelectFile(selectedStory, file)
-            }
-            onViewPublish={() => setCartoonView("publish")}
-            focusedLetteringMode={focusedLetteringMode}
-            focusedLetteringWorkspaceVisible={focusedLetteringWorkspaceVisible}
-            onFocusedLetteringModeChange={handleFocusedLetteringModeChange}
-            onFocusedLetteringWorkspaceVisibleChange={
-              setFocusedLetteringWorkspaceVisible
-            }
-          />
-        )}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {isCartoonStory && cartoonView === "story-info" && selectedStory ? (
+            <StoryInfoPage
+              storyName={selectedStory}
+              authFetch={authFetch}
+              onSaved={handleStoryInfoSaved}
+            />
+          ) : isCartoonStory && cartoonView === "episodes" && selectedStory ? (
+            <EpisodesPage
+              storyName={selectedStory}
+              authFetch={authFetch}
+              onOpenFile={handleSelectFile}
+            />
+          ) : isCartoonStory && cartoonView === "publish" && selectedStory ? (
+            <CartoonPublishPage
+              storyName={selectedStory}
+              authFetch={authFetch}
+              onOpenFile={handleSelectFile}
+              onOpenStoryInfo={() => setCartoonView("story-info")}
+              onPublish={handlePublish}
+              publishingFile={publishingFile}
+              genre={storyGenres[selectedStory]}
+              language={storyLanguages[selectedStory]}
+              isNsfw={storyNsfw[selectedStory]}
+              refreshKey={cartoonPublishRefresh}
+            />
+          ) : selectedStory && !selectedFile ? (
+            <StoryProgressPanel
+              storyName={selectedStory}
+              authFetch={authFetch}
+              onOpenFile={handleSelectFile}
+              onOpenStoryInfo={() => setCartoonView("story-info")}
+            />
+          ) : (
+            <PreviewPanel
+              storyName={selectedStory}
+              fileName={selectedFile}
+              authFetch={authFetch}
+              onPublish={handlePublish}
+              publishingFile={publishingFile}
+              walletAddress={walletAddress}
+              contentType={
+                resolveSelectedContentType(
+                  selectedStory,
+                  storyContentTypes,
+                  contentTypeMap.current,
+                ) || "fiction"
+              }
+              language={selectedStory ? storyLanguages[selectedStory] : undefined}
+              genre={selectedStory ? storyGenres[selectedStory] : undefined}
+              isNsfw={selectedStory ? storyNsfw[selectedStory] : undefined}
+              hasGenesis={
+                selectedStory ? genesisStories.has(selectedStory) : false
+              }
+              onViewProgress={() => setSelectedFile(null)}
+              onOpenFile={(file) =>
+                selectedStory && handleSelectFile(selectedStory, file)
+              }
+              onViewPublish={() => setCartoonView("publish")}
+              focusedLetteringMode={focusedLetteringMode}
+              focusedLetteringWorkspaceVisible={focusedLetteringWorkspaceVisible}
+              onFocusedLetteringModeChange={handleFocusedLetteringModeChange}
+              onFocusedLetteringWorkspaceVisibleChange={
+                setFocusedLetteringWorkspaceVisible
+              }
+            />
+          )}
+        </div>
         {publishProgress && (
-          <div className="px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
+          <div className="shrink-0 px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
             {publishProgress}
           </div>
         )}
@@ -1304,7 +1306,7 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             doesn't disappear on a timer. */}
         {publishError && (
           <div
-            className="px-3 py-2 bg-error/10 border-t border-error/40 text-xs text-error flex items-start justify-between gap-3"
+            className="shrink-0 px-3 py-2 bg-error/10 border-t border-error/40 text-xs text-error flex items-start justify-between gap-3"
             data-testid="publish-block-error"
             role="alert"
           >
