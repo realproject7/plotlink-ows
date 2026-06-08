@@ -143,6 +143,10 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     focusedLetteringWorkspaceVisible,
     setFocusedLetteringWorkspaceVisible,
   ] = useState(true);
+  const [workflowActionRequest, setWorkflowActionRequest] = useState<{
+    action: CoachUiAction;
+    seq: number;
+  } | null>(null);
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
@@ -1064,6 +1068,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     (action: CoachUiAction, episodeFile: string | null) => {
       const story = selectedStory;
       if (!story) return;
+      const queueWorkflowAction = (nextAction: CoachUiAction) => {
+        setWorkflowActionRequest((prev) => ({
+          action: nextAction,
+          seq: (prev?.seq ?? 0) + 1,
+        }));
+      };
       switch (action) {
         case "view-progress":
           setCartoonView(null);
@@ -1077,7 +1087,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         case "upload":
         case "refresh-assets":
         case "generate-markdown":
-          if (episodeFile) handleSelectFile(story, episodeFile);
+          if (!episodeFile) return;
+          handleSelectFile(story, episodeFile);
+          queueWorkflowAction(action);
           break;
       }
     },
@@ -1274,6 +1286,12 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               onFocusedLetteringModeChange={handleFocusedLetteringModeChange}
               onFocusedLetteringWorkspaceVisibleChange={
                 setFocusedLetteringWorkspaceVisible
+              }
+              workflowActionRequest={workflowActionRequest}
+              onWorkflowActionHandled={(seq) =>
+                setWorkflowActionRequest((prev) =>
+                  prev?.seq === seq ? null : prev,
+                )
               }
             />
           )}

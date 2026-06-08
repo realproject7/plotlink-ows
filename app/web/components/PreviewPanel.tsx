@@ -4,6 +4,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES, canonicalizeGenre } from "../../../lib/genres";
+import type { CoachUiAction } from "@app-lib/cartoon-coach";
 import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
@@ -118,6 +119,11 @@ interface PreviewPanelProps {
   onFocusedLetteringModeChange?: (active: boolean) => void;
   /** Restore/fold the wider app work area while staying in the editor. */
   onFocusedLetteringWorkspaceVisibleChange?: (visible: boolean) => void;
+  workflowActionRequest?: {
+    action: CoachUiAction;
+    seq: number;
+  } | null;
+  onWorkflowActionHandled?: (seq: number) => void;
 }
 
 interface FileData {
@@ -153,6 +159,8 @@ export function PreviewPanel({
   focusedLetteringWorkspaceVisible = false,
   onFocusedLetteringModeChange,
   onFocusedLetteringWorkspaceVisibleChange,
+  workflowActionRequest = null,
+  onWorkflowActionHandled,
 }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -267,6 +275,7 @@ export function PreviewPanel({
   const illustrationInputRef = useRef<HTMLInputElement>(null);
 
   const prevFileRef = useRef<string | null>(null);
+  const appliedWorkflowSeqRef = useRef(0);
 
   const loadFile = useCallback(async () => {
     if (!storyName || !fileName) {
@@ -530,6 +539,32 @@ export function PreviewPanel({
       /* ignore */
     }
   }, [storyName, fileName, authFetch, loadFile]);
+
+  useEffect(() => {
+    if (!workflowActionRequest) return;
+    if (workflowActionRequest.seq === appliedWorkflowSeqRef.current) return;
+    appliedWorkflowSeqRef.current = workflowActionRequest.seq;
+
+    switch (workflowActionRequest.action) {
+      case "view-progress":
+        onViewProgress?.();
+        break;
+      case "open-cuts":
+      case "open-lettering":
+      case "upload":
+      case "refresh-assets":
+        setActiveTab("edit");
+        setGenesisEditMode("cuts");
+        break;
+      case "generate-markdown":
+        handleGenerateMarkdown();
+        break;
+      case "publish":
+        setActiveTab("preview");
+        break;
+    }
+    onWorkflowActionHandled?.(workflowActionRequest.seq);
+  }, [workflowActionRequest, onViewProgress, handleGenerateMarkdown, onWorkflowActionHandled]);
 
   // Handle cover image selection
   const handleCoverSelect = useCallback(
