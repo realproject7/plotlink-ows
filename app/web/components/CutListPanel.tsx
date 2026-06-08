@@ -471,7 +471,7 @@ function CutRow({
             {board.label}
           </span>
         </div>
-        {thumbPath ? (
+        {thumbPath || isTextPanel(cut) ? (
           <CutOverlayPreview
             storyName={storyName}
             assetPath={thumbPath}

@@ -2484,6 +2484,90 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(cuts[1].overlays.length).toBeGreaterThan(0);
   });
 
+  it("renders drafted overlays for text panels without a clean image path (#503)", async () => {
+    const cuts = [
+      makeCut({
+        id: 1,
+        kind: "text",
+        background: "#101820",
+        aspectRatio: "4:5",
+        overlays: [
+          {
+            id: "title-1",
+            type: "narration",
+            x: 0.12,
+            y: 0.18,
+            width: 0.68,
+            height: 0.24,
+            text: "Three days later.",
+          },
+        ],
+      }),
+    ];
+    const fn = vi.fn((url: string) => {
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              diagnostics: [
+                {
+                  cutId: 1,
+                  kind: "text",
+                  state: "planned",
+                  issue: null,
+                  convertiblePng: null,
+                },
+              ],
+              summary: {
+                planned: 1,
+                needsConversion: 0,
+                missing: 0,
+                cleanReady: 0,
+                finalReady: 0,
+                uploaded: 0,
+              },
+            }),
+        });
+      }
+      if (url.includes("/detect-clean-images")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ detected: [], stale: [] }),
+        });
+      }
+      if (url.includes("/cuts/plot-01")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ version: 1, plotFile: "plot-01", cuts }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      });
+    });
+
+    render(
+      <CutListPanel storyName="story" fileName="plot-01.md" authFetch={fn} />,
+    );
+
+    await screen.findByTestId("cut-list-panel");
+    expect(screen.queryByTestId("cut-card-noart-1")).not.toBeInTheDocument();
+    expect(
+      await screen.findByTestId("cut-preview-1-overlay-layer"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cut-preview-1-open"));
+    expect(
+      await screen.findByTestId("focused-lettering-editor"),
+    ).toBeInTheDocument();
+  });
+
   it("does not overwrite existing overlays with AI draft without explicit confirmation (#494)", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     let cuts = [
