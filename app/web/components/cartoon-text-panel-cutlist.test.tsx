@@ -90,7 +90,7 @@ describe("CutListPanel self-guiding workflow copy (#360)", () => {
     const authFetch = makeFetch([makeCut({ id: 1, cleanImagePath: "assets/plot-01/cut-01-clean.webp" })]);
     render(<CutListPanel storyName="story" fileName="plot-01.md" authFetch={authFetch} />);
 
-    const help = await screen.findByTestId("cartoon-workflow-help");
+    const help = await screen.findByTestId("cut-workspace-tools");
     // Explains the order of operations and what a text panel is, in plain terms.
     expect(help.textContent).toMatch(/Add narration\/text panel/);
     expect(help.textContent).toMatch(/solid card exported as a final image/i);

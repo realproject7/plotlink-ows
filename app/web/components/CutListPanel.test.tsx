@@ -2226,7 +2226,9 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(tools.tagName.toLowerCase()).toBe("details");
     expect(tools).not.toHaveAttribute("open");
     expect(within(tools).getByTestId("sync-clean-btn")).toBeInTheDocument();
-    expect(within(tools).getByText(/Workflow: Upload final images/i)).toBeInTheDocument();
+    expect(
+      within(tools).getByText(/Workflow: Create clean images/i),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/^Technical details$/i),
     ).not.toBeInTheDocument();
