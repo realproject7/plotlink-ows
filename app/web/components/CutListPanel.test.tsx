@@ -2352,6 +2352,12 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(
       await screen.findByTestId("lettering-review-state-1"),
     ).toHaveTextContent("Draft ready");
+    expect(
+      await screen.findByTestId("cut-preview-1-overlay-layer"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("cut-preview-2-overlay-layer"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("cut-card-status-2")).toHaveTextContent(
       "Needs review",
     );
@@ -2361,6 +2367,121 @@ describe("CutListPanel asset diagnostics + Refresh assets (#427)", () => {
     expect(screen.getByTestId("add-bubbles-2")).toHaveTextContent(
       "Review lettering",
     );
+
+    fireEvent.click(screen.getByTestId("cut-preview-1-open"));
+    expect(
+      await screen.findByTestId("focused-lettering-editor"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders drafted overlays across multiple cut previews after AI draft all unlettered (#503)", async () => {
+    let cuts = [
+      makeCut({
+        id: 1,
+        cleanImagePath: "assets/plot-01/cut-01-clean.webp",
+        dialogue: [{ speaker: "Mira", text: "We move now." }],
+      }),
+      makeCut({
+        id: 2,
+        cleanImagePath: "assets/plot-01/cut-02-clean.webp",
+        narration: "The city held its breath.",
+      }),
+    ];
+    const fn = vi.fn((url: string, opts?: RequestInit) => {
+      if (url.includes("/asset/")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          blob: () =>
+            Promise.resolve(new Blob(["img"], { type: "image/webp" })),
+        });
+      }
+      if (url.includes("/asset-diagnostics")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              diagnostics: [
+                {
+                  cutId: 1,
+                  kind: "image",
+                  state: "clean-ready",
+                  issue: null,
+                  convertiblePng: null,
+                },
+                {
+                  cutId: 2,
+                  kind: "image",
+                  state: "clean-ready",
+                  issue: null,
+                  convertiblePng: null,
+                },
+              ],
+              summary: {
+                planned: 0,
+                needsConversion: 0,
+                missing: 0,
+                cleanReady: 2,
+                finalReady: 0,
+                uploaded: 0,
+              },
+            }),
+        });
+      }
+      if (url.includes("/detect-clean-images")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ detected: [], stale: [] }),
+        });
+      }
+      if (url.endsWith("/cuts/plot-01") && opts?.method === "PUT") {
+        cuts = JSON.parse(String(opts.body)).cuts;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ok: true }),
+        });
+      }
+      if (url.includes("/cuts/plot-01")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ version: 1, plotFile: "plot-01", cuts }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      });
+    });
+
+    render(
+      <CutListPanel storyName="story" fileName="plot-01.md" authFetch={fn} />,
+    );
+
+    await screen.findByTestId("cut-list-panel");
+    fireEvent.click(screen.getByTestId("ai-draft-all-btn"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("lettering-review-state-1")).toHaveTextContent(
+        "Draft ready",
+      ),
+    );
+    expect(screen.getByTestId("lettering-review-state-2")).toHaveTextContent(
+      "Draft ready",
+    );
+    expect(
+      await screen.findByTestId("cut-preview-1-overlay-layer"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("cut-preview-2-overlay-layer"),
+    ).toBeInTheDocument();
+    expect(cuts[0].overlays.length).toBeGreaterThan(0);
+    expect(cuts[1].overlays.length).toBeGreaterThan(0);
   });
 
   it("does not overwrite existing overlays with AI draft without explicit confirmation (#494)", async () => {
