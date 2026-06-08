@@ -51,27 +51,37 @@ function makeAuthFetch() {
   });
 }
 
-describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
-  it("a Genesis coach UI action lands on the actionable cut workspace, not the markdown editor", async () => {
+function makeGenerateMarkdownAuthFetch() {
+  const calls: string[] = [];
+  const fn = vi.fn((url: string) => {
+    calls.push(url);
+    if (url.includes("/asset/")) {
+      return Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"], { type: "image/webp" })) });
+    }
+    let data: unknown = {};
+    if (url.includes("/progress")) data = { contentType: "cartoon", coach: genesisCoach };
+    else if (url.includes("/cuts/genesis/generate-markdown")) data = { ok: true };
+    else if (url.includes("/cuts/genesis/detect-clean-images")) data = { detected: [], stale: [] };
+    else if (url.includes("/cuts/genesis/asset-diagnostics")) data = { diagnostics: [], summary: {} };
+    else if (url.includes("/cuts/genesis")) data = { version: 1, plotFile: "genesis", cuts: [genesisCut] };
+    else if (url.includes("/cover-asset")) data = { found: false };
+    else if (url.endsWith("/genesis.md")) data = { file: "genesis.md", status: "pending", content: "# Opening\n\nThe story begins." };
+    else if (url.endsWith("/structure.md")) data = { content: "# Bible" };
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(data) });
+  });
+  return { fn, calls };
+}
+
+describe("PreviewPanel — cartoon file chrome", () => {
+  it("does not render the old top workflow coach in cartoon file views (#498)", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-
-    // The coach loads for Genesis with an in-app (lettering) action.
-    const doBtn = await screen.findByTestId("workflow-coach-do");
-    expect(screen.getByTestId("workflow-coach-action")).toHaveTextContent(/Review cuts and start lettering/i);
-    expect(doBtn).toHaveTextContent("Next Action");
-    // Before acting, the cut workspace isn't mounted.
-    expect(screen.queryByTestId("cut-list-panel")).not.toBeInTheDocument();
-
-    fireEvent.click(doBtn);
-
-    // After: the Genesis cut workspace is mounted and actionable — NOT the
-    // plain markdown textarea (the bug @re1 caught).
-    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+    expect(await screen.findByText("The story begins.")).toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-coach")).not.toBeInTheDocument();
   });
 
   it("Genesis Edit tab keeps the opening-text editor and reaches the cut workspace via the sub-toggle", async () => {
     render(<PreviewPanel storyName="god-cell" fileName="genesis.md" authFetch={makeAuthFetch()} contentType="cartoon" hasGenesis />);
-    await screen.findByTestId("workflow-coach"); // wait for first render to settle
+    await screen.findByText("The story begins.");
 
     fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
     // Default Genesis Edit sub-view is the opening-text editor (prose preserved).
@@ -94,7 +104,7 @@ describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
       />,
     );
 
-    await screen.findByTestId("workflow-coach");
+    await screen.findByText("The story begins.");
 
     for (let i = 0; i < 2; i++) {
       fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
@@ -116,5 +126,40 @@ describe("PreviewPanel — Genesis workflow-coach cut actions (#429)", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Preview/ }));
       expect(await screen.findByText("The story begins.")).toBeInTheDocument();
     }
+  });
+
+  it("applies an open-lettering workflow request by landing in Genesis cuts edit", async () => {
+    render(
+      <PreviewPanel
+        storyName="god-cell"
+        fileName="genesis.md"
+        authFetch={makeAuthFetch()}
+        contentType="cartoon"
+        hasGenesis
+        workflowActionRequest={{ action: "open-lettering", seq: 1 }}
+      />,
+    );
+
+    expect(await screen.findByTestId("cut-list-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("genesis-edit-mode-cuts")).toBeInTheDocument();
+  });
+
+  it("applies a generate-markdown workflow request through the generation endpoint", async () => {
+    const { fn, calls } = makeGenerateMarkdownAuthFetch();
+    render(
+      <PreviewPanel
+        storyName="god-cell"
+        fileName="genesis.md"
+        authFetch={fn}
+        contentType="cartoon"
+        hasGenesis
+        workflowActionRequest={{ action: "generate-markdown", seq: 1 }}
+      />,
+    );
+
+    await screen.findByText("The story begins.");
+    expect(
+      calls.some((url) => url.includes("/cuts/genesis/generate-markdown")),
+    ).toBe(true);
   });
 });

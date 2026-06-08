@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import type { StoryProgress, EpisodeProgress, EpisodeState } from "@app-lib/story-progress";
 import type { CartoonChecklistStep } from "@app-lib/cartoon-readiness";
-import { cartoonWorkflowActiveKey, CartoonNextActionView } from "./CartoonNextAction";
+import { cartoonWorkflowActiveKey } from "./CartoonNextAction";
 
 interface StoryProgressPanelProps {
   storyName: string;
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>;
   /** Open a file from the map (the workflow steps link to their file). */
   onOpenFile: (storyName: string, file: string) => void;
-  /** Open the Story Info workflow page when metadata/cover is the next gate. */
-  onOpenStoryInfo?: () => void;
   /** Bumped by the parent to force a refresh (e.g. after a publish). */
   refreshKey?: number;
 }
@@ -20,13 +18,13 @@ interface StoryProgressPanelProps {
  * For CARTOON stories this is the writer's main production dashboard: a vertical
  * workflow map of numbered sections (Define Story Info → Story Whitepaper →
  * Genesis / Episode 1 → Episode 2 …), each with a checkbox checklist and a clear
- * status. The single next-action CTA stays persistent above the map, while the
- * current section still marks where that action belongs.
+ * status. The shell owns the single persistent next-action CTA, while the current
+ * section still marks where that action belongs.
  *
  * FICTION keeps the simpler original layout — metadata, setup steps, a chapter
  * list — and is completely unaffected by the cartoon redesign.
  */
-export function StoryProgressPanel({ storyName, authFetch, onOpenFile, onOpenStoryInfo, refreshKey = 0 }: StoryProgressPanelProps) {
+export function StoryProgressPanel({ storyName, authFetch, onOpenFile, refreshKey = 0 }: StoryProgressPanelProps) {
   const [progress, setProgress] = useState<StoryProgress | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -56,7 +54,7 @@ export function StoryProgressPanel({ storyName, authFetch, onOpenFile, onOpenSto
   }
 
   return progress.contentType === "cartoon"
-    ? <CartoonWorkflowMap progress={progress} storyName={storyName} onOpenFile={onOpenFile} onOpenStoryInfo={onOpenStoryInfo} />
+    ? <CartoonWorkflowMap progress={progress} storyName={storyName} onOpenFile={onOpenFile} />
     : <FictionProgressView progress={progress} storyName={storyName} onOpenFile={onOpenFile} />;
 }
 
@@ -203,12 +201,11 @@ const GENESIS_STUB: EpisodeProgress = {
 };
 
 function CartoonWorkflowMap({
-  progress, storyName, onOpenFile, onOpenStoryInfo,
+  progress, storyName, onOpenFile,
 }: {
   progress: StoryProgress;
   storyName: string;
   onOpenFile: (storyName: string, file: string) => void;
-  onOpenStoryInfo?: () => void;
 }) {
   const m = progress.metadata;
   const hasStructure = progress.setup.hasStructure;
@@ -216,17 +213,6 @@ function CartoonWorkflowMap({
   const metadataIncomplete = !m.title || !m.language || !m.genre;
   const storyInfoIncomplete = metadataIncomplete || !coverDone;
   const activeKey = cartoonWorkflowActiveKey(progress);
-
-  const topNextAction = (
-    <CartoonNextActionView
-      progress={progress}
-      onOpenStoryInfo={onOpenStoryInfo}
-      onCoachAction={(action, episodeFile) => {
-        if (action === "view-progress") return; // already here
-        if (episodeFile) onOpenFile(storyName, episodeFile);
-      }}
-    />
-  );
 
   const infoItems: ChecklistItem[] = [
     { label: "Public title", status: m.title ? "done" : "todo", detail: m.title ?? null },
@@ -245,9 +231,6 @@ function CartoonWorkflowMap({
   return (
     <div className="h-full overflow-y-auto" data-testid="story-progress-panel">
       <ProgressHeader progress={progress} />
-      <div className="border-b border-border" data-testid="persistent-next-action">
-        {topNextAction}
-      </div>
       <p className="px-4 pt-3 pb-1 text-[11px] font-medium text-muted uppercase tracking-wider">Production Progress</p>
 
       <Section

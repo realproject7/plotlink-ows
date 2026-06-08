@@ -4,11 +4,10 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { GENRES, LANGUAGES, canonicalizeGenre } from "../../../lib/genres";
+import type { CoachUiAction } from "@app-lib/cartoon-coach";
 import { CartoonPreview } from "./CartoonPreview";
 import { CartoonPublishPreview } from "./CartoonPublishPreview";
 import { CutListPanel } from "./CutListPanel";
-import { WorkflowCoach } from "./WorkflowCoach";
-import type { CoachUiAction } from "@app-lib/cartoon-coach";
 import {
   classifyCartoonReadiness,
   cartoonGenesisReadiness,
@@ -120,6 +119,11 @@ interface PreviewPanelProps {
   onFocusedLetteringModeChange?: (active: boolean) => void;
   /** Restore/fold the wider app work area while staying in the editor. */
   onFocusedLetteringWorkspaceVisibleChange?: (visible: boolean) => void;
+  workflowActionRequest?: {
+    action: CoachUiAction;
+    seq: number;
+  } | null;
+  onWorkflowActionHandled?: (seq: number) => void;
 }
 
 interface FileData {
@@ -135,6 +139,13 @@ interface FileData {
 }
 
 type Tab = "preview" | "edit";
+
+function workflowActionNeedsCuts(action: CoachUiAction | null | undefined): boolean {
+  return action === "open-cuts"
+    || action === "open-lettering"
+    || action === "upload"
+    || action === "refresh-assets";
+}
 
 export function PreviewPanel({
   storyName,
@@ -155,6 +166,8 @@ export function PreviewPanel({
   focusedLetteringWorkspaceVisible = false,
   onFocusedLetteringModeChange,
   onFocusedLetteringWorkspaceVisibleChange,
+  workflowActionRequest = null,
+  onWorkflowActionHandled,
 }: PreviewPanelProps) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -269,6 +282,11 @@ export function PreviewPanel({
   const illustrationInputRef = useRef<HTMLInputElement>(null);
 
   const prevFileRef = useRef<string | null>(null);
+  const appliedWorkflowSeqRef = useRef(0);
+  const pendingWorkflowCutsRef = useRef(false);
+  pendingWorkflowCutsRef.current = workflowActionNeedsCuts(
+    workflowActionRequest?.action,
+  );
 
   const loadFile = useCallback(async () => {
     if (!storyName || !fileName) {
@@ -533,43 +551,31 @@ export function PreviewPanel({
     }
   }, [storyName, fileName, authFetch, loadFile]);
 
-  // Route a workflow-coach UI action to the right control (#429). When the
-  // action concerns a different episode than the open file (e.g. the coach on
-  // structure.md points at the active episode), open that file first — the coach
-  // there offers the same action in place. Otherwise reveal the control: the cut
-  // workspace for letter/export/upload/refresh, the Preview tab for publish (the
-  // writer still confirms the irreversible publish), or run Prepare directly.
-  const handleCoachAction = useCallback(
-    (action: CoachUiAction, episodeFile: string | null) => {
-      if (action === "view-progress") {
+  useEffect(() => {
+    if (!workflowActionRequest) return;
+    if (workflowActionRequest.seq === appliedWorkflowSeqRef.current) return;
+    appliedWorkflowSeqRef.current = workflowActionRequest.seq;
+
+    switch (workflowActionRequest.action) {
+      case "view-progress":
         onViewProgress?.();
-        return;
-      }
-      if (episodeFile && episodeFile !== fileName) {
-        onOpenFile?.(episodeFile);
-        return;
-      }
-      switch (action) {
-        case "open-cuts":
-        case "open-lettering":
-        case "upload":
-        case "refresh-assets":
-          setActiveTab("edit");
-          // For Genesis the Edit tab defaults to the opening-text editor; switch to
-          // the cut workspace so the lettering/upload/refresh action is actionable.
-          // No-op for plots (the cut workspace is the only Edit view).
-          setGenesisEditMode("cuts");
-          break;
-        case "generate-markdown":
-          handleGenerateMarkdown();
-          break;
-        case "publish":
-          setActiveTab("preview");
-          break;
-      }
-    },
-    [fileName, onViewProgress, onOpenFile, handleGenerateMarkdown],
-  );
+        break;
+      case "open-cuts":
+      case "open-lettering":
+      case "upload":
+      case "refresh-assets":
+        setActiveTab("edit");
+        setGenesisEditMode("cuts");
+        break;
+      case "generate-markdown":
+        handleGenerateMarkdown();
+        break;
+      case "publish":
+        setActiveTab("preview");
+        break;
+    }
+    onWorkflowActionHandled?.(workflowActionRequest.seq);
+  }, [workflowActionRequest, onViewProgress, handleGenerateMarkdown, onWorkflowActionHandled]);
 
   // Handle cover image selection
   const handleCoverSelect = useCallback(
@@ -811,7 +817,7 @@ export function PreviewPanel({
     setDetectedCoverWarning(null);
     setCoverStatus("unknown");
     coverUserTouchedRef.current = false;
-    setGenesisEditMode("text");
+    setGenesisEditMode(pendingWorkflowCutsRef.current ? "cuts" : "text");
   }, [storyName, fileName]);
 
   // Auto-detect an agent-created cover (assets/cover.webp|jpg) for an UNPUBLISHED
@@ -1330,25 +1336,6 @@ export function PreviewPanel({
           </div>
         </div>
       )}
-
-      {/* Persistent cartoon workflow coach (#429): one clear next action across
-          every cartoon file view, derived from real story/episode state. Sits
-          above the content so it stays visible on both the Preview and Edit
-          tabs. Fiction renders nothing (the coach is null), so fiction views are
-          unchanged. */}
-      {!hideFocusedEditorChrome &&
-        contentType === "cartoon" &&
-        storyName &&
-        fileName && (
-          <WorkflowCoach
-            storyName={storyName}
-            fileName={fileName}
-            authFetch={authFetch}
-            refreshKey={cutsRefreshKey}
-            onAction={handleCoachAction}
-            showEmptyState
-          />
-        )}
 
       {/* Content area */}
       {activeTab === "preview" ? (

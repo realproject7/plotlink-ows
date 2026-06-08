@@ -143,11 +143,16 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     focusedLetteringWorkspaceVisible,
     setFocusedLetteringWorkspaceVisible,
   ] = useState(true);
+  const [workflowActionRequest, setWorkflowActionRequest] = useState<{
+    action: CoachUiAction;
+    seq: number;
+  } | null>(null);
   const contentTypeMap = useRef<Map<string, "fiction" | "cartoon">>(new Map());
   const languageMap = useRef<Map<string, string>>(new Map());
   const agentModeMap = useRef<Map<string, "normal" | "bypass">>(new Map());
   const agentProviderMap = useRef<Map<string, "claude" | "codex">>(new Map());
   const knownStoriesRef = useRef<Set<string>>(new Set());
+  const workflowActionSeqRef = useRef(0);
   const renameRef = useRef<
     | ((
         oldName: string,
@@ -1064,6 +1069,13 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
     (action: CoachUiAction, episodeFile: string | null) => {
       const story = selectedStory;
       if (!story) return;
+      const queueWorkflowAction = (nextAction: CoachUiAction) => {
+        workflowActionSeqRef.current += 1;
+        setWorkflowActionRequest({
+          action: nextAction,
+          seq: workflowActionSeqRef.current,
+        });
+      };
       switch (action) {
         case "view-progress":
           setCartoonView(null);
@@ -1077,7 +1089,9 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
         case "upload":
         case "refresh-assets":
         case "generate-markdown":
-          if (episodeFile) handleSelectFile(story, episodeFile);
+          if (!episodeFile) return;
+          handleSelectFile(story, episodeFile);
+          queueWorkflowAction(action);
           break;
       }
     },
@@ -1211,23 +1225,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
             onSelect={handleCartoonNav}
           />
         )}
-        {!focusedLetteringMode &&
-          isCartoonStory &&
-          selectedStory &&
-          cartoonView !== null && (
-            <div
-              className="flex-shrink-0 border-b border-border"
-              data-testid="workflow-context-next-action"
-            >
-              <CartoonNextAction
-                storyName={selectedStory}
-                authFetch={authFetch}
-                refreshKey={cartoonPublishRefresh}
-                onCoachAction={handleWorkflowNextAction}
-                onOpenStoryInfo={() => setCartoonView("story-info")}
-              />
-            </div>
-          )}
         <div className="flex-1 min-h-0 flex flex-col">
           {isCartoonStory && cartoonView === "story-info" && selectedStory ? (
             <StoryInfoPage
@@ -1259,7 +1256,6 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               storyName={selectedStory}
               authFetch={authFetch}
               onOpenFile={handleSelectFile}
-              onOpenStoryInfo={() => setCartoonView("story-info")}
             />
           ) : (
             <PreviewPanel
@@ -1293,9 +1289,30 @@ export function StoriesPage({ token, authFetch }: StoriesPageProps) {
               onFocusedLetteringWorkspaceVisibleChange={
                 setFocusedLetteringWorkspaceVisible
               }
+              workflowActionRequest={workflowActionRequest}
+              onWorkflowActionHandled={(seq) =>
+                setWorkflowActionRequest((prev) =>
+                  prev?.seq === seq ? null : prev,
+                )
+              }
             />
           )}
         </div>
+        {!focusedLetteringMode && isCartoonStory && selectedStory && (
+          <div
+            className="flex-shrink-0 border-t border-border bg-background/95 backdrop-blur"
+            data-testid="workflow-persistent-next-action"
+          >
+            <CartoonNextAction
+              storyName={selectedStory}
+              fileName={cartoonView === null ? selectedFile : null}
+              authFetch={authFetch}
+              refreshKey={cartoonPublishRefresh}
+              onCoachAction={handleWorkflowNextAction}
+              onOpenStoryInfo={() => setCartoonView("story-info")}
+            />
+          </div>
+        )}
         {publishProgress && (
           <div className="shrink-0 px-3 py-1.5 bg-surface border-t border-border text-xs text-muted">
             {publishProgress}

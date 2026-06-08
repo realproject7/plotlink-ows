@@ -30,6 +30,9 @@ const childProps = vi.hoisted(() => ({
   }>,
   previewStory: undefined as string | null | undefined,
   previewFile: undefined as string | null | undefined,
+  workflowActionRequest: null as
+    | null
+    | { action: string; seq: number },
 }));
 
 vi.mock("./StoryBrowser", () => ({
@@ -84,14 +87,18 @@ vi.mock("./PreviewPanel", () => ({
     fileName?: string | null;
     onFocusedLetteringModeChange?: (active: boolean) => void;
     onFocusedLetteringWorkspaceVisibleChange?: (visible: boolean) => void;
+    workflowActionRequest?: { action: string; seq: number } | null;
+    onWorkflowActionHandled?: (seq: number) => void;
   }) => {
     childProps.previewStory = props.storyName;
     childProps.previewFile = props.fileName;
+    childProps.workflowActionRequest = props.workflowActionRequest ?? null;
     return (
       <div
         data-testid="mock-preview"
         data-story={props.storyName ?? ""}
         data-file={props.fileName ?? ""}
+        data-workflow-action={props.workflowActionRequest?.action ?? ""}
       >
         <button
           data-testid="mock-enter-focused-lettering"
@@ -119,6 +126,15 @@ vi.mock("./PreviewPanel", () => ({
         >
           Hide work area
         </button>
+        <button
+          data-testid="mock-handle-workflow-action"
+          onClick={() =>
+            props.workflowActionRequest &&
+            props.onWorkflowActionHandled?.(props.workflowActionRequest.seq)
+          }
+        >
+          Handle workflow action
+        </button>
       </div>
     );
   },
@@ -145,6 +161,7 @@ afterEach(() => {
   childProps.renameCalls = [];
   childProps.previewStory = undefined;
   childProps.previewFile = undefined;
+  childProps.workflowActionRequest = null;
 });
 
 interface FetchCall {
@@ -780,12 +797,116 @@ function makeTwoCartoonAuthFetch() {
         ok: true,
         json: () => Promise.resolve({ stories }),
       });
-    if (url.endsWith("/progress"))
+    if (url.includes("/progress"))
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(progress),
       });
     // story detail (cartoon ⇒ no auto-open) and everything else.
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ contentType: "cartoon", files: [] }),
+    });
+  });
+  return { fn };
+}
+
+function makeWorkflowActionAuthFetch(coachAction: "open-lettering" | "generate-markdown") {
+  const stories = [
+    {
+      name: "cartoon-a",
+      title: "Story A",
+      hasStructure: true,
+      hasGenesis: true,
+      contentType: "cartoon",
+      agentProvider: "codex",
+    },
+  ];
+  const progress = {
+    name: "cartoon-a",
+    contentType: "cartoon",
+    metadata: {
+      title: "Story A",
+      language: "English",
+      genre: "Science Fiction",
+      isNsfw: false,
+      contentType: "cartoon",
+    },
+    setup: { hasStructure: true, hasGenesis: true },
+    cover: "present",
+    episodes: [
+      {
+        file: "genesis.md",
+        label: "Episode 1 / Genesis",
+        kind: "genesis",
+        title: "Opening",
+        state: "in-progress",
+        summary: "Needs action",
+        published: false,
+        checklist: [],
+        cuts: {
+          total: 1,
+          needClean: 0,
+          withClean: 1,
+          withText: 0,
+          exported: 0,
+          uploaded: 0,
+        },
+      },
+    ],
+    summary: {
+      episodes: 1,
+      published: 0,
+      readyToPublish: 0,
+      placeholders: 0,
+      blocked: 1,
+    },
+    nextAction: "Review cuts and start lettering.",
+    nextPrompt: null,
+    coach: {
+      stageLabel: "Clean images ready",
+      action:
+        coachAction === "generate-markdown"
+          ? "Prepare the episode for publish"
+          : "Review cuts and start lettering",
+      actionKind: "ui",
+      prompt: null,
+      uiAction: coachAction,
+      episodeFile: "genesis.md",
+    },
+  };
+  const fn = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+    if (url === "/api/wallet")
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ address: "0xabc" }),
+      });
+    if (url === "/api/agent/readiness") {
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            claude: { installed: true },
+            codex: {
+              installed: true,
+              version: "codex-cli 0.135.0",
+              imageGeneration: "enabled",
+              auth: "ok",
+            },
+            checkedAt: 1748000000000,
+          }),
+      });
+    }
+    if (url === "/api/stories" && !opts)
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ stories }),
+      });
+    if (url.includes("/progress"))
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(progress),
+      });
     return Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ contentType: "cartoon", files: [] }),
@@ -847,15 +968,16 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     expect(screen.queryByTestId("mock-preview")).not.toBeInTheDocument();
   }, 10000);
 
-  it("shows the Story Info next-action CTA on story-level right-pane pages when cover is missing (#487 RE1)", async () => {
+  it("shows the persistent Story Info next-action CTA at the bottom of cartoon right-pane pages when cover is missing (#487 RE1)", async () => {
     const { fn } = makeTwoCartoonAuthFetch();
     render(<StoriesPage token="t" authFetch={fn} />);
     await waitFor(() => expect(childProps.onSelectStory).not.toBeNull());
     childProps.onSelectStory!("cartoon-a");
 
     fireEvent.click(await screen.findByTestId("nav-tab-publish"));
+    expect(screen.queryByTestId("workflow-context-next-action")).not.toBeInTheDocument();
     const publishCta = await screen.findByTestId(
-      "workflow-context-next-action",
+      "workflow-persistent-next-action",
     );
     expect(
       within(publishCta).getByTestId("story-info-next-action"),
@@ -877,12 +999,76 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
       ),
     );
 
-    const storyInfoCta = screen.getByTestId("workflow-context-next-action");
+    const storyInfoCta = screen.getByTestId("workflow-persistent-next-action");
     expect(
       within(storyInfoCta).getByTestId("story-info-next-action"),
     ).toHaveTextContent(/Next: Add a cover image before publishing/i);
     expect(
       within(storyInfoCta).queryByText("No next action available"),
     ).not.toBeInTheDocument();
+  }, 10000);
+
+  it("keeps the persistent CTA on file-backed cartoon routes without restoring the old top strip", async () => {
+    const { fn } = makeTwoCartoonAuthFetch();
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("cartoon-a", "genesis.md");
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+
+    expect(screen.queryByTestId("workflow-context-next-action")).not.toBeInTheDocument();
+    const cta = await screen.findByTestId("workflow-persistent-next-action");
+    expect(within(cta).getByTestId("story-info-next-action")).toHaveTextContent(
+      /Next: Add a cover image before publishing/i,
+    );
+    expect(within(cta).getByRole("button", { name: "Next Action" })).toBeInTheDocument();
+  }, 10000);
+
+  it("passes open-lettering through to PreviewPanel as a one-shot workflow action request", async () => {
+    const { fn } = makeWorkflowActionAuthFetch("open-lettering");
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("cartoon-a", "genesis.md");
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+
+    const cta = await screen.findByTestId("workflow-persistent-next-action");
+    fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+
+    await waitFor(() =>
+      expect(childProps.workflowActionRequest).toMatchObject({
+        action: "open-lettering",
+      }),
+    );
+    const firstSeq = childProps.workflowActionRequest?.seq;
+
+    fireEvent.click(screen.getByTestId("mock-handle-workflow-action"));
+    await waitFor(() => expect(childProps.workflowActionRequest).toBeNull());
+
+    fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+    await waitFor(() =>
+      expect(childProps.workflowActionRequest).toMatchObject({
+        action: "open-lettering",
+      }),
+    );
+    expect(childProps.workflowActionRequest?.seq).toBeGreaterThan(firstSeq ?? 0);
+  }, 10000);
+
+  it("passes generate-markdown through to PreviewPanel instead of dropping it at file selection", async () => {
+    const { fn } = makeWorkflowActionAuthFetch("generate-markdown");
+    render(<StoriesPage token="t" authFetch={fn} />);
+    await waitFor(() => expect(childProps.onSelectFile).not.toBeNull());
+
+    childProps.onSelectFile!("cartoon-a", "genesis.md");
+    await waitFor(() => expect(childProps.previewFile).toBe("genesis.md"));
+
+    const cta = await screen.findByTestId("workflow-persistent-next-action");
+    fireEvent.click(within(cta).getByRole("button", { name: "Next Action" }));
+
+    await waitFor(() =>
+      expect(childProps.workflowActionRequest).toMatchObject({
+        action: "generate-markdown",
+      }),
+    );
   }, 10000);
 });
