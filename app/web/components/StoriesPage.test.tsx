@@ -985,6 +985,7 @@ describe("StoriesPage cartoon workflow nav routing (#439)", () => {
     expect(
       within(publishCta).getByRole("button", { name: "Next Action" }),
     ).toBeInTheDocument();
+    expect(publishCta.className).toContain("absolute");
     expect(
       within(publishCta).queryByText("No next action available"),
     ).not.toBeInTheDocument();

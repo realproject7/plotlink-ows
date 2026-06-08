@@ -26,6 +26,8 @@ describe("EpisodesPage (#439)", () => {
   it("lists episodes in reader order with Genesis as Episode 1", async () => {
     render(<EpisodesPage storyName="god-cell" authFetch={makeAuthFetch()} onOpenFile={vi.fn()} />);
     expect(await screen.findByTestId("episodes-page")).toBeInTheDocument();
+    expect(screen.getByTestId("episodes-summary")).toHaveTextContent("2 total");
+    expect(screen.getByTestId("episodes-summary")).toHaveTextContent("1 ready");
     expect(screen.getByTestId("episodes-row-genesis.md")).toHaveTextContent("Episode 1 / Genesis");
     expect(screen.getByTestId("episodes-row-plot-01.md")).toHaveTextContent("Episode 2");
   });

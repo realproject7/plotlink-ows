@@ -45,10 +45,34 @@ export function EpisodesPage({ storyName, authFetch, onOpenFile }: EpisodesPageP
     return <div className="h-full flex items-center justify-center text-muted text-sm">Could not load episodes.</div>;
   }
 
+  const publishedCount = episodes.filter((ep) => ep.published).length;
+  const activeCount = episodes.filter((ep) => !ep.published).length;
+  const blockedCount = episodes.filter((ep) => ep.state === "blocked").length;
+  const readyCount = episodes.filter((ep) => ep.state === "ready").length;
+
   return (
     <div className="h-full overflow-y-auto px-4 py-4" data-testid="episodes-page">
       <h2 className="text-base font-serif text-foreground">Episodes</h2>
       <p className="mt-0.5 text-[11px] text-muted">Genesis is Episode 1; each plot file is the next episode.</p>
+      <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]" data-testid="episodes-summary">
+        <span className="rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
+          {episodes.length} total
+        </span>
+        <span className="rounded-full border border-border bg-background px-2 py-0.5 text-muted">
+          {activeCount} active
+        </span>
+        <span className="rounded-full border border-green-700/30 bg-green-700/10 px-2 py-0.5 text-green-700">
+          {publishedCount} published
+        </span>
+        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-accent">
+          {readyCount} ready
+        </span>
+        {blockedCount > 0 && (
+          <span className="rounded-full border border-error/30 bg-error/10 px-2 py-0.5 text-error">
+            {blockedCount} need fixes
+          </span>
+        )}
+      </div>
 
       {episodes.length === 0 ? (
         <p className="mt-4 text-xs text-muted italic" data-testid="episodes-empty">No episodes yet — write the Genesis to start Episode 1.</p>

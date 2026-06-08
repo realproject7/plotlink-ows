@@ -152,8 +152,37 @@ export function StoryInfoPage({ storyName, authFetch, onSaved }: StoryInfoPagePr
 
   return (
     <div className="h-full overflow-y-auto px-4 py-4" data-testid="story-info-page">
-      <h2 className="text-base font-serif text-foreground">Story Info</h2>
-      <p className="mt-0.5 text-[11px] text-muted">These details appear on PlotLink when the story is published.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-serif text-foreground">Story Info</h2>
+          <p className="mt-0.5 text-[11px] text-muted">These details appear on PlotLink when the story is published.</p>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+            <span className={`rounded-full border px-2 py-0.5 ${title.trim() ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}>
+              Title {title.trim() ? "ready" : "missing"}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 ${genre ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}>
+              Genre {genre ? "set" : "needed"}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 ${language ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}>
+              Language {language ? "set" : "needed"}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 ${cover === "present" ? "border-green-700/30 bg-green-700/10 text-green-700" : "border-border bg-background text-muted"}`}>
+              {cover === "present" ? "Cover ready" : "Cover missing"}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-col items-start gap-1.5">
+          <button
+            type="button" onClick={handleSave} disabled={saving}
+            data-testid="story-info-save"
+            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-dim transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Story Info"}
+          </button>
+          {saved && <span className="text-[11px] text-green-700" data-testid="story-info-saved">Saved</span>}
+          {saveError && <span className="text-[11px] text-error" data-testid="story-info-error">{saveError}</span>}
+        </div>
+      </div>
 
       <div className="mt-4 flex flex-col gap-4 max-w-xl">
         <label className="flex flex-col gap-1">
@@ -248,18 +277,6 @@ export function StoryInfoPage({ storyName, authFetch, onSaved }: StoryInfoPagePr
           />
           <span className="text-xs text-foreground">This story contains adult content (18+)</span>
         </label>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button" onClick={handleSave} disabled={saving}
-            data-testid="story-info-save"
-            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-dim transition-colors disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save Story Info"}
-          </button>
-          {saved && <span className="text-[11px] text-green-700" data-testid="story-info-saved">Saved</span>}
-          {saveError && <span className="text-[11px] text-error" data-testid="story-info-error">{saveError}</span>}
-        </div>
       </div>
     </div>
   );
