@@ -50,6 +50,9 @@ interface DashboardData {
 
 export function Dashboard({ token }: { token: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimResult, setClaimResult] = useState<{ txHash: string; amount: string; basescanUrl?: string } | null>(null);
   const authFetch = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { ...opts?.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }),
   [token]);
@@ -68,6 +71,24 @@ export function Dashboard({ token }: { token: string }) {
     const date = new Date(d);
     if (isNaN(date.getTime())) return "Unknown date";
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+  const canClaimRoyalties = data?.wallet && parseFloat(data.royalties.unclaimed) > 0;
+
+  const handleClaimRoyalties = async () => {
+    setClaiming(true);
+    setClaimError(null);
+    setClaimResult(null);
+    try {
+      const res = await authFetch(`${API_BASE}/api/dashboard/royalties/claim`, { method: "POST" });
+      const claimData = await res.json();
+      if (!res.ok) throw new Error(claimData.error || "Royalty claim failed");
+      setClaimResult({ txHash: claimData.txHash, amount: claimData.amount, basescanUrl: claimData.basescanUrl });
+      loadDashboard();
+    } catch (err: unknown) {
+      setClaimError(err instanceof Error ? err.message : "Royalty claim failed");
+    } finally {
+      setClaiming(false);
+    }
   };
 
   if (!data) {
@@ -145,6 +166,25 @@ export function Dashboard({ token }: { token: string }) {
             <span className="text-muted">Unclaimed royalties</span>
             <span className="text-foreground">{data.royalties.unclaimed} PLOT</span>
           </div>
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <span className="text-muted text-[10px]">Claims use the active OWS wallet on Base.</span>
+            <button
+              onClick={handleClaimRoyalties}
+              disabled={!canClaimRoyalties || claiming}
+              className="bg-accent text-background hover:bg-accent/90 disabled:bg-surface disabled:text-muted rounded px-3 py-1.5 text-[10px] font-bold transition-colors"
+            >
+              {claiming ? "Claiming..." : "Claim royalties"}
+            </button>
+          </div>
+          {claimError && <p className="text-error text-[10px]">{claimError}</p>}
+          {claimResult && (
+            <p className="text-accent text-[10px]">
+              Claimed {claimResult.amount} PLOT ·{" "}
+              <a href={claimResult.basescanUrl || `https://basescan.org/tx/${claimResult.txHash}`} target="_blank" rel="noopener noreferrer" className="underline">
+                view tx
+              </a>
+            </p>
+          )}
           <div className="border-border flex justify-between border-t pt-1.5 text-xs font-medium">
             <span className="text-muted">Net P&L (USD)</span>
             <span className={parseFloat(data.pnl.netPnlUsd) >= 0 ? "text-accent" : "text-error"}>

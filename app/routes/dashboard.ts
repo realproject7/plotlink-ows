@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, createWalletClient, formatUnits, http, type Address } from "viem";
 import { base } from "viem/chains";
 import fs from "fs";
 import path from "path";
-import { getEthBalance } from "../lib/publish";
+import { createOwsAccount, getEthBalance } from "../lib/publish";
 import { resolveActiveWallet } from "../lib/active-wallet";
 import { mcv2BondAbi } from "../../packages/cli/src/sdk/abi";
 import { STORIES_DIR, readPublishStatus } from "./stories";
@@ -18,6 +18,10 @@ const publicClient = createPublicClient({
 });
 
 const dashboard = new Hono();
+
+function formatPlot(value: bigint): string {
+  return Number(formatUnits(value, 18)).toFixed(6);
+}
 
 /** GET /api/dashboard — writer dashboard data */
 dashboard.get("/", async (c) => {
@@ -125,9 +129,10 @@ dashboard.get("/", async (c) => {
   }, BigInt(0));
   const totalGasCostEth = (Number(totalGasCostWei) / 1e18).toFixed(6);
 
-  // Query on-chain royalties (WETH on Base — bonding curve reserve)
+  // Query on-chain royalties (PLOT on Base — bonding curve reserve)
   let royaltiesEarned = "0";
   let royaltiesClaimed = "0";
+  let royaltiesUnclaimed = "0";
   if (walletInfo?.address) {
     try {
       // getRoyaltyInfo returns (unclaimed, totalClaimed)
@@ -138,8 +143,9 @@ dashboard.get("/", async (c) => {
         args: [walletInfo.address as `0x${string}`, RESERVE_TOKEN],
       }) as [bigint, bigint];
       // Total earned = unclaimed + previously claimed
-      royaltiesEarned = (Number(unclaimed + totalClaimed) / 1e18).toFixed(6);
-      royaltiesClaimed = (Number(totalClaimed) / 1e18).toFixed(6);
+      royaltiesEarned = formatPlot(unclaimed + totalClaimed);
+      royaltiesClaimed = formatPlot(totalClaimed);
+      royaltiesUnclaimed = formatPlot(unclaimed);
     } catch { /* no royalties or contract not available */ }
   }
 
@@ -219,7 +225,7 @@ dashboard.get("/", async (c) => {
     royalties: {
       earned: royaltiesEarned,
       claimed: royaltiesClaimed,
-      unclaimed: (parseFloat(royaltiesEarned) - parseFloat(royaltiesClaimed)).toFixed(6),
+      unclaimed: royaltiesUnclaimed,
       token: "PLOT",
     },
     pnl: {
@@ -231,6 +237,67 @@ dashboard.get("/", async (c) => {
       plotUsdPrice: plotUsdPrice.toFixed(4),
     },
   });
+});
+
+/** POST /api/dashboard/royalties/claim — claim active wallet PLOT royalties */
+dashboard.post("/royalties/claim", async (c) => {
+  try {
+    const resolved = await resolveActiveWallet();
+    const activeWallet = resolved.activeWallet;
+    const address = activeWallet?.address as Address | undefined;
+
+    if (!activeWallet || !address) {
+      return c.json({
+        error: resolved.error || "No active OWS wallet selected",
+        selectionRequired: resolved.selectionRequired,
+        wallets: resolved.wallets,
+      }, 400);
+    }
+
+    const [unclaimed] = await publicClient.readContract({
+      address: MCV2_BOND,
+      abi: mcv2BondAbi,
+      functionName: "getRoyaltyInfo",
+      args: [address, RESERVE_TOKEN],
+    }) as [bigint, bigint];
+
+    if (unclaimed <= 0n) {
+      return c.json({ error: "No PLOT royalties available to claim", unclaimed: "0", token: "PLOT" }, 400);
+    }
+
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
+    const account = createOwsAccount(activeWallet.name, address);
+    const walletClient = createWalletClient({
+      account,
+      chain: base,
+      transport: http(rpcUrl),
+    });
+
+    const { request } = await publicClient.simulateContract({
+      account,
+      address: MCV2_BOND,
+      abi: mcv2BondAbi,
+      functionName: "claimRoyalties",
+      args: [RESERVE_TOKEN],
+    });
+    const txHash = await walletClient.writeContract(request);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    if (receipt.status !== "success") {
+      return c.json({ error: "Royalty claim transaction reverted", txHash }, 500);
+    }
+
+    return c.json({
+      ok: true,
+      txHash,
+      amount: formatPlot(unclaimed),
+      token: "PLOT",
+      basescanUrl: `https://basescan.org/tx/${txHash}`,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Royalty claim failed";
+    return c.json({ error: message }, 500);
+  }
 });
 
 export { dashboard as dashboardRoutes };
