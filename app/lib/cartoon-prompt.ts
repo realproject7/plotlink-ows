@@ -115,7 +115,9 @@ export function buildLetteringPrompt(cut: Cut, plotFile: string): string {
     script,
     "",
     "How to draft it:",
-    `- Edit cut ${cut.id}'s "overlays" array in ${cutsFile}: add one overlay per line above — "type":"speech" for dialogue (also set "speaker"), "narration" for captions, "sfx" for sound effects, with the line's text.`,
+    `- Edit cut ${cut.id}'s "overlays" array in ${cutsFile}: add one overlay per line above. Start from "speech" for dialogue (also set "speaker"), "narration" for captions, and "sfx" for sound effects, then choose a more specific semantic kind when the tone calls for it.`,
+    '- Supported overlay kinds: "speech", "thought", "narration", "system", "shout", "shock", "whisper", "dread", "offscreen", "sfx", "pause", "caption". Set both "type" and "kind" to the chosen value when drafting.',
+    '- Assign tone/purpose before placement: reveal, pressure, deflection, flirtation, exposition, joke, threat, emotional turn, silence, or transition. Use "thought" for inner voice, "whisper" for quiet lines, "shout"/"shock" for impact, "dread" for horror/unease, "system" for UI/system messages, and "pause"/"caption" for timing cards.',
     "- Position each overlay with x, y, width, height as 0–1 fractions of the panel, roughly where it belongs over the art, and keep bubbles clear of faces.",
     "- These are DRAFT positions only: do NOT export or upload. The writer reviews and adjusts them in the OWS lettering editor, then exports the final image there.",
   ].join("\n");

@@ -86,6 +86,18 @@ export function overlaysSignature(overlays: Overlay[] | undefined): string {
       o.tailAnchor ?? null,
       o.textStyle ?? null,
       o.bubbleStyle ?? null,
+      o.kind ?? null,
+      o.tone ?? null,
+      o.priority ?? null,
+      o.tailStyle ?? null,
+      o.tailTarget ?? null,
+      o.borderStyle ?? null,
+      o.fillStyle ?? null,
+      o.opacity ?? null,
+      o.textColor ?? null,
+      o.bubbleColor ?? null,
+      o.safeAreaPolicy ?? null,
+      o.readingOrder ?? null,
     ]),
   );
 }

@@ -2,6 +2,10 @@
 
 Testing guide for the webtoon feature branch. Covers local dev, prerelease testing, and rollback verification.
 
+For episode grammar, balloon taxonomy, transition patterns, and pre-export craft
+QA, read `docs/WEBTOON-CRAFT-GUIDE.md` before approving a cartoon workflow
+release.
+
 ## Local Development
 
 ```sh
@@ -81,6 +85,8 @@ plotlink-ows
 - Cut list shows in Edit tab for cartoon plots
 - Upload clean images per cut
 - Open lettering editor, add overlays (speech/narration/SFX)
+- Verify semantic balloon kinds in the focused lettering editor: speech, thought,
+  narration, system, shout, shock, whisper, dread, offscreen, SFX, pause, caption
 - Export cuts (verify under 1MB)
 - Upload & Generate: uploads to IPFS, generates markdown
 - Preview shows vertical cut sequence

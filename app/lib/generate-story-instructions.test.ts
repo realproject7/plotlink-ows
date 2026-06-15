@@ -40,6 +40,7 @@ describe("generateStoryInstructions", () => {
     expect(out).toContain("cuts.json");
     expect(out).toContain("Character Bible");
     expect(out).toContain("Visual Style Guide");
+    expect(out).toContain("Webtoon Episode Grammar");
     expect(out).toContain("Lettering");
     expect(out).toContain("Bubble");
     expect(out).toContain("assets/");
@@ -385,10 +386,46 @@ describe("generateStoryInstructions", () => {
     for (const f of ["`id`", "`type`", "`x`", "`y`", "`width`", "`height`", "`text`", "`tailAnchor`"]) {
       expect(out).toContain(f);
     }
+    // The expanded webtoon bubble taxonomy is documented for agent drafts.
+    for (const type of ["`\"thought\"`", "`\"system\"`", "`\"shout\"`", "`\"shock\"`", "`\"whisper\"`", "`\"dread\"`", "`\"offscreen\"`", "`\"pause\"`", "`\"caption\"`"]) {
+      expect(out).toContain(type);
+    }
+    expect(out).toContain("`bubbleColor`");
+    expect(out).toContain("`textColor`");
+    expect(out).toContain("`opacity`");
     // Leave-empty guidance + explicit ban on the `position` string form.
     expect(out).toContain("Leave `overlays` empty");
     expect(out).toContain('semantic `position` string');
     expect(out).toContain("There is NO `position` field");
+  });
+
+  it("teaches webtoon beat grammar, transitions, balloon taxonomy, and ending turns (#520)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("First-scroll genre promise");
+    expect(out).toContain("Reader question");
+    expect(out).toContain("Beat model before cuts");
+    expect(out).toContain("Beat map");
+    expect(out).toContain("transition/text");
+    expect(out).toContain("UI insert");
+    expect(out).toContain("object insert");
+    expect(out).toContain("silence/pause panel");
+    expect(out).toContain("Do not force every beat into an illustration");
+    expect(out).toContain("Dialogue purpose");
+    expect(out).toContain("Balloon taxonomy");
+    expect(out).toContain("modern fantasy");
+    expect(out).toContain("thriller");
+    expect(out).toContain("romance");
+    expect(out).toContain("slice-of-life");
+    expect(out).toContain("Ending turn");
+  });
+
+  it("warns agents not to copy samples or imitate a living artist's distinctive style (#520)", () => {
+    const out = generateStoryInstructions("cartoon", "codex");
+    expect(out).toContain("abstract craft patterns only");
+    expect(out).toContain("Never");
+    expect(out).toContain("copy sample titles");
+    expect(out).toContain("screenshot dialogue");
+    expect(out).toContain("living artist's distinctive style");
   });
 
   // #311: Codex must post an explicit completion line and stop, with no

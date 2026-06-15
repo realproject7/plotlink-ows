@@ -11,6 +11,9 @@ import {
   balloonPathD,
   bubbleLayoutOptionsForOverlay,
   balloonRadiusForOverlay,
+  overlayHasBubble,
+  overlayRenderStyle,
+  overlaySupportsTail,
   type Overlay,
 } from "@app-lib/overlays";
 import { layoutBubbleText } from "@app-lib/bubble-text";
@@ -178,23 +181,28 @@ export function CutOverlayPreview({
               data-testid={testId ? `${testId}-overlay-layer` : undefined}
             >
               {overlays.map((overlay) => {
-                if (overlay.type !== "speech") return null;
+                if (!overlayHasBubble(overlay.type)) return null;
                 const ox = overlay.x * stageSize.width;
                 const oy = overlay.y * stageSize.height;
                 const ow = overlay.width * stageSize.width;
                 const oh = overlay.height * stageSize.height;
                 const radius = balloonRadiusForOverlay(overlay, ow, oh);
-                const tail = overlay.tailAnchor
-                  ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius)
-                  : null;
+                const tail =
+                  overlaySupportsTail(overlay.type) && overlay.tailAnchor
+                    ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius)
+                    : null;
                 const strokeW = Math.max(1.25, stageSize.height * 0.004);
+                const style = overlayRenderStyle(overlay);
                 return (
                   <path
                     key={overlay.id}
                     data-testid={testId ? `${testId}-overlay-${overlay.id}` : undefined}
                     d={balloonPathD(ox, oy, ow, oh, tail, radius)}
-                    className="fill-white/95 stroke-[#1a1a1a]"
-                    strokeWidth={strokeW}
+                    fill={style.fill}
+                    fillOpacity={style.fillOpacity}
+                    stroke={style.stroke}
+                    strokeOpacity={style.strokeOpacity}
+                    strokeWidth={Math.max(1, strokeW * style.strokeScale)}
                     strokeLinejoin="round"
                   />
                 );
@@ -207,21 +215,13 @@ export function CutOverlayPreview({
               const height = overlay.height * stageSize.height;
               const fontFamily =
                 overlay.type === "sfx" ? displayFontFamily : bodyFontFamily;
-              const isSpeech = overlay.type === "speech";
-              const isNarration = overlay.type === "narration";
+              const hasBubble = overlayHasBubble(overlay.type);
+              const style = overlayRenderStyle(overlay);
               const hasSpeaker = overlay.type !== "sfx" && !!overlay.speaker;
               return (
                 <div
                   key={overlay.id}
-                  className={`absolute rounded overflow-hidden ${
-                    isSpeech ? "" : "border-2"
-                  } ${
-                    overlay.type === "narration"
-                      ? "border-muted/40 bg-[#f4efe6]/85 rounded-md"
-                      : overlay.type === "sfx"
-                        ? "border-accent/40"
-                        : ""
-                  }`}
+                  className={`absolute rounded overflow-hidden ${hasBubble ? "" : "border-2 border-accent/40"}`}
                   style={{ left, top, width, height }}
                 >
                   {!overlay.text ? (
@@ -238,6 +238,7 @@ export function CutOverlayPreview({
                         fontFamily,
                         fontSize: Math.max(8, Math.min(height * 0.05, 14)),
                         fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                        color: style.text,
                       }}
                     >
                       {hasSpeaker ? `${overlay.speaker}: ${overlay.text}` : overlay.text}
@@ -265,19 +266,20 @@ export function CutOverlayPreview({
                             <span
                               className="block font-bold text-[#3a3a3a]"
                               style={{
-                                fontSize: layout.speakerFontSize,
-                                lineHeight: 1.2,
-                              }}
-                            >
+                              fontSize: layout.speakerFontSize,
+                              lineHeight: 1.2,
+                              color: style.speaker,
+                            }}
+                          >
                               {overlay.speaker}
                             </span>
                           )}
                           <span
-                            className="text-[#1a1a1a]"
                             style={{
                               fontSize: layout.fontSize,
                               lineHeight: `${layout.lineHeight}px`,
                               fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                              color: style.text,
                             }}
                           >
                             {layout.lines.map((line, i) => (

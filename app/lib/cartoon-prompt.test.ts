@@ -195,6 +195,12 @@ describe("buildLetteringPrompt (#442)", () => {
     // Carries the real script lines (speaker + narration), typed by overlay kind.
     expect(prompt).toContain('speech — 세라: "그거 방금 네가 움직인 걸 따라한 거야."');
     expect(prompt).toContain("narration: 화면의 점들은 사라지지 않았다.");
+    expect(prompt).toContain("Supported overlay kinds");
+    expect(prompt).toContain('"thought"');
+    expect(prompt).toContain('"whisper"');
+    expect(prompt).toContain('"dread"');
+    expect(prompt).toContain('"caption"');
+    expect(prompt).toContain("Assign tone/purpose");
     // Draft-only: the human reviews + exports, the agent must not.
     expect(prompt).toMatch(/do NOT export or upload/i);
     expect(prompt).toMatch(/review/i);

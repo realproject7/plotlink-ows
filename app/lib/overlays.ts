@@ -1,5 +1,44 @@
-export const OVERLAY_TYPES = ["speech", "narration", "sfx"] as const;
+export const OVERLAY_TYPES = [
+  "speech",
+  "thought",
+  "narration",
+  "system",
+  "shout",
+  "shock",
+  "whisper",
+  "dread",
+  "offscreen",
+  "sfx",
+  "pause",
+  "caption",
+] as const;
 export type OverlayType = (typeof OVERLAY_TYPES)[number];
+
+export const OVERLAY_TYPE_LABEL: Record<OverlayType, string> = {
+  speech: "Speech",
+  thought: "Thought",
+  narration: "Narration",
+  system: "System",
+  shout: "Shout",
+  shock: "Shock",
+  whisper: "Whisper",
+  dread: "Dread",
+  offscreen: "Off-screen",
+  sfx: "SFX",
+  pause: "Pause",
+  caption: "Caption",
+};
+
+export type OverlayTone =
+  | "neutral"
+  | "soft"
+  | "tense"
+  | "urgent"
+  | "dread"
+  | "comic";
+export type OverlayTailStyle = "none" | "plain" | "soft" | "sharp" | "outside";
+export type OverlayBorderStyle = "solid" | "soft" | "rough" | "jagged" | "none";
+export type OverlaySafeAreaPolicy = "inside" | "edge" | "bleed";
 
 /**
  * Revision of the cartoon speech-bubble RENDERER (#381). Bumped whenever the
@@ -33,11 +72,34 @@ export interface OverlayBubbleStyle {
   paddingY?: number;
   /** Corner roundness as a fraction of the bubble's shorter side. */
   cornerRadius?: number;
+  /** Bubble fill color, CSS color. */
+  bubbleColor?: string;
+  /** Stroke color, CSS color. */
+  borderColor?: string;
+  /** Text color, CSS color. */
+  textColor?: string;
+  /** Fill opacity from 0 to 1. */
+  opacity?: number;
+  /** Border width multiplier relative to the default stroke. */
+  borderWidth?: number;
 }
 
 export interface Overlay {
   id: string;
   type: OverlayType;
+  /** Optional semantic alias for future episode-element models. Defaults to `type`. */
+  kind?: OverlayType;
+  tone?: OverlayTone;
+  priority?: number;
+  tailStyle?: OverlayTailStyle;
+  tailTarget?: string;
+  borderStyle?: OverlayBorderStyle;
+  fillStyle?: string;
+  opacity?: number;
+  textColor?: string;
+  bubbleColor?: string;
+  safeAreaPolicy?: OverlaySafeAreaPolicy;
+  readingOrder?: number;
   x: number;
   y: number;
   width: number;
@@ -50,6 +112,59 @@ export interface Overlay {
 }
 
 import { defaultBubbleFontRange, type BubbleLayoutOptions } from "./bubble-text";
+
+export interface OverlayRenderStyle {
+  fill: string;
+  stroke: string;
+  text: string;
+  speaker: string;
+  strokeScale: number;
+  radiusScale: number;
+  fillOpacity: number;
+  strokeOpacity: number;
+}
+
+function cssColor(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+}
+
+export function overlayHasBubble(type: OverlayType): boolean {
+  return type !== "sfx";
+}
+
+export function overlaySupportsTail(type: OverlayType): boolean {
+  return type === "speech" || type === "shout" || type === "whisper" || type === "offscreen";
+}
+
+export function overlayRenderStyle(overlay: Pick<Overlay, "type" | "bubbleStyle" | "opacity" | "textColor" | "bubbleColor" | "borderStyle" | "fillStyle">): OverlayRenderStyle {
+  const base: Record<OverlayType, OverlayRenderStyle> = {
+    speech: { fill: "rgba(255, 255, 255, 0.95)", stroke: "#1a1a1a", text: "#1a1a1a", speaker: "#3a3a3a", strokeScale: 1, radiusScale: 1, fillOpacity: 1, strokeOpacity: 1 },
+    thought: { fill: "rgba(255, 255, 255, 0.82)", stroke: "#6f675c", text: "#1f1a16", speaker: "#4f463b", strokeScale: 0.75, radiusScale: 1.2, fillOpacity: 1, strokeOpacity: 0.75 },
+    narration: { fill: "rgba(244, 239, 230, 0.94)", stroke: "#6d6256", text: "#2a1b14", speaker: "#5a4a3e", strokeScale: 0.75, radiusScale: 0.32, fillOpacity: 1, strokeOpacity: 0.62 },
+    system: { fill: "#101820", stroke: "#7dd3fc", text: "#e6f7ff", speaker: "#bae6fd", strokeScale: 0.75, radiusScale: 0.18, fillOpacity: 0.88, strokeOpacity: 0.9 },
+    shout: { fill: "#ffffff", stroke: "#111111", text: "#111111", speaker: "#2a2a2a", strokeScale: 1.45, radiusScale: 0.55, fillOpacity: 0.97, strokeOpacity: 1 },
+    shock: { fill: "#fff7e8", stroke: "#8f3f00", text: "#23130a", speaker: "#6f2f00", strokeScale: 1.25, radiusScale: 0.12, fillOpacity: 0.96, strokeOpacity: 1 },
+    whisper: { fill: "#ffffff", stroke: "#8a8177", text: "#3a332d", speaker: "#675f56", strokeScale: 0.55, radiusScale: 1.1, fillOpacity: 0.72, strokeOpacity: 0.55 },
+    dread: { fill: "#16110f", stroke: "#c8b9a5", text: "#f4efe6", speaker: "#dccdb8", strokeScale: 1.1, radiusScale: 0.2, fillOpacity: 0.9, strokeOpacity: 0.85 },
+    offscreen: { fill: "#ffffff", stroke: "#1a1a1a", text: "#1a1a1a", speaker: "#3a3a3a", strokeScale: 0.9, radiusScale: 0.85, fillOpacity: 0.92, strokeOpacity: 1 },
+    sfx: { fill: "transparent", stroke: "#ffffff", text: "#111111", speaker: "#111111", strokeScale: 1, radiusScale: 0, fillOpacity: 0, strokeOpacity: 1 },
+    pause: { fill: "#ffffff", stroke: "#77716a", text: "#37302a", speaker: "#37302a", strokeScale: 0.65, radiusScale: 1.35, fillOpacity: 0.76, strokeOpacity: 0.62 },
+    caption: { fill: "#f7f1e8", stroke: "#a08f7a", text: "#2a1b14", speaker: "#5a4a3e", strokeScale: 0.55, radiusScale: 0.08, fillOpacity: 0.9, strokeOpacity: 0.55 },
+  };
+  const b = overlay.bubbleStyle;
+  return {
+    ...base[overlay.type],
+    ...(cssColor(overlay.fillStyle) ? { fill: cssColor(overlay.fillStyle)! } : {}),
+    ...(cssColor(overlay.bubbleColor) ? { fill: cssColor(overlay.bubbleColor)! } : {}),
+    ...(cssColor(b?.bubbleColor) ? { fill: cssColor(b?.bubbleColor)! } : {}),
+    ...(cssColor(b?.borderColor) ? { stroke: cssColor(b?.borderColor)! } : {}),
+    ...(cssColor(overlay.textColor) ? { text: cssColor(overlay.textColor)! } : {}),
+    ...(cssColor(b?.textColor) ? { text: cssColor(b?.textColor)! } : {}),
+    ...(typeof overlay.opacity === "number" ? { fillOpacity: clamp(overlay.opacity, 0, 1) } : {}),
+    ...(typeof b?.opacity === "number" ? { fillOpacity: clamp(b.opacity, 0, 1) } : {}),
+    ...(typeof b?.borderWidth === "number" ? { strokeScale: clamp(b.borderWidth, 0.25, 3) } : {}),
+  };
+}
 
 export function toPixel(norm: number, containerSize: number): number {
   return norm * containerSize;
@@ -103,8 +218,31 @@ function normalizeBubbleStyle(raw: unknown): OverlayBubbleStyle | undefined {
   const paddingX = clampOptional(r.paddingX, 0, 0.25);
   const paddingY = clampOptional(r.paddingY, 0, 0.25);
   const cornerRadius = clampOptional(r.cornerRadius, 0, 0.49);
-  if (paddingX === undefined && paddingY === undefined && cornerRadius === undefined) return undefined;
-  return { ...(paddingX !== undefined ? { paddingX } : {}), ...(paddingY !== undefined ? { paddingY } : {}), ...(cornerRadius !== undefined ? { cornerRadius } : {}) };
+  const opacity = clampOptional(r.opacity, 0, 1);
+  const borderWidth = clampOptional(r.borderWidth, 0.25, 3);
+  const bubbleColor = cssColor(r.bubbleColor);
+  const borderColor = cssColor(r.borderColor);
+  const textColor = cssColor(r.textColor);
+  if (
+    paddingX === undefined &&
+    paddingY === undefined &&
+    cornerRadius === undefined &&
+    opacity === undefined &&
+    borderWidth === undefined &&
+    !bubbleColor &&
+    !borderColor &&
+    !textColor
+  ) return undefined;
+  return {
+    ...(paddingX !== undefined ? { paddingX } : {}),
+    ...(paddingY !== undefined ? { paddingY } : {}),
+    ...(cornerRadius !== undefined ? { cornerRadius } : {}),
+    ...(opacity !== undefined ? { opacity } : {}),
+    ...(borderWidth !== undefined ? { borderWidth } : {}),
+    ...(bubbleColor ? { bubbleColor } : {}),
+    ...(borderColor ? { borderColor } : {}),
+    ...(textColor ? { textColor } : {}),
+  };
 }
 
 export function bubbleLayoutOptionsForOverlay(
@@ -132,12 +270,13 @@ export function bubbleLayoutOptionsForOverlay(
 }
 
 export function balloonRadiusForOverlay(
-  overlay: Pick<Overlay, "bubbleStyle">,
+  overlay: Pick<Overlay, "type" | "bubbleStyle">,
   ow: number,
   oh: number,
 ): number | undefined {
   const bubbleStyle = normalizeBubbleStyle(overlay.bubbleStyle);
-  return bubbleStyle?.cornerRadius !== undefined ? Math.min(ow, oh) * bubbleStyle.cornerRadius : undefined;
+  if (bubbleStyle?.cornerRadius !== undefined) return Math.min(ow, oh) * bubbleStyle.cornerRadius;
+  return defaultBalloonRadius(ow, oh) * overlayRenderStyle(overlay).radiusScale;
 }
 
 /**
@@ -238,7 +377,7 @@ export function speechTailPoints(
  * unit box since tailAnchor is normalized; a tip inside the bubble draws no tail.
  */
 export function hasVisibleSpeechTail(overlay: Pick<Overlay, "type" | "tailAnchor">): boolean {
-  if (overlay.type !== "speech" || !overlay.tailAnchor) return false;
+  if (!overlaySupportsTail(overlay.type) || !overlay.tailAnchor) return false;
   return speechTailPoints(0, 0, 1, 1, overlay.tailAnchor) !== null;
 }
 
@@ -351,15 +490,28 @@ let counter = 0;
 
 export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
   counter++;
+  const withTail = overlaySupportsTail(type);
+  const defaultTail =
+    type === "offscreen"
+      ? { x: 1.2, y: 0.5 }
+      : type === "whisper"
+        ? { x: 0.5, y: 1.1 }
+        : { x: 0.5, y: 1.2 };
+  const defaultText =
+    type === "pause" ? "..." : "";
   return {
     id: `overlay-${Date.now()}-${counter}`,
     type,
+    kind: type,
     x,
     y,
-    width: type === "sfx" ? 0.15 : 0.25,
-    height: type === "sfx" ? 0.08 : 0.12,
-    text: "",
-    ...(type === "speech" ? { speaker: "", tailAnchor: { x: 0.5, y: 1.2 } } : {}),
+    width: type === "sfx" || type === "pause" ? 0.15 : type === "caption" ? 0.55 : 0.25,
+    height: type === "sfx" || type === "pause" ? 0.08 : type === "caption" ? 0.1 : 0.12,
+    text: defaultText,
+    ...(withTail ? { speaker: "", tailAnchor: defaultTail } : {}),
+    ...(type === "thought" || type === "dread" || type === "system" || type === "caption"
+      ? { speaker: "" }
+      : {}),
   };
 }
 
@@ -372,9 +524,21 @@ export function createOverlay(type: OverlayType, x = 0.1, y = 0.1): Overlay {
  * image starting from (x, y).
  */
 export function comfortableOverlaySize(type: OverlayType, x: number, y: number): { width: number; height: number } {
+  if (type === "caption") {
+    return {
+      width: Math.min(0.72, Math.max(0.22, 1 - x)),
+      height: Math.min(0.14, Math.max(0.06, 1 - y)),
+    };
+  }
+  if (type === "system") {
+    return {
+      width: Math.min(0.58, Math.max(0.18, 1 - x)),
+      height: Math.min(0.16, Math.max(0.06, 1 - y)),
+    };
+  }
   return {
-    width: Math.min(type === "sfx" ? 0.3 : 0.5, Math.max(0.15, 1 - x)),
-    height: Math.min(type === "sfx" ? 0.1 : 0.2, Math.max(0.06, 1 - y)),
+    width: Math.min(type === "sfx" || type === "pause" ? 0.3 : 0.5, Math.max(0.15, 1 - x)),
+    height: Math.min(type === "sfx" || type === "pause" ? 0.1 : 0.2, Math.max(0.06, 1 - y)),
   };
 }
 
@@ -437,8 +601,9 @@ let normCounter = 0;
 export function normalizeOverlay(raw: unknown): Overlay | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const type: OverlayType = (OVERLAY_TYPES as readonly string[]).includes(r.type as string)
-    ? (r.type as OverlayType)
+  const rawType = typeof r.type === "string" ? r.type : typeof r.kind === "string" ? r.kind : "";
+  const type: OverlayType = (OVERLAY_TYPES as readonly string[]).includes(rawType)
+    ? (rawType as OverlayType)
     : "speech";
   const text = typeof r.text === "string" ? r.text : "";
 
@@ -464,11 +629,41 @@ export function normalizeOverlay(raw: unknown): Overlay | null {
 
   const id = typeof r.id === "string" && r.id ? r.id : `overlay-norm-${++normCounter}`;
   const overlay: Overlay = { id, type, x, y, width, height, text };
-  if (type === "speech") {
+  if ((OVERLAY_TYPES as readonly string[]).includes(r.kind as string)) {
+    overlay.kind = r.kind as OverlayType;
+  }
+  const tone =
+    r.tone === "soft" || r.tone === "tense" || r.tone === "urgent" || r.tone === "dread" || r.tone === "comic" || r.tone === "neutral"
+      ? r.tone
+      : undefined;
+  const tailStyle =
+    r.tailStyle === "none" || r.tailStyle === "plain" || r.tailStyle === "soft" || r.tailStyle === "sharp" || r.tailStyle === "outside"
+      ? r.tailStyle
+      : undefined;
+  const borderStyle =
+    r.borderStyle === "solid" || r.borderStyle === "soft" || r.borderStyle === "rough" || r.borderStyle === "jagged" || r.borderStyle === "none"
+      ? r.borderStyle
+      : undefined;
+  const safeAreaPolicy =
+    r.safeAreaPolicy === "inside" || r.safeAreaPolicy === "edge" || r.safeAreaPolicy === "bleed"
+      ? r.safeAreaPolicy
+      : undefined;
+  if (tone) overlay.tone = tone;
+  if (tailStyle) overlay.tailStyle = tailStyle;
+  if (borderStyle) overlay.borderStyle = borderStyle;
+  if (safeAreaPolicy) overlay.safeAreaPolicy = safeAreaPolicy;
+  if (typeof r.priority === "number" && Number.isFinite(r.priority)) overlay.priority = clamp(r.priority, 0, 10);
+  if (typeof r.readingOrder === "number" && Number.isFinite(r.readingOrder)) overlay.readingOrder = Math.max(0, Math.floor(r.readingOrder));
+  if (typeof r.tailTarget === "string") overlay.tailTarget = r.tailTarget;
+  if (typeof r.fillStyle === "string") overlay.fillStyle = r.fillStyle;
+  if (typeof r.opacity === "number" && Number.isFinite(r.opacity)) overlay.opacity = clamp(r.opacity, 0, 1);
+  if (cssColor(r.textColor)) overlay.textColor = cssColor(r.textColor);
+  if (cssColor(r.bubbleColor)) overlay.bubbleColor = cssColor(r.bubbleColor);
+  if (overlaySupportsTail(type)) {
     overlay.speaker = typeof r.speaker === "string" ? r.speaker : "";
     const ta = r.tailAnchor as { x?: unknown; y?: unknown } | undefined;
     overlay.tailAnchor =
-      ta && isFiniteNumber(ta.x) && isFiniteNumber(ta.y) ? { x: ta.x, y: ta.y } : { x: 0.5, y: 1.2 };
+      ta && isFiniteNumber(ta.x) && isFiniteNumber(ta.y) ? { x: ta.x, y: ta.y } : type === "offscreen" ? { x: 1.2, y: 0.5 } : { x: 0.5, y: 1.2 };
   } else if (typeof r.speaker === "string" && r.speaker) {
     overlay.speaker = r.speaker;
   }

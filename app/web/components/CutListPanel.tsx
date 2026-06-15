@@ -31,29 +31,7 @@ import {
   cutScriptLines,
 } from "@app-lib/lettering-status";
 import type { CutAiDraft } from "@app-lib/cuts";
-
-interface Overlay {
-  id: string;
-  type: "speech" | "narration" | "sfx";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  speaker?: string;
-  tailAnchor?: { x: number; y: number };
-  textStyle?: {
-    mode?: "auto" | "manual";
-    fontScale?: number;
-    lineHeightFactor?: number;
-    speakerScale?: number;
-  };
-  bubbleStyle?: {
-    paddingX?: number;
-    paddingY?: number;
-    cornerRadius?: number;
-  };
-}
+import type { Overlay } from "@app-lib/overlays";
 
 interface CutDialogue {
   speaker: string;
@@ -113,6 +91,8 @@ interface CutListPanelProps {
   onWorkspaceVisibleChange?: (visible: boolean) => void;
   /** Episode-centric cartoon screen mode: preview board or direct lettering edit. */
   mode?: "preview" | "edit";
+  /** Preview board requests the parent to switch to Edit and open this cut. */
+  onOpenFocusedEditor?: (cutId: number) => void;
   /** Called when the focused editor closes back to the episode cut board. */
   onExitFocusedEditor?: () => void;
   /** Let the parent episode header own title/status chrome; render tools at the scroll end. */
@@ -811,6 +791,7 @@ export function CutListPanel({
   workspaceVisible = false,
   onWorkspaceVisibleChange,
   mode = "preview",
+  onOpenFocusedEditor,
   onExitFocusedEditor,
   compactEpisodeChrome = false,
 }: CutListPanelProps) {
@@ -875,6 +856,17 @@ export function CutListPanel({
   const appliedFocusSeq = useRef<number | null>(null);
 
   const plotFile = fileName.replace(/\.md$/, "");
+
+  const openFocusedEditor = useCallback(
+    (cutId: number) => {
+      if (mode === "preview" && onOpenFocusedEditor) {
+        onOpenFocusedEditor(cutId);
+        return;
+      }
+      setEditingCutId(cutId);
+    },
+    [mode, onOpenFocusedEditor],
+  );
 
   // Apply a Preview / Cut Inspector deep-link (#371): open the lettering editor
   // for the cut, or expand + scroll its row when there is nothing to letter yet.
@@ -1106,13 +1098,13 @@ export function CutListPanel({
         }
         setSyncResult(`Cut ${cut.id}: AI draft ready`);
         await loadCuts();
-        if (opts.openEditor) setEditingCutId(cutId);
+        if (opts.openEditor) openFocusedEditor(cutId);
         return true;
       } finally {
         setAiDraftingCutId(null);
       }
     },
-    [cutsFile, saveCutsFile, loadCuts],
+    [cutsFile, saveCutsFile, loadCuts, openFocusedEditor],
   );
 
   const draftAllUnletteredCuts = useCallback(async () => {
@@ -1457,7 +1449,7 @@ export function CutListPanel({
           },
         );
         if (res.ok) {
-          if (openEditor) setEditingCutId(nextId);
+          if (openEditor) openFocusedEditor(nextId);
           else setExpandedCut(nextId);
           await loadCuts();
         } else {
@@ -1469,7 +1461,7 @@ export function CutListPanel({
       }
       setAddingPanel(false);
     },
-    [cutsFile, authFetch, storyName, plotFile, loadCuts],
+    [cutsFile, authFetch, storyName, plotFile, loadCuts, openFocusedEditor],
   );
   const addTextPanel = useCallback(
     () => addTextPanelAt(cutsFile?.cuts.length ?? 0, true),
@@ -1668,25 +1660,9 @@ export function CutListPanel({
   ).length;
   const assetSummary = workspaceAssetSummary(assetDiagnostics);
 
-  const compactEndSummary = (
-    <div
-      className="rounded border border-border bg-surface/45 px-3 py-2 text-xs text-muted"
-      data-testid="cut-board-end-summary"
-    >
-      <span className="font-medium text-foreground">
-        {episodeLabel}
-        {episodeTitle ? ` · ${episodeTitle}` : ""}
-      </span>
-      <span className="ml-2">
-        {boardSummary.cuts} cuts · {boardSummary.converted} clean ·{" "}
-        {boardSummary.lettered} lettered · {boardSummary.uploaded} uploaded
-      </span>
-    </div>
-  );
-
   const workspaceTools = (
     <details
-      className="border-b border-border bg-surface/35 flex-shrink-0"
+      className={compactEpisodeChrome ? "rounded border border-border bg-surface/35" : "border-b border-border bg-surface/35 flex-shrink-0"}
       data-testid="cut-workspace-tools"
     >
       <summary className="list-none cursor-pointer px-3 py-1 hover:bg-surface/50">
@@ -2029,7 +2005,7 @@ export function CutListPanel({
                 loadDetect();
                 loadDiagnostics();
               }}
-              onOpenEditor={() => setEditingCutId(cut.id)}
+              onOpenEditor={() => openFocusedEditor(cut.id)}
               detectedLocalClean={detected.has(cut.id)}
               onSyncClean={syncCleanImages}
               syncing={syncing}
@@ -2058,12 +2034,7 @@ export function CutListPanel({
           disabled={addingPanel}
           onAdd={() => addTextPanelAt(cutsFile.cuts.length)}
         />
-        {compactEpisodeChrome && (
-          <>
-            {compactEndSummary}
-            {workspaceTools}
-          </>
-        )}
+        {compactEpisodeChrome && workspaceTools}
       </div>
     </div>
   );

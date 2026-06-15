@@ -375,12 +375,36 @@ look publish-ready:
    - Sound effect (SFX) conventions
    - Font or lettering style preferences
 
-5. **Cut Planning Rules**
+5. **Webtoon Episode Grammar**
+   - **First-scroll genre promise:** the first viewport must tell readers what
+     kind of episode this is (thriller dread, romance tension, modern-fantasy
+     reward loop, slice-of-life gag/observation).
+   - **Reader question:** write one sentence naming what the reader should want
+     answered by the end of this episode.
+   - **Beat model before cuts:** list beats first, then map them to cuts,
+     transitions, text panels, UI/object inserts, reaction shots, and silence.
+     Do not force every beat into an illustration — some beats should be
+     text-only, UI/object inserts, pause panels, or empty-space transitions.
+   - **Dialogue purpose:** each spoken line should have one job: reveal,
+     pressure, deflection, flirtation, exposition, joke, threat, or emotional turn.
+   - **Balloon taxonomy:** assign each line a semantic bubble kind/tone before
+     draft lettering (speech, thought, narration, system, shout, shock, whisper,
+     dread, offscreen, SFX, pause, caption).
+   - **Ending turn:** end each episode with a genre-appropriate turn: modern
+     fantasy gets a repeatable power/reward loop or new system consequence;
+     thriller gets unresolved dread or an impossible detail; romance gets a
+     relationship complication or emotional reversal; slice-of-life gets a compact
+     gag/observation close.
+   - **Originality rule:** use these as abstract craft patterns only. Do NOT copy
+     sample works, screenshot dialogue, character designs, plots, or imitate a
+     living artist's distinctive style.
+
+6. **Cut Planning Rules**
    - Shot progression guidelines (e.g., establish → act → react)
    - When to use wide vs. close-up shots
    - Transition conventions between scenes
 
-6. **Genesis Opening Plan (Reader Onboarding)**
+7. **Genesis Opening Plan (Reader Onboarding)**
    - How Genesis opens the story for readers: the lead's situation and their
      emotional/comedic problem, the tone, and what's at stake.
    - The bridge from Genesis into episode 1 — what plot-01 picks up, so the
@@ -421,6 +445,33 @@ Genesis vs plot-01: **Genesis opens and onboards the reader** (prose prologue);
 beat continuing directly from where Genesis leaves off** — not a cold jump and
 not a restart. Do not start plot-01 without the setup Genesis provides, and do
 not duplicate the prologue inside plot-01.
+
+## Webtoon Episode Grammar — plan beats before art
+
+Before you write \`plot-NN.cuts.json\`, write a compact episode plan in
+\`structure.md\` or the cuts file notes using this sequence:
+
+1. **First-scroll genre promise** — what readers understand in the first viewport.
+2. **Reader question** — the question that keeps them scrolling.
+3. **Beat map** — 4–10 beats, each tagged as setup, pressure, reveal, reaction,
+   transition, silence, escalation, or ending turn.
+4. **Element choice** — decide whether each beat is an image cut, transition/text
+   panel, UI insert, object insert, reaction close-up, silence/pause panel, or
+   dialogue-only card. Do not force every beat into an illustrated panel.
+5. **Dialogue purpose** — every dialogue line should be doing one job: reveal,
+   pressure, deflection, flirtation, exposition, joke, threat, or emotional turn.
+6. **Balloon taxonomy** — preassign the bubble kind/tone for each line before
+   draft lettering: \`speech\`, \`thought\`, \`narration\`, \`system\`, \`shout\`,
+   \`shock\`, \`whisper\`, \`dread\`, \`offscreen\`, \`sfx\`, \`pause\`, or \`caption\`.
+7. **Ending turn** — close with the correct genre turn:
+   - modern fantasy: a repeatable power/reward loop or new system consequence.
+   - thriller: unresolved dread or an impossible detail.
+   - romance: relationship complication or emotional reversal.
+   - slice-of-life: compact gag/observation close.
+
+Use study material only to learn abstract pacing and production grammar. Never
+copy sample titles, dialogue, plots, panel compositions, character designs, or a
+living artist's distinctive style into a generated story.
 
 ## Cut Planning — plot-NN.cuts.json
 
@@ -516,11 +567,15 @@ visual story, they don't replace it.
   which has no geometry, does not render, and would export a blank, unlettered
   image.
 - **Overlay schema (only if you emit overlays):** each overlay is an object with
-  \`id\` (string), \`type\` (\`"speech"\` | \`"narration"\` | \`"sfx"\`), numeric \`x\`, \`y\`,
+  \`id\` (string), \`type\` (one of \`"speech"\`, \`"thought"\`, \`"narration"\`,
+  \`"system"\`, \`"shout"\`, \`"shock"\`, \`"whisper"\`, \`"dread"\`,
+  \`"offscreen"\`, \`"sfx"\`, \`"pause"\`, \`"caption"\`), numeric \`x\`, \`y\`,
   \`width\`, \`height\` (fractions of the image, 0–1, where \`x\`/\`y\` are the top-left
-  corner), \`text\` (string), optional \`speaker\` (speech only), and optional
-  \`tailAnchor\` (\`{ "x": number, "y": number }\`, speech only). Example:
-  \`{ "id": "ov-1", "type": "speech", "x": 0.08, "y": 0.06, "width": 0.4, "height": 0.16, "text": "...", "speaker": "Hana", "tailAnchor": { "x": 0.5, "y": 1.2 } }\`.
+  corner), and \`text\` (string). Optional fields include \`kind\` (same semantic
+  value as \`type\` when you want it explicit), \`tone\`, \`speaker\`, \`tailAnchor\`
+  (\`{ "x": number, "y": number }\` for tailed speech/shout/whisper/offscreen
+  bubbles), \`bubbleColor\`, \`textColor\`, and \`opacity\`. Example:
+  \`{ "id": "ov-1", "type": "thought", "kind": "thought", "x": 0.08, "y": 0.06, "width": 0.4, "height": 0.16, "text": "...", "tone": "tense", "opacity": 0.82 }\`.
   There is NO \`position\` field.
 - **Every publishable cut must become a final uploaded image.** Even
   narration-only or background-only cuts must get a clean image, be lettered/

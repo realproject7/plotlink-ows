@@ -16,6 +16,11 @@ import {
   isOverlayOutOfBounds,
   OVERLAP_AREA_THRESHOLD,
   hasVisibleSpeechTail,
+  overlayHasBubble,
+  overlaySupportsTail,
+  overlayRenderStyle,
+  OVERLAY_TYPES,
+  OVERLAY_TYPE_LABEL,
   CARTOON_BUBBLE_RENDERER_VERSION,
 } from "./overlays";
 
@@ -52,9 +57,30 @@ describe("toNorm", () => {
 });
 
 describe("createOverlay", () => {
+  it("keeps the exported type list and labels in sync", () => {
+    expect(OVERLAY_TYPES).toEqual([
+      "speech",
+      "thought",
+      "narration",
+      "system",
+      "shout",
+      "shock",
+      "whisper",
+      "dread",
+      "offscreen",
+      "sfx",
+      "pause",
+      "caption",
+    ]);
+    for (const type of OVERLAY_TYPES) {
+      expect(OVERLAY_TYPE_LABEL[type]).toBeTruthy();
+    }
+  });
+
   it("creates speech overlay with defaults and tailAnchor", () => {
     const o = createOverlay("speech", 0.2, 0.3);
     expect(o.type).toBe("speech");
+    expect(o.kind).toBe("speech");
     expect(o.x).toBe(0.2);
     expect(o.y).toBe(0.3);
     expect(o.width).toBe(0.25);
@@ -74,6 +100,7 @@ describe("createOverlay", () => {
   it("creates sfx overlay with smaller dimensions", () => {
     const o = createOverlay("sfx");
     expect(o.type).toBe("sfx");
+    expect(o.kind).toBe("sfx");
     expect(o.width).toBe(0.15);
     expect(o.height).toBe(0.08);
     expect(o.speaker).toBeUndefined();
@@ -82,7 +109,17 @@ describe("createOverlay", () => {
   it("creates narration overlay without speaker", () => {
     const o = createOverlay("narration");
     expect(o.type).toBe("narration");
+    expect(o.kind).toBe("narration");
     expect(o.speaker).toBeUndefined();
+  });
+
+  it("creates webtoon semantic overlay kinds with the right tail defaults", () => {
+    expect(createOverlay("thought").speaker).toBe("");
+    expect(createOverlay("caption").width).toBe(0.55);
+    expect(createOverlay("pause").text).toBe("...");
+    expect(createOverlay("offscreen").tailAnchor).toEqual({ x: 1.2, y: 0.5 });
+    expect(createOverlay("whisper").tailAnchor).toEqual({ x: 0.5, y: 1.1 });
+    expect(createOverlay("shock").tailAnchor).toBeUndefined();
   });
 
   it("generates unique IDs", () => {
@@ -107,12 +144,62 @@ describe("comfortableOverlaySize (#452)", () => {
     expect(comfortableOverlaySize("sfx", 0.1, 0.1)).toEqual({ width: 0.3, height: 0.1 });
   });
 
+  it("uses compact or wide defaults for non-dialogue webtoon elements", () => {
+    expect(comfortableOverlaySize("pause", 0.1, 0.1)).toEqual({ width: 0.3, height: 0.1 });
+    expect(comfortableOverlaySize("caption", 0.1, 0.1)).toEqual({ width: 0.72, height: 0.14 });
+    expect(comfortableOverlaySize("system", 0.1, 0.1)).toEqual({ width: 0.58, height: 0.16 });
+  });
+
   it("clamps so the box stays on the image from (x, y)", () => {
     const near = comfortableOverlaySize("narration", 0.7, 0.9);
     expect(near.width).toBeCloseTo(0.3, 6);
     expect(near.height).toBeCloseTo(0.1, 6);
     // A near-edge origin still yields a usable minimum box.
     expect(comfortableOverlaySize("narration", 0.98, 0.98)).toEqual({ width: 0.15, height: 0.06 });
+  });
+});
+
+describe("overlay render semantics", () => {
+  it("distinguishes bubble-capable overlays from text-only SFX", () => {
+    for (const type of OVERLAY_TYPES) {
+      expect(overlayHasBubble(type)).toBe(type !== "sfx");
+    }
+  });
+
+  it("limits speech tails to overlays that point at a speaker/source", () => {
+    expect(overlaySupportsTail("speech")).toBe(true);
+    expect(overlaySupportsTail("shout")).toBe(true);
+    expect(overlaySupportsTail("whisper")).toBe(true);
+    expect(overlaySupportsTail("offscreen")).toBe(true);
+    expect(overlaySupportsTail("thought")).toBe(false);
+    expect(overlaySupportsTail("narration")).toBe(false);
+    expect(overlaySupportsTail("sfx")).toBe(false);
+  });
+
+  it("returns distinct default styles and honors explicit overrides", () => {
+    const narration = overlayRenderStyle({ type: "narration" });
+    const thought = overlayRenderStyle({ type: "thought" });
+    expect(narration.radiusScale).toBeLessThan(thought.radiusScale);
+    expect(narration.fill).not.toBe(thought.fill);
+
+    const custom = overlayRenderStyle({
+      type: "speech",
+      bubbleColor: "#ffeecc",
+      textColor: "#112233",
+      opacity: 0.42,
+      bubbleStyle: {
+        bubbleColor: "#aabbcc",
+        borderColor: "#445566",
+        textColor: "#778899",
+        opacity: 0.7,
+        borderWidth: 2.5,
+      },
+    });
+    expect(custom.fill).toBe("#aabbcc");
+    expect(custom.stroke).toBe("#445566");
+    expect(custom.text).toBe("#778899");
+    expect(custom.fillOpacity).toBe(0.7);
+    expect(custom.strokeScale).toBe(2.5);
   });
 });
 
@@ -388,6 +475,62 @@ describe("normalizeOverlay (#309)", () => {
     expect(o).toEqual(valid);
   });
 
+  it("preserves semantic webtoon lettering fields and clamps style controls", () => {
+    const o = normalizeOverlay({
+      id: "ov-rich",
+      type: "thought",
+      kind: "thought",
+      tone: "tense",
+      priority: 99,
+      borderStyle: "soft",
+      safeAreaPolicy: "edge",
+      readingOrder: 3.8,
+      bubbleColor: "#ffffee",
+      textColor: "#222222",
+      opacity: 1.3,
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.2,
+      text: "I should not be seen.",
+      bubbleStyle: {
+        bubbleColor: "#ffeecc",
+        borderColor: "#996633",
+        textColor: "#110000",
+        opacity: -1,
+        borderWidth: 9,
+      },
+    })!;
+    expect(o).toMatchObject({
+      id: "ov-rich",
+      type: "thought",
+      kind: "thought",
+      tone: "tense",
+      priority: 10,
+      borderStyle: "soft",
+      safeAreaPolicy: "edge",
+      readingOrder: 3,
+      bubbleColor: "#ffffee",
+      textColor: "#222222",
+      opacity: 1,
+      bubbleStyle: {
+        bubbleColor: "#ffeecc",
+        borderColor: "#996633",
+        textColor: "#110000",
+        opacity: 0,
+        borderWidth: 3,
+      },
+    });
+  });
+
+  it("uses kind as a type fallback for agent-authored overlays", () => {
+    const o = normalizeOverlay({ kind: "caption", position: "bottom-center", text: "Later." })!;
+    expect(o.type).toBe("caption");
+    expect(o.text).toBe("Later.");
+    expect(o.width).toBeGreaterThan(0);
+    expect(o.height).toBeGreaterThan(0);
+  });
+
   it("returns null when there is no numeric geometry and no recognizable position", () => {
     expect(normalizeOverlay({ type: "speech", text: "orphan" })).toBeNull();
     expect(normalizeOverlay({ type: "speech", text: "orphan", position: "nowhere" })).toBeNull();
@@ -548,14 +691,20 @@ describe("hasVisibleSpeechTail (#381)", () => {
     expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(true); // below
     expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 1.3, y: 0.5 } })).toBe(true); // right
   });
+  it("is true for other tail-capable dialogue overlays", () => {
+    expect(hasVisibleSpeechTail({ type: "shout", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(true);
+    expect(hasVisibleSpeechTail({ type: "whisper", tailAnchor: { x: 0.5, y: 1.1 } })).toBe(true);
+    expect(hasVisibleSpeechTail({ type: "offscreen", tailAnchor: { x: 1.2, y: 0.5 } })).toBe(true);
+  });
   it("is false when the tail tip is inside the bubble (no tail drawn)", () => {
     expect(hasVisibleSpeechTail({ type: "speech", tailAnchor: { x: 0.5, y: 0.5 } })).toBe(false);
   });
   it("is false for a speech overlay with no tailAnchor", () => {
     expect(hasVisibleSpeechTail({ type: "speech" })).toBe(false);
   });
-  it("is false for non-speech overlays even with a tailAnchor", () => {
+  it("is false for non-dialogue overlays even with a tailAnchor", () => {
     expect(hasVisibleSpeechTail({ type: "narration", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(false);
+    expect(hasVisibleSpeechTail({ type: "thought", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(false);
     expect(hasVisibleSpeechTail({ type: "sfx", tailAnchor: { x: 0.5, y: 1.2 } })).toBe(false);
   });
 });

@@ -16,6 +16,11 @@ import {
   comfortableOverlaySize,
   bubbleLayoutOptionsForOverlay,
   balloonRadiusForOverlay,
+  OVERLAY_TYPES,
+  OVERLAY_TYPE_LABEL,
+  overlayHasBubble,
+  overlayRenderStyle,
+  overlaySupportsTail,
   type Overlay,
   type OverlayType,
 } from "@app-lib/overlays";
@@ -97,17 +102,32 @@ interface LetteringEditorProps {
   hasNextCut?: boolean;
 }
 
-const TYPE_LABEL: Record<OverlayType, string> = {
-  speech: "Speech",
-  narration: "Narration",
-  sfx: "SFX",
-};
-
 const TYPE_BORDER: Record<OverlayType, string> = {
   speech: "border-foreground/40",
+  thought: "border-muted/40",
   narration: "border-muted/40",
+  system: "border-sky-400/50",
+  shout: "border-foreground/60",
+  shock: "border-amber-700/50",
+  whisper: "border-muted/40",
+  dread: "border-foreground/60",
+  offscreen: "border-foreground/40",
   sfx: "border-accent/40",
+  pause: "border-muted/40",
+  caption: "border-muted/40",
 };
+
+const TOOL_TYPES: OverlayType[] = [
+  "speech",
+  "thought",
+  "narration",
+  "shout",
+  "shock",
+  "whisper",
+  "sfx",
+  "system",
+  "caption",
+];
 
 // Short human label for a bubble in the overlap warning (#318): its speaker or
 // a trimmed text snippet, falling back to the type name for empty bubbles.
@@ -115,7 +135,7 @@ function overlapLabel(o: Overlay): string {
   const snippet = (o.speaker || o.text || "").trim().replace(/\s+/g, " ");
   if (snippet)
     return `“${snippet.length > 18 ? `${snippet.slice(0, 18)}…` : snippet}”`;
-  return TYPE_LABEL[o.type];
+  return OVERLAY_TYPE_LABEL[o.type];
 }
 
 const MIN_SIZE = 0.05;
@@ -747,18 +767,18 @@ export function LetteringEditor({
     >
       {/* Toolbar */}
       <div
-        className="px-3 py-1.5 border-b border-border bg-surface/55 grid grid-cols-[minmax(14rem,1fr)_auto_minmax(12rem,1fr)] items-center gap-2"
+        className="px-2 py-1 border-b border-border bg-surface/55 grid grid-cols-[minmax(12rem,1fr)_auto_minmax(10rem,1fr)] items-center gap-2"
         data-testid="lettering-toolbar"
       >
         <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
-            className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:text-foreground"
+            className="px-2 py-0.5 text-[10px] border border-border rounded text-muted hover:text-foreground"
             data-testid="return-to-cut-review-btn"
           >
             Cut review
           </button>
-          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-accent whitespace-nowrap">
+          <span className="rounded-full border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-accent whitespace-nowrap">
             Lettering
           </span>
           <span className="text-[11px] font-mono text-muted">
@@ -776,8 +796,8 @@ export function LetteringEditor({
               data-testid={`lettering-check-${chip.key}`}
               data-done={chip.done ? "true" : "false"}
               className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                chip.key === "exported" || chip.key === "uploaded"
-                  ? "hidden xl:inline-flex"
+                chip.key === "exported" || chip.key === "uploaded" || chip.key === "script-text"
+                  ? "hidden 2xl:inline-flex"
                   : ""
               } ${
                 chip.done
@@ -799,34 +819,24 @@ export function LetteringEditor({
             </span>
           )}
         </div>
-        <div className="flex items-center justify-center gap-1 rounded border border-border bg-background px-1 py-0.5">
-          <button
-            onClick={() => addOverlay("speech")}
-            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
-            data-testid="add-speech"
-          >
-            Speech
-          </button>
-          <button
-            onClick={() => addOverlay("narration")}
-            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
-            data-testid="add-narration"
-          >
-            Narration
-          </button>
-          <button
-            onClick={() => addOverlay("sfx")}
-            className="px-2.5 py-1 text-[11px] rounded hover:bg-accent/10 hover:text-accent"
-            data-testid="add-sfx"
-          >
-            SFX
-          </button>
+        <div className="flex items-center justify-center gap-0.5 rounded border border-border bg-background px-1 py-0.5" data-testid="lettering-tool-strip">
+          {TOOL_TYPES.map((type) => (
+            <button
+              key={type}
+              onClick={() => addOverlay(type)}
+              className="px-1.5 py-0.5 text-[10px] rounded hover:bg-accent/10 hover:text-accent"
+              data-testid={`add-${type}`}
+              title={`Add ${OVERLAY_TYPE_LABEL[type]} overlay`}
+            >
+              {OVERLAY_TYPE_LABEL[type]}
+            </button>
+          ))}
         </div>
         <div className="flex items-center gap-1.5 justify-end min-w-0">
           {onToggleWorkspaceVisible && (
             <button
               onClick={onToggleWorkspaceVisible}
-              className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:border-accent hover:text-accent"
+              className="px-2 py-0.5 text-[10px] border border-border rounded text-muted hover:border-accent hover:text-accent"
               data-testid="toggle-work-area-btn"
             >
               {workspaceVisible ? "Hide work area" : "Show work area"}
@@ -835,7 +845,7 @@ export function LetteringEditor({
           <button
             type="button"
             onClick={() => setShowHelp((prev) => !prev)}
-            className="px-2.5 py-1 text-[11px] border border-border rounded text-muted hover:border-accent hover:text-accent"
+            className="px-2 py-0.5 text-[10px] border border-border rounded text-muted hover:border-accent hover:text-accent"
             data-testid="lettering-help-toggle"
           >
             {showHelp ? "Hide help" : "Help"}
@@ -853,7 +863,7 @@ export function LetteringEditor({
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="px-2.5 py-1 text-[11px] border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50"
+            className="px-2 py-0.5 text-[10px] border border-accent text-accent rounded hover:bg-accent/5 disabled:opacity-50"
             data-testid="export-btn"
           >
             {exporting ? "Exporting..." : "Export"}
@@ -862,14 +872,14 @@ export function LetteringEditor({
             onClick={() => {
               void handleSave();
             }}
-            className="px-2.5 py-1 text-[11px] bg-accent text-white rounded hover:bg-accent-dim"
+            className="px-2 py-0.5 text-[10px] bg-accent text-white rounded hover:bg-accent-dim"
             data-testid="save-lettering-btn"
           >
             Save
           </button>
           <button
             onClick={onClose}
-            className="px-2.5 py-1 text-[11px] text-muted hover:text-foreground border border-border rounded"
+            className="px-2 py-0.5 text-[10px] text-muted hover:text-foreground border border-border rounded"
             data-testid="cancel-lettering-btn"
           >
             Cancel
@@ -1093,7 +1103,7 @@ export function LetteringEditor({
               data-testid="balloon-layer"
             >
               {overlays.map((overlay) => {
-                if (overlay.type !== "speech") return null;
+                if (!overlayHasBubble(overlay.type)) return null;
                 const ox =
                   imageBounds.x + toPixel(overlay.x, imageBounds.width);
                 const oy =
@@ -1101,21 +1111,26 @@ export function LetteringEditor({
                 const ow = toPixel(overlay.width, imageBounds.width);
                 const oh = toPixel(overlay.height, imageBounds.height);
                 const radius = balloonRadiusForOverlay(overlay, ow, oh);
-                const tail = overlay.tailAnchor
-                  ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius)
-                  : null;
+                const tail =
+                  overlaySupportsTail(overlay.type) && overlay.tailAnchor
+                    ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius)
+                    : null;
                 // Strong, clean near-black outline scaled to the preview size so
                 // the bubble reads as a webtoon balloon (matching the export's
                 // proportional stroke), not a faint UI box (#363).
                 const strokeW = Math.max(1.5, imageBounds.height * 0.004);
                 const selected = overlay.id === selectedId;
+                const style = overlayRenderStyle(overlay);
                 return (
                   <path
                     key={overlay.id}
                     data-testid={`balloon-${overlay.id}`}
                     d={balloonPathD(ox, oy, ow, oh, tail, radius)}
-                    className={`fill-white/95 ${selected ? "stroke-accent" : "stroke-[#1a1a1a]"}`}
-                    strokeWidth={selected ? strokeW + 0.5 : strokeW}
+                    fill={style.fill}
+                    fillOpacity={style.fillOpacity}
+                    stroke={selected ? "var(--accent)" : style.stroke}
+                    strokeOpacity={selected ? 1 : style.strokeOpacity}
+                    strokeWidth={selected ? strokeW + 0.6 : Math.max(1.25, strokeW * style.strokeScale)}
                     strokeLinejoin="round"
                   />
                 );
@@ -1137,10 +1152,8 @@ export function LetteringEditor({
               // re-introduce the body/tail seam (#327). Their selection cue is the
               // path's accent stroke (plus the resize handle). Narration/SFX keep
               // their bordered box + selection ring as before.
-              const isSpeech = overlay.type === "speech";
-              // Narration reads as an intentional parchment caption card (rounded,
-              // filled), mirroring the export, instead of an empty bordered box (#363).
-              const isNarration = overlay.type === "narration";
+              const hasBubble = overlayHasBubble(overlay.type);
+              const style = overlayRenderStyle(overlay);
               const warned = !!overlayWarnings[overlay.id];
 
               return (
@@ -1151,9 +1164,9 @@ export function LetteringEditor({
                   onClick={(e) => handleOverlayClick(e, overlay.id)}
                   onMouseDown={(e) => handleMouseDown(e, overlay.id, "move")}
                   className={`absolute rounded cursor-move select-none ${
-                    isSpeech ? "" : `border-2 ${TYPE_BORDER[overlay.type]}`
-                  } ${isNarration ? "bg-[#f4efe6]/85 rounded-md" : ""} ${
-                    isSelected && !isSpeech ? "ring-2 ring-accent" : ""
+                    hasBubble ? "" : `border-2 ${TYPE_BORDER[overlay.type]}`
+                  } ${
+                    isSelected && !hasBubble ? "ring-2 ring-accent" : ""
                   } ${warned ? "ring-2 ring-amber-500" : ""}`}
                   style={{ left, top, width, height }}
                 >
@@ -1168,7 +1181,7 @@ export function LetteringEditor({
                           className="text-[9px] px-1 text-muted truncate block pointer-events-none"
                           style={{ fontFamily }}
                         >
-                          {TYPE_LABEL[overlay.type]}
+                          {OVERLAY_TYPE_LABEL[overlay.type]}
                         </span>
                       );
                     }
@@ -1186,6 +1199,7 @@ export function LetteringEditor({
                             fontFamily,
                             fontSize: Math.max(9, Math.min(height * 0.05, 16)),
                             fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                            color: style.text,
                           }}
                           data-testid={`overlay-text-${overlay.id}`}
                           data-fonts-ready="false"
@@ -1221,17 +1235,18 @@ export function LetteringEditor({
                             style={{
                               fontSize: layout.speakerFontSize,
                               lineHeight: 1.2,
+                              color: style.speaker,
                             }}
                           >
                             {overlay.speaker}
                           </span>
                         )}
                         <span
-                          className="text-[#1a1a1a]"
                           style={{
                             fontSize: layout.fontSize,
                             lineHeight: `${layout.lineHeight}px`,
                             fontWeight: overlay.textStyle?.fontWeight ?? 400,
+                            color: style.text,
                           }}
                         >
                           {layout.lines.map((line, i) => (
@@ -1264,12 +1279,46 @@ export function LetteringEditor({
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-foreground">
-                  {TYPE_LABEL[selectedOverlay.type]}
+                  {OVERLAY_TYPE_LABEL[selectedOverlay.type]}
                 </p>
                 <span className="text-[10px] text-muted">
                   #{overlays.findIndex((o) => o.id === selectedOverlay.id) + 1}
                 </span>
               </div>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-medium text-muted">
+                  Bubble kind
+                </span>
+                <select
+                  value={selectedOverlay.type}
+                  onChange={(e) => {
+                    const nextType = e.target.value as OverlayType;
+                    updateOverlay(selectedOverlay.id, {
+                      type: nextType,
+                      kind: nextType,
+                      ...(overlaySupportsTail(nextType)
+                        ? {
+                            speaker: selectedOverlay.speaker ?? "",
+                            tailAnchor:
+                              selectedOverlay.tailAnchor ??
+                              (nextType === "offscreen"
+                                ? { x: 1.2, y: 0.5 }
+                                : { x: 0.5, y: 1.2 }),
+                          }
+                        : { tailAnchor: undefined }),
+                    });
+                  }}
+                  className="w-full px-2 py-1 text-xs border border-border rounded bg-transparent focus:border-accent focus:outline-none"
+                  data-testid="inspector-overlay-type"
+                >
+                  {OVERLAY_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {OVERLAY_TYPE_LABEL[type]}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               {selectedOverlay.speaker !== undefined && (
                 <label className="block space-y-1">
@@ -1473,7 +1522,7 @@ export function LetteringEditor({
                 )}
               </div>
 
-              {selectedOverlay.type === "speech" &&
+              {overlaySupportsTail(selectedOverlay.type) &&
                 (() => {
                   const tail = selectedOverlay.tailAnchor || { x: 0.5, y: 1.2 };
                   return (
@@ -1551,6 +1600,57 @@ export function LetteringEditor({
                   <span className="text-[10px] font-medium text-muted">
                     Bubble controls
                   </span>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">
+                      Bubble color
+                    </span>
+                    <input
+                      type="color"
+                      value={selectedOverlay.bubbleColor ?? selectedOverlay.bubbleStyle?.bubbleColor ?? "#ffffff"}
+                      onChange={(e) =>
+                        updateOverlay(selectedOverlay.id, {
+                          bubbleColor: e.target.value,
+                        })
+                      }
+                      className="h-7 w-full border border-border rounded bg-transparent"
+                      data-testid="inspector-bubble-color"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">
+                      Text color
+                    </span>
+                    <input
+                      type="color"
+                      value={selectedOverlay.textColor ?? selectedOverlay.bubbleStyle?.textColor ?? "#1a1a1a"}
+                      onChange={(e) =>
+                        updateOverlay(selectedOverlay.id, {
+                          textColor: e.target.value,
+                        })
+                      }
+                      className="h-7 w-full border border-border rounded bg-transparent"
+                      data-testid="inspector-text-color"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] text-muted">
+                      Opacity
+                    </span>
+                    <input
+                      type="range"
+                      min="0.25"
+                      max="1"
+                      step="0.05"
+                      value={selectedOverlay.opacity ?? selectedOverlay.bubbleStyle?.opacity ?? 0.95}
+                      onChange={(e) =>
+                        updateOverlay(selectedOverlay.id, {
+                          opacity: Math.max(0.25, Math.min(1, parseFloat(e.target.value) || 0.95)),
+                        })
+                      }
+                      className="w-full"
+                      data-testid="inspector-opacity"
+                    />
+                  </label>
                   <label className="block space-y-1">
                     <span className="text-[10px] text-muted">
                       Padding X (% width)
@@ -1694,7 +1794,7 @@ export function LetteringEditor({
                         className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
                       >
                         <span className="font-medium text-accent">
-                          + {TYPE_LABEL[line.type]}
+                          + {OVERLAY_TYPE_LABEL[line.type]}
                         </span>{" "}
                         <span className="text-muted">
                           {line.speaker ? `${line.speaker}: ` : ""}
@@ -1735,7 +1835,7 @@ export function LetteringEditor({
                         className="text-left px-2 py-1 text-[10px] border border-border rounded hover:border-accent hover:bg-accent/5"
                       >
                         <span className="font-medium text-accent">
-                          + {TYPE_LABEL[line.type]}
+                          + {OVERLAY_TYPE_LABEL[line.type]}
                         </span>{" "}
                         <span className="text-muted">
                           {line.speaker ? `${line.speaker}: ` : ""}

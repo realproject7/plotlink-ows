@@ -1410,6 +1410,14 @@ export function PreviewPanel({
                 onCutsChanged={() => setCutsRefreshKey((k) => k + 1)}
                 focusRequest={cutFocus}
                 onFocusHandled={() => setCutFocus(null)}
+                onOpenFocusedEditor={(cutId) => {
+                  setActiveTab("edit");
+                  setCutFocus({
+                    cutId,
+                    openEditor: true,
+                    seq: Date.now(),
+                  });
+                }}
                 compactEpisodeChrome
               />
             </div>

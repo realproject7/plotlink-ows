@@ -4,6 +4,10 @@ import {
   validateOverlaysForExport,
   bubbleLayoutOptionsForOverlay,
   balloonRadiusForOverlay,
+  overlayHasBubble,
+  overlayRenderStyle,
+  overlaySupportsTail,
+  type Overlay,
   type TailPoints,
 } from "@app-lib/overlays";
 import { textPanelDimensions } from "@app-lib/cuts";
@@ -11,30 +15,6 @@ import { textPanelDimensions } from "@app-lib/cuts";
 export { textPanelDimensions } from "@app-lib/cuts";
 import { layoutBubbleText } from "@app-lib/bubble-text";
 import { compressCanvasToBlob, MAX_IMAGE_BYTES } from "../lib/image-compress";
-
-interface Overlay {
-  id: string;
-  type: "speech" | "narration" | "sfx";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  speaker?: string;
-  tailAnchor?: { x: number; y: number };
-  textStyle?: {
-    mode?: "auto" | "manual";
-    fontScale?: number;
-    fontWeight?: 400 | 700;
-    lineHeightFactor?: number;
-    speakerScale?: number;
-  };
-  bubbleStyle?: {
-    paddingX?: number;
-    paddingY?: number;
-    cornerRadius?: number;
-  };
-}
 
 // Re-exported for the existing export-size validation + tests; the compression
 // policy now lives in the shared image-compress module so the lettering export
@@ -75,16 +55,6 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     img.src = url;
   });
 }
-
-// Webtoon balloon styling (#363). A near-opaque bubble with a strong, clean
-// near-black outline reads as a comic speech balloon rather than a faint UI box
-// (the old rgba(0,0,0,0.3) hairline). Narration is an intentional parchment
-// card with a softer outline; both stroke weights scale with the panel so the
-// look holds at any export resolution.
-const SPEECH_FILL = "rgba(255, 255, 255, 0.95)";
-const SPEECH_STROKE = "#1a1a1a";
-const NARRATION_FILL = "rgba(244, 239, 230, 0.94)";
-const NARRATION_STROKE = "rgba(26, 26, 26, 0.55)";
 
 // Outline weight as a fraction of the rendered panel height, so a balloon keeps
 // the same visual line thickness whether exported small or large (#363).
@@ -132,34 +102,23 @@ export function renderOverlays(
     const oh = overlay.height * height;
 
     const strokeW = balloonStrokeWidth(height);
-    if (overlay.type === "speech") {
-      // Trace the body and its tail as a single outline so the exported balloon
-      // has no internal seam between them (#317): one fill, one stroke, with the
-      // tail forming part of the balloon's outline instead of a shape laid over
-      // a fully-stroked body border. A rounded line join keeps the tail/corner
-      // junctions soft and organic (#363).
+    const style = overlayRenderStyle(overlay);
+    if (overlayHasBubble(overlay.type)) {
       const radius = balloonRadiusForOverlay(overlay, ow, oh);
-      const tail = overlay.tailAnchor ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius) : null;
+      const tail =
+        overlaySupportsTail(overlay.type) && overlay.tailAnchor
+          ? speechTailPoints(ox, oy, ow, oh, overlay.tailAnchor, radius)
+          : null;
       traceBalloonPath(ctx, ox, oy, ow, oh, tail, radius);
-      ctx.fillStyle = SPEECH_FILL;
+      ctx.globalAlpha = style.fillOpacity;
+      ctx.fillStyle = style.fill;
       ctx.fill();
-      ctx.strokeStyle = SPEECH_STROKE;
-      ctx.lineWidth = strokeW;
+      ctx.globalAlpha = style.strokeOpacity;
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = Math.max(1.25, strokeW * style.strokeScale);
       ctx.lineJoin = "round";
       ctx.stroke();
-    } else if (overlay.type === "narration") {
-      // Narration stays rectangular but reads as an intentional webtoon caption
-      // card: gently rounded corners + a confident (if softer-than-speech)
-      // outline, instead of a hairline box (#363).
-      const nr = Math.min(ow, oh) * 0.12;
-      ctx.beginPath();
-      ctx.roundRect(ox, oy, ow, oh, nr);
-      ctx.fillStyle = NARRATION_FILL;
-      ctx.fill();
-      ctx.strokeStyle = NARRATION_STROKE;
-      ctx.lineWidth = Math.max(1.5, strokeW * 0.75);
-      ctx.lineJoin = "round";
-      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
     const font = overlay.type === "sfx" ? displayFont : bodyFont;
@@ -184,7 +143,7 @@ export function renderOverlays(
 
     // Draw the speaker label on its own strip at the top of the bubble.
     if (hasSpeaker) {
-      ctx.fillStyle = "#3a3a3a";
+      ctx.fillStyle = style.speaker;
       ctx.font = `700 ${layout.speakerFontSize}px ${font}`;
       ctx.fillText(overlay.speaker as string, cx, oy + speakerStrip / 2 + oh * 0.04, ow - 6);
     }
@@ -198,13 +157,13 @@ export function renderOverlays(
     ctx.font = `${overlay.textStyle?.fontWeight ?? 400} ${layout.fontSize}px ${font}`;
     for (const line of layout.lines) {
       if (overlay.type === "sfx") {
-        ctx.fillStyle = "#000";
-        ctx.strokeStyle = "#fff";
+        ctx.fillStyle = style.text;
+        ctx.strokeStyle = style.stroke;
         ctx.lineWidth = 3;
         ctx.strokeText(line, cx, lineY);
         ctx.fillText(line, cx, lineY);
       } else {
-        ctx.fillStyle = "#1a1a1a";
+        ctx.fillStyle = style.text;
         ctx.fillText(line, cx, lineY);
       }
       lineY += layout.lineHeight;

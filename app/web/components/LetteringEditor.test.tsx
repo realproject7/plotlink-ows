@@ -14,6 +14,7 @@ import {
   MOCK_BLOB_URL,
 } from "./asset-test-utils";
 import { textPanelDimensions } from "@app-lib/cuts";
+import type { Overlay } from "@app-lib/overlays";
 
 beforeAll(() => {
   installObjectUrlStub();
@@ -45,30 +46,6 @@ beforeAll(() => {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 });
-
-interface Overlay {
-  id: string;
-  type: "speech" | "narration" | "sfx";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  speaker?: string;
-  tailAnchor?: { x: number; y: number };
-  textStyle?: {
-    mode?: "auto" | "manual";
-    fontScale?: number;
-    fontWeight?: 400 | 700;
-    lineHeightFactor?: number;
-    speakerScale?: number;
-  };
-  bubbleStyle?: {
-    paddingX?: number;
-    paddingY?: number;
-    cornerRadius?: number;
-  };
-}
 
 afterEach(cleanup);
 
@@ -348,7 +325,7 @@ describe("LetteringEditor", () => {
     expect(Math.max(...ys)).toBeLessThanOrEqual(bubbleBottom + 0.01);
   });
 
-  it("does not render a balloon path for narration overlays", async () => {
+  it("renders narration overlays as visible card paths", async () => {
     const overlay: Overlay = {
       id: "narr-tail",
       type: "narration",
@@ -371,7 +348,7 @@ describe("LetteringEditor", () => {
 
     await simulateImageLoad();
 
-    expect(screen.queryByTestId("balloon-narr-tail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("balloon-narr-tail")).toBeInTheDocument();
   });
 
   it("shows inspector when overlay is clicked", async () => {
@@ -592,7 +569,7 @@ describe("LetteringEditor", () => {
     );
   });
 
-  it("saves manual typography and bubble controls through the inspector", async () => {
+  it("saves manual typography, semantic kind, and bubble controls through the inspector", async () => {
     const onSave = vi.fn();
     render(
       <LetteringEditor
@@ -639,12 +616,29 @@ describe("LetteringEditor", () => {
     fireEvent.change(screen.getByTestId("inspector-corner-radius"), {
       target: { value: "25" },
     });
+    fireEvent.change(screen.getByTestId("inspector-overlay-type"), {
+      target: { value: "thought" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-bubble-color"), {
+      target: { value: "#123456" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-text-color"), {
+      target: { value: "#fefefe" },
+    });
+    fireEvent.change(screen.getByTestId("inspector-opacity"), {
+      target: { value: "0.75" },
+    });
     fireEvent.click(screen.getByText("Save"));
 
     expect(onSave).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           id: "manual",
+          type: "thought",
+          kind: "thought",
+          bubbleColor: "#123456",
+          textColor: "#fefefe",
+          opacity: 0.75,
           textStyle: expect.objectContaining({
             mode: "manual",
             fontScale: 0.045,
@@ -695,9 +689,9 @@ describe("LetteringEditor", () => {
         "true",
       ),
     );
-    const body = screen
-      .getByTestId("overlay-text-bold")
-      .querySelector(".text-\\[\\#1a1a1a\\]") as HTMLElement | null;
+    const body = Array.from(
+      screen.getByTestId("overlay-text-bold").children,
+    ).at(-1) as HTMLElement | null;
     expect(body?.style.fontWeight).toBe("700");
   });
 

@@ -1,29 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateExportSize, MAX_SIZE, renderOverlays, exportCut, textPanelDimensions } from "./export-cut";
-
-interface Overlay {
-  id: string;
-  type: "speech" | "narration" | "sfx";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  speaker?: string;
-  tailAnchor?: { x: number; y: number };
-  textStyle?: {
-    mode?: "auto" | "manual";
-    fontScale?: number;
-    fontWeight?: 400 | 700;
-    lineHeightFactor?: number;
-    speakerScale?: number;
-  };
-  bubbleStyle?: {
-    paddingX?: number;
-    paddingY?: number;
-    cornerRadius?: number;
-  };
-}
+import type { Overlay } from "@app-lib/overlays";
 
 // Minimal recording stand-in for CanvasRenderingContext2D: captures the path
 // vertices (moveTo/lineTo, in order) plus fill/stroke counts so we can assert
@@ -199,8 +176,8 @@ describe("renderOverlays speech-bubble tail", () => {
     expect(asShared).toEqual(expected);
   });
 
-  it("does not draw a tail for narration or sfx overlays", () => {
-    const { ctx, lineTos } = recordingCtx();
+  it("draws narration as a tailless bubble path and keeps SFX body-free", () => {
+    const { ctx, path, counts } = recordingCtx();
     renderOverlays(
       ctx,
       [
@@ -212,7 +189,11 @@ describe("renderOverlays speech-bubble tail", () => {
       "Body",
       "Display",
     );
-    expect(lineTos).toHaveLength(0);
+    // Narration is now a visible card overlay in preview/export, but it has no
+    // speech-tail vertex outside its own body rect. SFX still draws text only.
+    expect(counts.fill).toBe(1);
+    expect(counts.stroke).toBe(1);
+    expect(path.some((p) => p.y > 72.001 || p.x > 200.001 || p.x < -0.001 || p.y < -0.001)).toBe(false);
   });
 });
 
@@ -263,14 +244,22 @@ describe("renderOverlays webtoon balloon styling (#363)", () => {
     expect(large.strokes[0].width).toBeGreaterThan(small.strokes[0].width);
   });
 
-  it("draws narration as a rounded parchment card, not a hairline box", () => {
+  it("draws narration as a parchment card, not a hairline box", () => {
     const { ctx, fills, strokes, roundRects } = styleCtx();
     renderOverlays(ctx, [{ id: "n", type: "narration", x: 0, y: 0, width: 0.25, height: 0.12, text: "Later that night." }], 800, 600, "Body", "Display");
-    // Rounded card (roundRect with a positive radius), not a square fillRect/strokeRect box.
-    expect(roundRects).toHaveLength(1);
-    expect(roundRects[0].r).toBeGreaterThan(0);
+    // Shared balloon path, not a square fillRect/strokeRect box.
+    expect(roundRects).toHaveLength(0);
     expect(fills[0].style).toBe("rgba(244, 239, 230, 0.94)");
-    expect(strokes[0].style).toBe("rgba(26, 26, 26, 0.55)");
+    expect(strokes[0].style).toBe("#6d6256");
+    expect(strokes[0].width).toBeGreaterThan(1);
+  });
+
+  it("draws expanded webtoon bubble kinds with their own export styling", () => {
+    const { ctx, fills, strokes } = styleCtx();
+    renderOverlays(ctx, [{ id: "t", type: "thought", x: 0, y: 0, width: 0.25, height: 0.12, text: "This is wrong." }], 800, 600, "Body", "Display");
+    expect(fills[0].style).toBe("rgba(255, 255, 255, 0.82)");
+    expect(strokes[0].style).toBe("#6f675c");
+    expect(strokes[0].width).toBeGreaterThan(1);
   });
 });
 
